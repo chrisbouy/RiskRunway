@@ -1,0 +1,8 @@
+pdfplumber
+pydantic<2
+pandas
+requests
+pillow
+tesserocr
+pytesseract
+ollama
