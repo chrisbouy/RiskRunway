@@ -5,6 +5,9 @@ import requests
 import base64
 import settings
 from google import genai
+import pathlib
+from google.genai import types
+from ollama import Client
 
 
 # DEFAULT_MODEL = "gemma3:4b"
@@ -62,7 +65,55 @@ DEFAULT_PROMPT = dedent(
     }
     """
 )
+DEEPSEEK_PROMPT = (
+    "Free OCR. Output the recognized text verbatim."
+)
+def extract_with_deepseek_ocr64(image_path):
+    """Sends a base64 encoded image to Ollama for OCR using deepseek-ocr."""
+    url = "http://localhost:11434/api/generate" # Default Ollama API endpoint
+    with open(image_path, "rb") as f:
+        img_bytes = f.read()
+    base64_image = base64.b64encode(img_bytes).decode("utf-8")
+    
+    payload = {
+        "model": "deepseek-ocr",
+        "prompt": DEEPSEEK_PROMPT,
+        "images": [base64_image],
+        "stream": False # Set to True for streaming responses
+    }
+    
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("response", "").strip()
+    except requests.exceptions.RequestException as e:
+        print(f"Error connecting to Ollama: {e}")
+        return None
 
+
+def extract_with_deepseek_ocr(image_paths, grounding_prompt=DEEPSEEK_PROMPT):
+    if not image_paths:
+        raise ValueError("No image paths passed to extract_with_deepseek_ocr")
+
+    client = Client(host="http://localhost:11434")
+    results = []
+
+    for path in image_paths:
+        abs_path = os.path.abspath(path)
+        chunks = client.generate(
+            model="deepseek-ocr",
+            prompt=f"<|grounding|>{grounding_prompt}",
+            images=[abs_path],
+            stream=True
+        )
+        # print("DeepSeek response keys:", response.keys())
+        text = []
+        for chunk in chunks:
+            if chunk.get("response"):
+                text.append(chunk["response"])
+        results.append("".join(text))
+    return results
 def analyze_with_gemini(image_path, analysis_prompt=DEFAULT_PROMPT, model_name=DEFAULT_MODEL):
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     
@@ -73,26 +124,25 @@ def analyze_with_gemini(image_path, analysis_prompt=DEFAULT_PROMPT, model_name=D
     for attempt in range(max_retries):
         try:
             # Upload video file
-            image_file = client.files.upload(file=image_path)
-            print(f"Completed upload: {image_file.uri}")
+            # image_file = client.files.upload(file=image_path)
+            # print(f"Completed upload: {image_file.uri}")
             
             # Wait for processing
-            while image_file.state == "PROCESSING":
-                print('Waiting for video to be processed.')
-                time.sleep(5)
-                image_file = client.files.get(name=image_file.name)
+            # while image_file.state == "PROCESSING":
+            #     image_file = client.files.get(name=image_file.name)
                 
-            if image_file.state == "FAILED":
-                raise ValueError(f"Video processing failed")
-
+            # if image_file.state == "FAILED":
+            #     raise ValueError(f"Video processing failed")
+            filepath = pathlib.Path(image_path)
             # Generate content
             response = client.models.generate_content(
                 model=model_name,
                 contents=[
-                    image_file,
-                    "\n\n",
-                    analysis_prompt,
-                ],
+                    types.Part.from_bytes(
+                        data=filepath.read_bytes(),
+                        mime_type='application/pdf',
+                    ),                    analysis_prompt
+                ]
             )
             
             # Parse the analysis

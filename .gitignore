@@ -51,3 +51,8 @@ media/students/
 
 #tts
 *.pth
+
+#images
+*.png
+*.jpg
+*.jpeg
