@@ -1,9 +1,11 @@
 from pdf_analysis.parse_pdf import parse_pdf_page_one, group_words_into_lines
 from extractors.insured import extract_applicant_info
-from ai.Acord125ToJSON import analyze_with_ollama, analyze_with_ollama64
+from ai.Acord125ToJSON import analyze_with_ollama, analyze_with_ollama64, analyze_with_gemini
 import os
 import pdfplumber
 import json
+from google import genai
+
 
 PDF_PATH = "sample_docs/acord125_filled.pdf"
 TEMP_DIR = "sample_docs/temp_pages"
@@ -30,7 +32,7 @@ def main():
     image_paths = []
     with pdfplumber.open(PDF_PATH) as pdf:
         # for i in range(0, 1):
-        output_path = os.path.join(TEMP_DIR, f"page_{i}.png")
+        output_path = os.path.join(TEMP_DIR, f"page.png")
         pdf.pages[0].to_image(resolution=300).original.save(output_path, format="PNG")
         image_paths.append(output_path)
 

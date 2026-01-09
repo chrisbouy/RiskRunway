@@ -6,3 +6,5 @@ pillow
 tesserocr
 pytesseract
 ollama
+google-genai==1.57.0
+python-dotenv

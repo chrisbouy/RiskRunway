@@ -3,8 +3,12 @@ import os
 import time
 import requests 
 import base64
+import settings
+from google import genai
 
-DEFAULT_MODEL = "gemma3:4b"
+
+# DEFAULT_MODEL = "gemma3:4b"
+DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_PROMPT = dedent(
     """
     You are extracting data for premium finance intake.
@@ -59,7 +63,7 @@ DEFAULT_PROMPT = dedent(
     """
 )
 
-def analyze_with_gemini(image_path):
+def analyze_with_gemini(image_path, analysis_prompt=DEFAULT_PROMPT, model_name=DEFAULT_MODEL):
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     
     # Retry configuration
@@ -83,7 +87,7 @@ def analyze_with_gemini(image_path):
 
             # Generate content
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model=model_name,
                 contents=[
                     image_file,
                     "\n\n",
@@ -96,7 +100,7 @@ def analyze_with_gemini(image_path):
             
             return {
                 "response": content,
-                "model": "gemini-2.5-flash-lite",
+                "model": model_name,
                 "success": True,
             }
 
