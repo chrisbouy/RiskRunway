@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# TypeScript
+node_modules/
+dist/
+*.js
+*.js.map
+*.d.ts
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Build output
+/build
+
+# Exclude virtual environments
+venv/
+.env/
+__pycache__/
+
+# Exclude SQLite database
+db.sqlite3
+
+# Exclude audio files
+audio_segments/*.mp3
+
+*.mp4
+media/students/
+
+#tts
+*.pth
