@@ -1,10 +1,14 @@
 pdfplumber
-pydantic<2
+pydantic
 pandas
 requests
 pillow
 tesserocr
 pytesseract
 ollama
-google-genai==1.57.0
+google-genai
 python-dotenv
+flask
+flask-wtf
+python-dotenv
+werkzeug

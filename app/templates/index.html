@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ACORD 125 Parser</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" rel="stylesheet" />
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">ACORD 125 Parser</h1>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <form id="uploadForm" class="dropzone border-2 border-dashed rounded-lg p-8 text-center">
+                <div class="dz-message" data-dz-message>
+                    <p class="text-gray-600">Drag & drop your ACORD 125 form here or click to browse</p>
+                    <p class="text-sm text-gray-500 mt-2">Supports PDF, PNG, JPG</p>
+                </div>
+            </form>
+        </div>
+
+        <div id="result" class="bg-white rounded-lg shadow-md p-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">Parsed Results</h2>
+            <pre id="jsonOutput" class="bg-gray-100 p-4 rounded overflow-auto max-h-96"></pre>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
+    <script>
+        Dropzone.autoDiscover = false;
+        
+        const myDropzone = new Dropzone("#uploadForm", {
+            url: "/",
+            maxFiles: 1,
+            acceptedFiles: ".pdf,.png,.jpg,.jpeg",
+            autoProcessQueue: true
+        });
+
+        myDropzone.on("success", function(file, response) {
+            document.getElementById('result').classList.remove('hidden');
+            document.getElementById('jsonOutput').textContent = 
+                JSON.stringify(response, null, 2);
+            myDropzone.removeAllFiles(true);
+        });
+
+        myDropzone.on("error", function(file, errorMessage) {
+            alert(errorMessage);
+            myDropzone.removeAllFiles(true);
+        });
+    </script>
+</body>
+</html>
