@@ -17,6 +17,8 @@ DEFAULT_PROMPT = dedent(
     You are extracting data for premium finance intake.
     From the attached ACORD 125 image, extract the following fields.
     If a value is not clearly present, return null. Do not guess.
+    If multiple policies are present, return one object per policy in the policies array. Do not merge policies.
+    Do not calculate totals. Only extract values explicitly present in the document.
     Return valid JSON only using this schema:
     {
         "insured": {
