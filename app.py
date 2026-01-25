@@ -1,6 +1,6 @@
 # from pdf_analysis.parse_pdf import parse_pdf_page_one, group_words_into_lines
 # from extractors.insured import extract_applicant_info
-from ai_ocr.Acord125 import analyze_with_ollama, analyze_with_ollama64, analyze_with_gemini, extract_with_deepseek_ocr, extract_with_deepseek_ocr64
+from Acord125 import analyze_with_ollama, analyze_with_ollama64, analyze_with_gemini, extract_with_deepseek_ocr, extract_with_deepseek_ocr64
 import os
 import pdfplumber
 import json

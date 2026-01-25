@@ -1,51 +1,398 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ACORD 125 Parser</title>
+    <title>IPFS Mapper</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" rel="stylesheet" />
+    <style>
+        .copy-btn {
+            transition: all 0.2s ease;
+        }
+        .copy-btn:hover {
+            transform: scale(1.05);
+        }
+        .copy-btn.copied {
+            background-color: #10b981;
+            color: white;
+        }
+        .field-value {
+            word-break: break-all;
+        }
+        .file-preview {
+            display: inline-block;
+            margin: 8px;
+            text-align: center;
+        }
+        .file-thumbnail {
+            width: 80px;
+            height: 80px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9fafb;
+            margin-bottom: 4px;
+            position: relative;
+        }
+        .file-thumbnail svg {
+            width: 40px;
+            height: 40px;
+            color: #6b7280;
+        }
+        .remove-file {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .policy-column {
+            min-width: 300px;
+            max-width: 400px;
+        }
+        #uploadForm.dz-started .dz-message {
+            display: none;
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-8">ACORD 125 Parser</h1>
-        
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <form id="uploadForm" class="dropzone border-2 border-dashed rounded-lg p-8 text-center">
-                <div class="dz-message" data-dz-message>
-                    <p class="text-gray-600">Drag & drop your ACORD 125 form here or click to browse</p>
-                    <p class="text-sm text-gray-500 mt-2">Supports PDF, PNG, JPG</p>
-                </div>
-            </form>
+<body class="bg-gray-50">
+    <div class="px-4 py-2">
+        <div class="flex items-start gap-3 mb-2">
+            <h1 class="text-xl font-bold pt-2 flex-shrink-0">IPFS Mapper</h1>
+
+            <div class="flex-1 bg-white rounded-lg shadow-sm p-2">
+                <form id="uploadForm" class="dropzone border-2 border-dashed rounded-lg p-2 text-center min-h-[100px] flex items-center justify-center">
+                    <div class="dz-message" data-dz-message>
+                        <p class="text-gray-600 text-xs">Drag & drop forms here or click to browse</p>
+                        <p class="text-xs text-gray-400 mt-0.5">PDF, PNG, JPG</p>
+                    </div>
+                </form>
+            </div>
+
+            <button id="generateBtn" class="bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex-shrink-0 text-sm" disabled>
+                Generate
+            </button>
         </div>
 
-        <div id="result" class="bg-white rounded-lg shadow-md p-6 hidden">
-            <h2 class="text-xl font-semibold mb-4">Parsed Results</h2>
-            <pre id="jsonOutput" class="bg-gray-100 p-4 rounded overflow-auto max-h-96"></pre>
+        <div id="result" class="hidden">
+            <div id="insuredInfo" class="bg-white rounded-lg shadow-sm p-2 mb-2 flex gap-2 flex-wrap"></div>
+            <div id="parsedContent" class="flex gap-2 overflow-x-auto pb-2"></div>
         </div>
     </div>
 
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script>
         Dropzone.autoDiscover = false;
-        
+
+        let uploadedFiles = [];
+
         const myDropzone = new Dropzone("#uploadForm", {
             url: "/",
-            maxFiles: 1,
+            autoProcessQueue: false,
             acceptedFiles: ".pdf,.png,.jpg,.jpeg",
-            autoProcessQueue: true
+            addRemoveLinks: false,
+            previewTemplate: '<div style="display:none"></div>'
         });
 
-        myDropzone.on("success", function(file, response) {
+        myDropzone.on("addedfile", function(file) {
+            uploadedFiles.push(file);
+            updateFilePreview();
+            updateGenerateButton();
+        });
+
+        function updateFilePreview() {
+            const form = document.getElementById('uploadForm');
+            const existingPreviews = form.querySelectorAll('.file-preview');
+            existingPreviews.forEach(p => p.remove());
+
+            uploadedFiles.forEach((file, index) => {
+                const preview = document.createElement('div');
+                preview.className = 'file-preview';
+                preview.innerHTML = `
+                    <div class="file-thumbnail">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <div class="remove-file" onclick="removeFile(${index})">×</div>
+                    </div>
+                    <div class="text-xs text-gray-700 max-w-[80px] truncate">${file.name}</div>
+                `;
+                form.appendChild(preview);
+            });
+        }
+
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            updateFilePreview();
+            updateGenerateButton();
+        }
+
+        function updateGenerateButton() {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = uploadedFiles.length === 0;
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', async function() {
+            if (uploadedFiles.length === 0) return;
+
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
             document.getElementById('result').classList.remove('hidden');
-            document.getElementById('jsonOutput').textContent = 
-                JSON.stringify(response, null, 2);
-            myDropzone.removeAllFiles(true);
+            const contentDiv = document.getElementById('parsedContent');
+            contentDiv.innerHTML = '<div class="text-center text-gray-500 py-8">Processing files...</div>';
+
+            try {
+                const results = [];
+                for (const file of uploadedFiles) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('/', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+                    results.push(data);
+                }
+
+                displayResults(results);
+
+            } catch (error) {
+                contentDiv.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded p-4">
+                        <h3 class="text-red-800 font-semibold mb-2">Error processing files</h3>
+                        <p class="text-red-600 text-sm">${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate';
+            }
         });
 
-        myDropzone.on("error", function(file, errorMessage) {
-            alert(errorMessage);
-            myDropzone.removeAllFiles(true);
-        });
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                button.textContent = 'Copied!';
+                button.classList.add('copied');
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        function displayResults(results) {
+            const contentDiv = document.getElementById('parsedContent');
+            const insuredInfoDiv = document.getElementById('insuredInfo');
+            contentDiv.innerHTML = '';
+            insuredInfoDiv.innerHTML = '';
+
+            // Collect all insured info from first result
+            let insuredData = null;
+
+            results.forEach((result, fileIndex) => {
+                try {
+                    // Extract the JSON string from the response
+                    let jsonString = result.response || JSON.stringify(result);
+
+                    // Remove markdown code block formatting if present
+                    jsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '');
+
+                    // Parse the JSON
+                    const data = JSON.parse(jsonString);
+
+                    // Capture insured info from first file
+                    if (fileIndex === 0) {
+                        insuredData = data;
+                    }
+
+                    // Create a column for each file's policies
+                    if (data.policies && Array.isArray(data.policies)) {
+                        data.policies.forEach((policy, policyIndex) => {
+                            const policyColumn = createPolicyColumn(policy, data, fileIndex, policyIndex);
+                            contentDiv.appendChild(policyColumn);
+                        });
+                    } else {
+                        // Fallback if no policies array
+                        const policyColumn = createPolicyColumn(data, data, fileIndex, 0);
+                        contentDiv.appendChild(policyColumn);
+                    }
+
+                } catch (e) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'bg-red-50 border border-red-200 rounded p-4 policy-column';
+                    errorDiv.innerHTML = `
+                        <h3 class="text-red-800 font-semibold mb-2">Error parsing file ${fileIndex + 1}</h3>
+                        <pre class="text-red-600 text-xs">${e.message}</pre>
+                    `;
+                    contentDiv.appendChild(errorDiv);
+                }
+            });
+
+            // Display insured info in horizontal row
+            if (insuredData) {
+                displayInsuredInfo(insuredData, insuredInfoDiv);
+            }
+        }
+
+        function displayInsuredInfo(data, container) {
+            // Insured Name
+            if (data.insured && data.insured.name) {
+                displayCompactField('Insured', data.insured.name, container);
+            }
+
+            // Insured Address
+            if (data.insured && data.insured.address) {
+                const addr = data.insured.address;
+                const fullAddress = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`.replace(/,\s*,/g, ',').trim();
+                displayCompactField('Address', fullAddress, container);
+            }
+
+            // Agent
+            if (data.agent && data.agent.name) {
+                displayCompactField('Agent', data.agent.name, container);
+            }
+
+            // Agent Phone
+            if (data.agent && data.agent.phone) {
+                displayCompactField('Agent Phone', data.agent.phone, container);
+            }
+
+            // Quote Number
+            if (data.quote_number) {
+                displayCompactField('Quote #', data.quote_number, container);
+            }
+
+            // Account Number
+            if (data.account_number) {
+                displayCompactField('Account #', data.account_number, container);
+            }
+        }
+
+        function displayCompactField(label, value, container) {
+            if (value === null || value === undefined || value === '') {
+                return;
+            }
+
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'flex items-center gap-1 py-1 px-2 bg-gray-50 rounded';
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'text-xs font-semibold text-gray-700 flex-shrink-0';
+            labelDiv.textContent = label + ':';
+
+            const valueDiv = document.createElement('div');
+            valueDiv.className = 'field-value text-gray-900 text-xs';
+            valueDiv.textContent = value;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs flex-shrink-0 ml-1';
+            copyBtn.textContent = 'Copy';
+            copyBtn.onclick = () => copyToClipboard(value, copyBtn);
+
+            fieldDiv.appendChild(labelDiv);
+            fieldDiv.appendChild(valueDiv);
+            fieldDiv.appendChild(copyBtn);
+
+            container.appendChild(fieldDiv);
+        }
+
+        function createPolicyColumn(policy, fullData, fileIndex, policyIndex) {
+            const column = document.createElement('div');
+            column.className = 'policy-column bg-white rounded-lg shadow-sm p-2 flex-shrink-0';
+
+            // Header
+            const header = document.createElement('div');
+            header.className = 'mb-2 pb-1 border-b border-gray-200';
+            header.innerHTML = `
+                <h3 class="font-semibold text-gray-800 text-xs">Policy #${policyIndex + 1}</h3>
+                <p class="text-xs text-gray-400">File ${fileIndex + 1}</p>
+            `;
+            column.appendChild(header);
+
+            const fieldsContainer = document.createElement('div');
+            fieldsContainer.className = 'space-y-1';
+
+            // Display policy-specific fields only
+            displayField('Coverage', policy.coverage_type, fieldsContainer);
+            displayField('Carrier', policy.carrier, fieldsContainer);
+            displayField('Policy #', policy.policy_number, fieldsContainer);
+            displayField('Effective', policy.effective_date, fieldsContainer);
+            displayField('Expiration', policy.expiration_date, fieldsContainer);
+            displayField('Term', policy.policy_term, fieldsContainer);
+            displayField('Premium', policy.annual_premium, fieldsContainer);
+            displayField('Tax', policy.tax, fieldsContainer);
+            displayField('Fee', policy.fee, fieldsContainer);
+            displayField('Broker Fee', policy.broker_fee, fieldsContainer);
+            displayField('Min Earned %', policy.minimum_earned_percent, fieldsContainer);
+            displayField('Min Earned $', policy.minimum_earned_amount, fieldsContainer);
+
+            // Display totals (once per file, on last policy)
+            if (fullData.policies && policyIndex === fullData.policies.length - 1 && fullData.totals) {
+                const divider = document.createElement('div');
+                divider.className = 'border-t border-gray-300 my-1';
+                fieldsContainer.appendChild(divider);
+
+                displayField('Total Premium', fullData.totals.total_premium, fieldsContainer);
+                displayField('Total Tax', fullData.totals.total_tax, fieldsContainer);
+                displayField('Total Fee', fullData.totals.total_fee, fieldsContainer);
+                displayField('Grand Total', fullData.totals.grand_total, fieldsContainer);
+            }
+
+            // Display financing (once per file, on last policy)
+            if (fullData.policies && policyIndex === fullData.policies.length - 1 && fullData.financing) {
+                displayField('Down Payment', fullData.financing.down_payment, fieldsContainer);
+                displayField('Amount Financed', fullData.financing.amount_financed, fieldsContainer);
+            }
+
+            column.appendChild(fieldsContainer);
+            return column;
+        }
+
+        function displayField(label, value, container) {
+            if (value === null || value === undefined || value === '') {
+                return;
+            }
+
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'flex items-center gap-1 py-1 px-2 bg-gray-50 rounded hover:bg-gray-100';
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'text-xs font-semibold text-gray-700 w-24 flex-shrink-0';
+            labelDiv.textContent = label;
+
+            const valueDiv = document.createElement('div');
+            valueDiv.className = 'field-value flex-1 text-gray-900 text-xs';
+            valueDiv.textContent = value;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs flex-shrink-0';
+            copyBtn.textContent = 'Copy';
+            copyBtn.onclick = () => copyToClipboard(value, copyBtn);
+
+            fieldDiv.appendChild(labelDiv);
+            fieldDiv.appendChild(valueDiv);
+            fieldDiv.appendChild(copyBtn);
+
+            container.appendChild(fieldDiv);
+        }
+
+
     </script>
 </body>
 </html>

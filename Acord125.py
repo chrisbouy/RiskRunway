@@ -15,54 +15,60 @@ DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_PROMPT = dedent(
     """
     You are extracting data for premium finance intake.
-    From the attached ACORD 125 image, extract the following fields.
+    From the attached form, extract the following fields.
     If a value is not clearly present, return null. Do not guess.
     If multiple policies are present, return one object per policy in the policies array. Do not merge policies.
     Do not calculate totals. Only extract values explicitly present in the document.
     Return valid JSON only using this schema:
     {
         "insured": {
-            "name": null,
+            "name": "...",
             "address": {
-                "street": null,
-                "city": null,
-                "state": null,
-                "zip": null
+                "street": "...",
+                "city": "...",
+                "state": "...",
+                "zip": "..."
             }
         },
-        "agency": {
-            "name": null,
-            "phone": null,
-            "contact_name": null
+        "agent": {
+            "name": "...",
+            "address": {
+                "street": "...",
+                "city": "...",
+                "state": "...",
+                "zip": "..."
+            },
+            "phone": "...",
+            "fax": "..."
         },
+        "quote_number": "...",
+        "account_number": "...",
         "policies": [
             {
-                "line_of_coverage": null,
-                "carrier": null,
-                "policy_number": null,
-                "effective_date": null,
-                "expiration_date": null,
-                "annual_premium": null,
-                "taxes_and_fees": {
-                    "tax_amount": null,
-                    "fee_amount": null,
-                    "details": null
-                },
-                "minimum_earned": {
-                    "type": null,
-                    "value": null
-                }
+                "coverage_type": "...",
+                "carrier": "...",
+                "policy_number": "...",
+                "effective_date": "...",
+                "expiration_date": "...",
+                "policy_term": "...",
+                "annual_premium": "...",
+                "tax": "...",
+                "fee": "...",
+                "broker_fee": "...",
+                "minimum_earned_percent": "...",
+                "minimum_earned_amount": "..."
             }
         ],
         "totals": {
-            "total_premium": null,
-            "total_taxes_and_fees": null,
-            "total_amount_financed": null
+            "total_premium": "...",
+            "total_tax": "...",
+            "total_fee": "...",
+            "total_broker_fee": "...",
+            "grand_total": "..."
         },
-        "metadata": {
-            "source_document": null,
-            "extraction_confidence": null,
-            "extracted_at": null
+        "financing": {
+            "down_payment": "...",
+            "amount_financed": "..."
         }
     }
     """
