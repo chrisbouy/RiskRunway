@@ -7,7 +7,7 @@ import json
 from google import genai
 
 
-PDF_PATH = "sample_docs/acord125_filled.pdf"
+PDF_PATH = "sample_docs/application1.pdf"
 TEMP_DIR = "sample_docs/temp_pages"
 
 DEEPSEEK_MODE = False

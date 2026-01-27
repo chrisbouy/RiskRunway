@@ -151,7 +151,7 @@
 
             document.getElementById('result').classList.remove('hidden');
             const contentDiv = document.getElementById('parsedContent');
-            contentDiv.innerHTML = '<div class="text-center text-gray-500 py-8">Processing files...</div>';
+            contentDiv.innerHTML = '<div class="text-center text-gray-500 py-8">Processing...</div>';
 
             try {
                 const results = [];
@@ -252,43 +252,36 @@
 
         function displayInsuredInfo(data, container) {
             // Insured Name
-            if (data.insured && data.insured.name) {
-                displayCompactField('Insured', data.insured.name, container);
-            }
+            const insuredName = data.insured?.name || null;
+            displayCompactField('Insured', insuredName, container);
 
             // Insured Address
-            if (data.insured && data.insured.address) {
+            let fullAddress = null;
+            if (data.insured?.address) {
                 const addr = data.insured.address;
-                const fullAddress = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`.replace(/,\s*,/g, ',').trim();
-                displayCompactField('Address', fullAddress, container);
+                const parts = [addr.street, addr.city, addr.state, addr.zip].filter(p => p);
+                if (parts.length > 0) {
+                    fullAddress = parts.join(', ');
+                }
             }
+            displayCompactField('Address', fullAddress, container);
 
             // Agent
-            if (data.agent && data.agent.name) {
-                displayCompactField('Agent', data.agent.name, container);
-            }
+            const agentName = data.agent?.name || null;
+            displayCompactField('Agency(Broker)', agentName, container);
 
             // Agent Phone
-            if (data.agent && data.agent.phone) {
-                displayCompactField('Agent Phone', data.agent.phone, container);
-            }
+            const agentPhone = data.agent?.phone || null;
+            displayCompactField('Agent Phone', agentPhone, container);
 
             // Quote Number
-            if (data.quote_number) {
-                displayCompactField('Quote #', data.quote_number, container);
-            }
+            displayCompactField('Quote #', data.quote_number || null, container);
 
             // Account Number
-            if (data.account_number) {
-                displayCompactField('Account #', data.account_number, container);
-            }
+            displayCompactField('Account #', data.account_number || null, container);
         }
 
         function displayCompactField(label, value, container) {
-            if (value === null || value === undefined || value === '') {
-                return;
-            }
-
             const fieldDiv = document.createElement('div');
             fieldDiv.className = 'flex items-center gap-1 py-1 px-2 bg-gray-50 rounded';
 
@@ -297,13 +290,22 @@
             labelDiv.textContent = label + ':';
 
             const valueDiv = document.createElement('div');
-            valueDiv.className = 'field-value text-gray-900 text-xs';
-            valueDiv.textContent = value;
+
+            // Check if value is null/undefined/empty
+            const isNull = value === null || value === undefined || value === '';
+
+            if (isNull) {
+                valueDiv.className = 'field-value text-gray-400 italic text-xs';
+                valueDiv.textContent = 'null';
+            } else {
+                valueDiv.className = 'field-value text-gray-900 text-xs';
+                valueDiv.textContent = value;
+            }
 
             const copyBtn = document.createElement('button');
             copyBtn.className = 'copy-btn px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs flex-shrink-0 ml-1';
             copyBtn.textContent = 'Copy';
-            copyBtn.onclick = () => copyToClipboard(value, copyBtn);
+            copyBtn.onclick = () => copyToClipboard(isNull ? 'null' : value, copyBtn);
 
             fieldDiv.appendChild(labelDiv);
             fieldDiv.appendChild(valueDiv);
@@ -356,7 +358,7 @@
 
             // Display financing (once per file, on last policy)
             if (fullData.policies && policyIndex === fullData.policies.length - 1 && fullData.financing) {
-                displayField('Down Payment', fullData.financing.down_payment, fieldsContainer);
+                displayField('Deposit', fullData.financing.down_payment, fieldsContainer);
                 displayField('Amount Financed', fullData.financing.amount_financed, fieldsContainer);
             }
 
@@ -365,10 +367,6 @@
         }
 
         function displayField(label, value, container) {
-            if (value === null || value === undefined || value === '') {
-                return;
-            }
-
             const fieldDiv = document.createElement('div');
             fieldDiv.className = 'flex items-center gap-1 py-1 px-2 bg-gray-50 rounded hover:bg-gray-100';
 
@@ -377,13 +375,22 @@
             labelDiv.textContent = label;
 
             const valueDiv = document.createElement('div');
-            valueDiv.className = 'field-value flex-1 text-gray-900 text-xs';
-            valueDiv.textContent = value;
+
+            // Check if value is null/undefined/empty
+            const isNull = value === null || value === undefined || value === '';
+
+            if (isNull) {
+                valueDiv.className = 'field-value flex-1 text-gray-400 italic text-xs';
+                valueDiv.textContent = 'null';
+            } else {
+                valueDiv.className = 'field-value flex-1 text-gray-900 text-xs';
+                valueDiv.textContent = value;
+            }
 
             const copyBtn = document.createElement('button');
             copyBtn.className = 'copy-btn px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs flex-shrink-0';
             copyBtn.textContent = 'Copy';
-            copyBtn.onclick = () => copyToClipboard(value, copyBtn);
+            copyBtn.onclick = () => copyToClipboard(isNull ? 'null' : value, copyBtn);
 
             fieldDiv.appendChild(labelDiv);
             fieldDiv.appendChild(valueDiv);

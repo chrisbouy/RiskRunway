@@ -14,63 +14,77 @@ from ollama import Client
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_PROMPT = dedent(
     """
-    You are extracting data for premium finance intake.
-    From the attached form, extract the following fields.
-    If a value is not clearly present, return null. Do not guess.
-    If multiple policies are present, return one object per policy in the policies array. Do not merge policies.
-    Do not calculate totals. Only extract values explicitly present in the document.
-    Return valid JSON only using this schema:
+    You are extracting data for premium finance intake from insurance documents.
+
+    IMPORTANT INSTRUCTIONS:
+    1. Read the ENTIRE document carefully - check ALL pages
+    2. Extract ALL policies/coverage types found in the document - do not skip any
+    3. Each distinct coverage type should be a separate object in the policies array
+    4. If a value is not clearly present, return null - do not guess or calculate
+    5. Do NOT merge or combine multiple policies into one
+    6. Return ONLY valid JSON - no markdown formatting, no explanations
+    7. Include ALL fields from the schema in your response, even if the value is null
+
+    Common locations to check for policies:
+    - Coverage type checkboxes or lists
+    - Premium breakdown sections
+    - Individual policy sections or clauses
+    - Declarations pages
+
+    Return valid JSON only using this exact schema:
     {
         "insured": {
-            "name": "...",
+            "name": "string or null",
             "address": {
-                "street": "...",
-                "city": "...",
-                "state": "...",
-                "zip": "..."
+                "street": "string or null",
+                "city": "string or null",
+                "state": "string or null",
+                "zip": "string or null"
             }
         },
         "agent": {
-            "name": "...",
+            "name": "string or null",
             "address": {
-                "street": "...",
-                "city": "...",
-                "state": "...",
-                "zip": "..."
+                "street": "string or null",
+                "city": "string or null",
+                "state": "string or null",
+                "zip": "string or null"
             },
-            "phone": "...",
-            "fax": "..."
+            "phone": "string or null",
+            "fax": "string or null"
         },
-        "quote_number": "...",
-        "account_number": "...",
+        "quote_number": "string or null",
+        "account_number": "string or null",
         "policies": [
             {
-                "coverage_type": "...",
-                "carrier": "...",
-                "policy_number": "...",
-                "effective_date": "...",
-                "expiration_date": "...",
-                "policy_term": "...",
-                "annual_premium": "...",
-                "tax": "...",
-                "fee": "...",
-                "broker_fee": "...",
-                "minimum_earned_percent": "...",
-                "minimum_earned_amount": "..."
+                "coverage_type": "string or null - e.g. 'General Liability', 'Cyber and Privacy', 'Professional Liability'",
+                "carrier": "string or null - insurance carrier/underwriter name",
+                "policy_number": "string or null - policy or reference number",
+                "effective_date": "string or null - format YYYY-MM-DD",
+                "expiration_date": "string or null - format YYYY-MM-DD",
+                "policy_term": "string or null - e.g. '12 months'",
+                "annual_premium": "number or null - premium amount",
+                "tax": "number or null - tax amount",
+                "fee": "number or null - policy fee",
+                "broker_fee": "number or null - broker/supplier fee",
+                "minimum_earned_percent": "number or null",
+                "minimum_earned_amount": "number or null"
             }
         ],
         "totals": {
-            "total_premium": "...",
-            "total_tax": "...",
-            "total_fee": "...",
-            "total_broker_fee": "...",
-            "grand_total": "..."
+            "total_premium": "number or null",
+            "total_tax": "number or null",
+            "total_fee": "number or null",
+            "total_broker_fee": "number or null",
+            "grand_total": "number or null"
         },
         "financing": {
-            "down_payment": "...",
-            "amount_financed": "..."
+            "down_payment": "number or null",
+            "amount_financed": "number or null"
         }
     }
+
+    CRITICAL: Include ALL fields in your response. Use null for any field not found in the document.
     """
 )
 DEEPSEEK_PROMPT = (
@@ -141,7 +155,7 @@ def analyze_with_gemini(image_path, analysis_prompt=DEFAULT_PROMPT, model_name=D
             # if image_file.state == "FAILED":
             #     raise ValueError(f"Video processing failed")
             filepath = pathlib.Path(image_path)
-            # Generate content
+            # Generate content with moderate temperature for consistency
             response = client.models.generate_content(
                 model=model_name,
                 contents=[
@@ -149,12 +163,15 @@ def analyze_with_gemini(image_path, analysis_prompt=DEFAULT_PROMPT, model_name=D
                         data=filepath.read_bytes(),
                         mime_type='application/pdf',
                     ),                    analysis_prompt
-                ]
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.4,  # Moderate - consistent but not overly conservative
+                )
             )
             
             # Parse the analysis
             content = response.text.strip()
-            
+            print(f"Response: {content}")
             return {
                 "response": content,
                 "model": model_name,
