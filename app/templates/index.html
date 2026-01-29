@@ -266,13 +266,13 @@
             }
             displayCompactField('Address', fullAddress, container);
 
-            // Agent
-            const agentName = data.agent?.name || null;
-            displayCompactField('Agency(Broker)', agentName, container);
+            // Agency
+            const agencyName = data.agency?.name || null;
+            displayCompactField('Agency(Broker)', agencyName, container);
 
-            // Agent Phone
-            const agentPhone = data.agent?.phone || null;
-            displayCompactField('Agent Phone', agentPhone, container);
+            // Agency Phone
+            const agencyPhone = data.agency?.phone || null;
+            displayCompactField('Agency Phone', agencyPhone, container);
 
             // Quote Number
             displayCompactField('Quote #', data.quote_number || null, container);

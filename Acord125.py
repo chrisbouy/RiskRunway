@@ -42,7 +42,7 @@ DEFAULT_PROMPT = dedent(
                 "zip": "string or null"
             }
         },
-        "agent": {
+        "agency": {
             "name": "string or null",
             "address": {
                 "street": "string or null",
