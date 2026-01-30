@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Admin - IPFS Mapper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Database Admin</h1>
+            <a href="/" class="text-blue-600 hover:text-blue-800">← Back to Submissions</a>
+        </div>
+
+        <!-- Submissions Table -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800">Submissions</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Insured Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">State</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quote Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="submissionsTable" class="bg-white divide-y divide-gray-200">
+                        <!-- Rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Quotes Table -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800">Quotes</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submission ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Carrier</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Path</th>
+                        </tr>
+                    </thead>
+                    <tbody id="quotesTable" class="bg-white divide-y divide-gray-200">
+                        <!-- Rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Audit Log Table -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800">Audit Log (Last 50)</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entity Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entity ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditTable" class="bg-white divide-y divide-gray-200">
+                        <!-- Rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            try {
+                const response = await fetch('/api/admin/data');
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderSubmissions(data.submissions);
+                    renderQuotes(data.quotes);
+                    renderAuditLog(data.audit_log);
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+
+        function renderSubmissions(submissions) {
+            const tbody = document.getElementById('submissionsTable');
+            tbody.innerHTML = '';
+            
+            if (submissions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No submissions yet</td></tr>';
+                return;
+            }
+            
+            submissions.forEach(sub => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.insured_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.effective_date}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.state || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.status}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(sub.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.quote_count}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderQuotes(quotes) {
+            const tbody = document.getElementById('quotesTable');
+            tbody.innerHTML = '';
+            
+            if (quotes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No quotes yet</td></tr>';
+                return;
+            }
+            
+            quotes.forEach(quote => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.submission_id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.carrier_name || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.status}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(quote.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900 truncate max-w-xs">${quote.raw_document_path}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderAuditLog(logs) {
+            const tbody = document.getElementById('auditTable');
+            tbody.innerHTML = '';
+            
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No audit logs yet</td></tr>';
+                return;
+            }
+            
+            logs.forEach(log => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.entity_type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.entity_id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.action}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900">${log.details || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(log.timestamp).toLocaleString()}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Load data on page load
+        loadData();
+        
+        // Refresh every 5 seconds
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>
+

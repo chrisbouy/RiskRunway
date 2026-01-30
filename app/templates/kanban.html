@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPFS Mapper - Submissions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" type="text/css" />
+    <style>
+        .submission-card {
+            transition: all 0.2s;
+            cursor: move;
+        }
+        .submission-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .submission-card.dragging {
+            opacity: 0.5;
+        }
+        .kanban-column {
+            transition: background-color 0.2s;
+        }
+        .kanban-column.drag-over {
+            background-color: #f3f4f6;
+            border: 2px dashed #3b82f6;
+        }
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+        .status-received { background-color: #e0e7ff; color: #4338ca; }
+        .status-in-progress { background-color: #fef3c7; color: #92400e; }
+        .status-chosen { background-color: #d1fae5; color: #065f46; }
+        .status-sent-to-finance { background-color: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Submissions</h1>
+            <button id="newSubmissionBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                + New Submission
+            </button>
+        </div>
+
+        <!-- Kanban Board -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Received Column -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
+                    <span>Received</span>
+                    <span id="count-received" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                </h2>
+                <div id="column-received" class="kanban-column space-y-3 min-h-[200px]" data-status="RECEIVED">
+                    <!-- Cards will be inserted here -->
+                </div>
+            </div>
+
+            <!-- In Progress Column -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
+                    <span>In Progress</span>
+                    <span id="count-in-progress" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                </h2>
+                <div id="column-in-progress" class="kanban-column space-y-3 min-h-[200px]" data-status="IN_PROGRESS">
+                    <!-- Cards will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Chosen Column -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
+                    <span>Chosen</span>
+                    <span id="count-chosen" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                </h2>
+                <div id="column-chosen" class="kanban-column space-y-3 min-h-[200px]" data-status="CHOSEN">
+                    <!-- Cards will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Sent to Finance Column -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
+                    <span>Sent to Finance</span>
+                    <span id="count-sent-to-finance" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                </h2>
+                <div id="column-sent-to-finance" class="kanban-column space-y-3 min-h-[200px]" data-status="SENT_TO_FINANCE">
+                    <!-- Cards will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Submission Modal -->
+    <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
+            <h2 class="text-2xl font-bold mb-4">Upload First Quote</h2>
+            <p class="text-gray-600 mb-4">Drop a quote PDF to create a new submission</p>
+            
+            <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-8 text-center min-h-[200px]">
+                <div class="dz-message" data-dz-message>
+                    <p class="text-gray-600">Drag & drop a quote PDF here or click to browse</p>
+                    <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG</p>
+                </div>
+            </form>
+
+            <div class="flex justify-end gap-2 mt-4">
+                <button id="cancelNewSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
+    <script>
+        Dropzone.autoDiscover = false;
+
+        let submissions = [];
+
+        // Load submissions on page load
+        async function loadSubmissions() {
+            try {
+                const response = await fetch('/api/submissions');
+                const data = await response.json();
+                
+                if (data.success) {
+                    submissions = data.submissions;
+                    renderKanban();
+                }
+            } catch (error) {
+                console.error('Error loading submissions:', error);
+            }
+        }
+
+        function renderKanban() {
+            // Clear all columns
+            const statuses = ['received', 'in-progress', 'chosen', 'sent-to-finance'];
+            statuses.forEach(status => {
+                document.getElementById(`column-${status}`).innerHTML = '';
+                document.getElementById(`count-${status}`).textContent = '0';
+            });
+
+            // Group submissions by status
+            const grouped = {
+                'Received': [],
+                'In Progress': [],
+                'Chosen': [],
+                'Sent to Finance': []
+            };
+
+            submissions.forEach(sub => {
+                if (grouped[sub.status]) {
+                    grouped[sub.status].push(sub);
+                }
+            });
+
+            // Render cards in each column
+            Object.keys(grouped).forEach(status => {
+                const columnId = status.toLowerCase().replace(/ /g, '-');
+                const column = document.getElementById(`column-${columnId}`);
+                const count = document.getElementById(`count-${columnId}`);
+
+                count.textContent = grouped[status].length;
+
+                grouped[status].forEach(sub => {
+                    const card = createSubmissionCard(sub);
+                    column.appendChild(card);
+                });
+            });
+
+            // Setup drop zones
+            setupDropZones();
+        }
+
+        function setupDropZones() {
+            const columns = document.querySelectorAll('.kanban-column');
+            columns.forEach(column => {
+                column.addEventListener('dragover', handleDragOver);
+                column.addEventListener('drop', handleDrop);
+                column.addEventListener('dragleave', handleDragLeave);
+            });
+        }
+
+        let draggedCard = null;
+
+        function handleDragStart(e) {
+            draggedCard = e.target;
+            e.target.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            e.currentTarget.classList.add('drag-over');
+            return false;
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        async function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+            e.preventDefault();
+
+            const column = e.currentTarget;
+            column.classList.remove('drag-over');
+
+            if (draggedCard) {
+                const submissionId = draggedCard.dataset.submissionId;
+                const newStatus = column.dataset.status;
+
+                try {
+                    const response = await fetch(`/api/submission/${submissionId}/status`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        // Reload submissions to update the board
+                        loadSubmissions();
+                    } else {
+                        alert('Error updating status: ' + data.error);
+                    }
+                } catch (error) {
+                    console.error('Error updating status:', error);
+                    alert('Error updating status');
+                }
+            }
+
+            return false;
+        }
+
+        function createSubmissionCard(submission) {
+            const card = document.createElement('div');
+            card.className = 'submission-card bg-gray-50 rounded-lg p-4 cursor-pointer border border-gray-200';
+            card.draggable = true;
+            card.dataset.submissionId = submission.id;
+
+            const statusClass = `status-${submission.status.toLowerCase().replace(/ /g, '-')}`;
+
+            card.innerHTML = `
+                <div class="flex items-start justify-between mb-2">
+                    <h3 class="font-semibold text-gray-800 text-sm">${submission.insured_name}</h3>
+                    <span class="status-badge ${statusClass}">${submission.quote_count} quote${submission.quote_count !== 1 ? 's' : ''}</span>
+                </div>
+                <p class="text-xs text-gray-600 mb-1">Effective: ${submission.effective_date}</p>
+                ${submission.state ? `<p class="text-xs text-gray-500">State: ${submission.state}</p>` : ''}
+                <p class="text-xs text-gray-400 mt-2">Created: ${new Date(submission.created_at).toLocaleDateString()}</p>
+            `;
+
+            // Add drag event listeners
+            card.addEventListener('dragstart', handleDragStart);
+            card.addEventListener('dragend', handleDragEnd);
+            card.addEventListener('click', (e) => {
+                if (!card.classList.contains('dragging')) {
+                    window.location.href = `/submission/${submission.id}`;
+                }
+            });
+
+            return card;
+        }
+
+        // New Submission Modal
+        document.getElementById('newSubmissionBtn').addEventListener('click', () => {
+            document.getElementById('newSubmissionModal').classList.remove('hidden');
+        });
+
+        document.getElementById('cancelNewSubmission').addEventListener('click', () => {
+            document.getElementById('newSubmissionModal').classList.add('hidden');
+        });
+
+        // Dropzone for new submission
+        const newSubmissionDropzone = new Dropzone("#newSubmissionForm", {
+            url: "/api/upload_quote",
+            autoProcessQueue: false,
+            acceptedFiles: ".pdf,.png,.jpg,.jpeg",
+            maxFiles: 1,
+            addRemoveLinks: true
+        });
+
+        newSubmissionDropzone.on("addedfile", function(file) {
+            // Auto-upload when file is added
+            const formData = new FormData();
+            formData.append('file', file);
+
+            document.getElementById('newSubmissionForm').innerHTML = '<div class="text-center text-gray-500 py-8">Processing...</div>';
+
+            fetch('/api/upload_quote', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Redirect to the new submission
+                    window.location.href = `/submission/${data.submission_id}`;
+                } else {
+                    alert('Error: ' + data.error);
+                    document.getElementById('newSubmissionModal').classList.add('hidden');
+                    newSubmissionDropzone.removeAllFiles();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Upload failed');
+                document.getElementById('newSubmissionModal').classList.add('hidden');
+                newSubmissionDropzone.removeAllFiles();
+            });
+        });
+
+        // Load submissions on page load
+        loadSubmissions();
+    </script>
+</body>
+</html>
+
