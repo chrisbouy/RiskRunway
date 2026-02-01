@@ -1,6 +1,6 @@
 # app/models.py
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Enum, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
@@ -35,6 +35,7 @@ class Submission(Base):
     state = Column(String(2), nullable=True)  # Two-letter state code
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(Enum(SubmissionStatus), default=SubmissionStatus.RECEIVED, nullable=False)
+    appetite_score = Column(Integer, nullable=True)  # PF appetite score 0-100
     
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
@@ -52,7 +53,8 @@ class Submission(Base):
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'status': self.status.value if self.status else None,
-            'quote_count': len(self.quotes) if self.quotes else 0
+            'quote_count': len(self.quotes) if self.quotes else 0,
+            'appetite_score': self.appetite_score
         }
 
 
@@ -128,4 +130,33 @@ class AuditLog(Base):
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'details': self.details
         }
+
+class AppetiteRule(Base):
+    """
+    Stores configurable PF appetite scoring rules.
+    Allows dynamic adjustment of scoring criteria without code changes.
+    """
+    __tablename__ = 'appetite_rules'
+
+    id = Column(Integer, primary_key=True)
+    rule_type = Column(String(50), nullable=False, unique=True)  # 'premium_size', 'down_payment_pct', 'state_risk'
+    rule_data = Column(Text, nullable=False)  # JSON-encoded rule configuration
+    max_score = Column(Integer, nullable=False)  # Maximum points for this rule
+    enabled = Column(Boolean, default=True, nullable=False)  # Whether this rule is active
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<AppetiteRule(id={self.id}, rule_type='{self.rule_type}', max_score={self.max_score}, enabled={self.enabled})>"
+
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'rule_type': self.rule_type,
+            'rule_data': self.rule_data,
+            'max_score': self.max_score,
+            'enabled': self.enabled,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
 

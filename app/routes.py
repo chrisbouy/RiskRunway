@@ -260,6 +260,130 @@ def delete_quote(quote_id):
 
 
 # ============================================================================
+# APPETITE SCORING
+# ============================================================================
+
+@bp.route('/api/submission/<int:submission_id>/appetite', methods=['GET'])
+def get_submission_appetite(submission_id):
+    """Get detailed appetite score breakdown for a submission"""
+    try:
+        from app.appetite_scoring import calculate_appetite_score
+
+        # Get submission data
+        submission_data = get_submission_by_id(submission_id)
+        if not submission_data:
+            return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+        # Calculate appetite score
+        score_result = calculate_appetite_score(submission_data, submission_data.get('quotes', []))
+
+        return jsonify({
+            'success': True,
+            'appetite': score_result
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/appetite/rules', methods=['GET'])
+def get_appetite_rules():
+    """Get all appetite scoring rules"""
+    try:
+        from app.models import AppetiteRule
+        import json
+
+        session = get_session()
+        try:
+            rules = session.query(AppetiteRule).all()
+            rules_data = []
+
+            for rule in rules:
+                rule_dict = rule.to_dict()
+                rule_dict['rule_data'] = json.loads(rule_dict['rule_data'])
+
+                # Convert Infinity to a large number for JSON compatibility
+                if 'ranges' in rule_dict['rule_data']:
+                    for range_item in rule_dict['rule_data']['ranges']:
+                        if range_item.get('max') == float('inf'):
+                            range_item['max'] = 999999999
+
+                rules_data.append(rule_dict)
+
+            return jsonify({
+                'success': True,
+                'rules': rules_data
+            })
+        finally:
+            session.close()
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/appetite/rules/<int:rule_id>', methods=['PUT'])
+def update_appetite_rule(rule_id):
+    """Update an appetite scoring rule"""
+    try:
+        from app.models import AppetiteRule
+        import json
+
+        data = request.get_json()
+        if not data or 'rule_data' not in data:
+            return jsonify({'success': False, 'error': 'Missing rule_data'}), 400
+
+        session = get_session()
+        try:
+            rule = session.query(AppetiteRule).filter_by(id=rule_id).first()
+            if not rule:
+                return jsonify({'success': False, 'error': 'Rule not found'}), 404
+
+            # Convert large numbers back to Infinity for storage
+            rule_data = data['rule_data']
+            if 'ranges' in rule_data:
+                for range_item in rule_data['ranges']:
+                    if range_item.get('max', 0) >= 999999:
+                        range_item['max'] = float('inf')
+
+            # Update rule data
+            rule.rule_data = json.dumps(rule_data)
+
+            # Update max_score if provided
+            if 'max_score' in data:
+                rule.max_score = data['max_score']
+
+            # Update enabled if provided
+            if 'enabled' in data:
+                rule.enabled = data['enabled']
+
+            session.commit()
+
+            # Get submission IDs before closing session
+            from app.models import Submission
+            submission_ids = [s.id for s in session.query(Submission).all()]
+
+            # Close session before recalculating
+            session.close()
+
+            # Recalculate all submission scores (uses its own session)
+            from app.database import update_submission_appetite_score
+            for submission_id in submission_ids:
+                update_submission_appetite_score(submission_id)
+
+            return jsonify({
+                'success': True,
+                'message': 'Rule updated successfully'
+            })
+
+        except Exception as e:
+            session.rollback()
+            session.close()
+            raise
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
 # STATUS UPDATES
 # ============================================================================
 

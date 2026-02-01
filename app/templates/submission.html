@@ -80,6 +80,9 @@
         <div class="flex items-center gap-3 mb-4">
             <a href="/" class="text-blue-600 hover:text-blue-800 font-semibold text-sm">← Back to Submissions</a>
             <h1 id="submissionTitle" class="text-xl font-bold flex-1">Loading...</h1>
+            <div id="appetiteScoreBadge" class="hidden">
+                <!-- Appetite score will be inserted here -->
+            </div>
             <div class="flex items-center gap-2">
                 <label class="text-sm font-semibold text-gray-700">Status:</label>
                 <select id="statusDropdown" class="border border-gray-300 rounded px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -149,6 +152,9 @@
                     statusDropdown.value = submissionData.status.toUpperCase().replace(/ /g, '_');
                     originalStatus = statusDropdown.value;
 
+                    // Display appetite score
+                    displayAppetiteScore();
+
                     // Display uploaded files
                     displayUploadedFiles();
 
@@ -157,6 +163,35 @@
                 }
             } catch (error) {
                 console.error('Error loading submission:', error);
+            }
+        }
+
+        async function displayAppetiteScore() {
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/appetite`);
+                const data = await response.json();
+
+                if (data.success && data.appetite) {
+                    const appetite = data.appetite;
+                    const badge = document.getElementById('appetiteScoreBadge');
+
+                    let colorClass = 'bg-gray-500';
+                    if (appetite.total_score >= 80) {
+                        colorClass = 'bg-green-600';
+                    } else if (appetite.total_score >= 60) {
+                        colorClass = 'bg-blue-600';
+                    } else if (appetite.total_score >= 40) {
+                        colorClass = 'bg-yellow-600';
+                    } else {
+                        colorClass = 'bg-red-600';
+                    }
+
+                    badge.className = `${colorClass} text-white px-4 py-2 rounded-lg text-sm font-semibold cursor-help`;
+                    badge.title = `PF Appetite: ${appetite.rating}\n\nPremium Size: ${appetite.breakdown.premium_size.score}/${appetite.breakdown.premium_size.max} (${appetite.breakdown.premium_size.label})\nDown Payment: ${appetite.breakdown.down_payment.score}/${appetite.breakdown.down_payment.max} (${appetite.breakdown.down_payment.label})\nState Risk: ${appetite.breakdown.state_risk.score}/${appetite.breakdown.state_risk.max} (${appetite.breakdown.state_risk.label})`;
+                    badge.textContent = `PF Appetite: ${appetite.total_score}/100`;
+                }
+            } catch (error) {
+                console.error('Error loading appetite score:', error);
             }
         }
 

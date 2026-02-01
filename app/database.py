@@ -1,7 +1,7 @@
 # app/database.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from app.models import Base, Submission, Quote, AuditLog
+from app.models import Base, Submission, Quote, AuditLog, AppetiteRule
 import os
 
 
@@ -154,6 +154,9 @@ def create_quote(submission_id, carrier_name, raw_document_path, extracted_json,
 
         session.commit()
 
+        # Update appetite score for the submission
+        update_submission_appetite_score(submission_id)
+
         return quote_id
     except Exception as e:
         session.rollback()
@@ -241,6 +244,45 @@ def get_submission_by_id(submission_id):
             result['quotes'] = [q.to_dict() for q in submission.quotes]
             return result
         return None
+    finally:
+        session.close()
+
+
+def update_submission_appetite_score(submission_id):
+    """
+    Calculate and update the PF appetite score for a submission.
+
+    Args:
+        submission_id: ID of the submission to update
+    """
+    from app.appetite_scoring import calculate_appetite_score
+
+    session = get_session()
+    try:
+        # Get submission
+        submission = session.query(Submission).filter_by(id=submission_id).first()
+        if not submission:
+            return
+
+        # Get submission data
+        submission_data = submission.to_dict()
+
+        # Get all quotes for this submission
+        quotes_data = [q.to_dict() for q in submission.quotes]
+
+        # Calculate appetite score
+        score_result = calculate_appetite_score(submission_data, quotes_data)
+
+        # Update submission
+        submission.appetite_score = score_result['total_score']
+
+        session.commit()
+
+        print(f"Updated appetite score for submission {submission_id}: {score_result['total_score']}/100 ({score_result['rating']})")
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error updating appetite score: {e}")
     finally:
         session.close()
 

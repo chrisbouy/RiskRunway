@@ -14,6 +14,38 @@ class Config:
     # Database settings
     DATABASE_PATH = os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
 
+    # Premium Finance Appetite Scoring Rules
+    # Score range: 0-100 (higher = better appetite)
+    PF_APPETITE_RULES = {
+        # Premium size scoring (40 points max)
+        'premium_size': {
+            'ranges': [
+                {'min': 0, 'max': 5000, 'score': 10, 'label': 'Too Small'},
+                {'min': 5000, 'max': 25000, 'score': 25, 'label': 'Small'},
+                {'min': 25000, 'max': 100000, 'score': 40, 'label': 'Sweet Spot'},
+                {'min': 100000, 'max': 500000, 'score': 35, 'label': 'Large'},
+                {'min': 500000, 'max': float('inf'), 'score': 20, 'label': 'Very Large'},
+            ]
+        },
+        # Down payment percentage scoring (30 points max)
+        'down_payment_pct': {
+            'ranges': [
+                {'min': 0, 'max': 10, 'score': 5, 'label': 'Low Down'},
+                {'min': 10, 'max': 20, 'score': 20, 'label': 'Standard'},
+                {'min': 20, 'max': 30, 'score': 30, 'label': 'Good'},
+                {'min': 30, 'max': 100, 'score': 25, 'label': 'High Down'},
+            ]
+        },
+        # State risk scoring (30 points max)
+        # Based on typical PF risk by state
+        'state_risk': {
+            'low_risk': {'score': 30, 'states': ['CA', 'NY', 'TX', 'FL', 'IL', 'PA', 'OH']},
+            'medium_risk': {'score': 20, 'states': ['NJ', 'GA', 'NC', 'VA', 'WA', 'MA', 'AZ', 'TN', 'IN', 'MO']},
+            'high_risk': {'score': 10, 'states': ['LA', 'MS', 'AL', 'WV', 'AR', 'NM']},
+            'default': {'score': 15}  # Unknown or other states
+        }
+    }
+
     # Create necessary folders if they don't exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(os.path.join(Path(__file__).parent, 'data'), exist_ok=True)

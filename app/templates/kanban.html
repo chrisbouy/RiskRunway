@@ -41,9 +41,14 @@
         <!-- Header -->
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-3xl font-bold text-gray-800">Submissions</h1>
-            <button id="newSubmissionBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                + New Submission
-            </button>
+            <div class="flex gap-2">
+                <button id="rulesBtn" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
+                    ⚙️ Appetite Rules
+                </button>
+                <button id="newSubmissionBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                    + New Submission
+                </button>
+            </div>
         </div>
 
         <!-- Kanban Board -->
@@ -90,6 +95,31 @@
                 <div id="column-sent-to-finance" class="kanban-column space-y-3 min-h-[200px]" data-status="SENT_TO_FINANCE">
                     <!-- Cards will be inserted here -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rules Management Modal -->
+    <div id="rulesModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold">PF Appetite Scoring Rules</h2>
+                <button id="closeRulesModal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+
+            <p class="text-gray-600 mb-6">Configure the rules used to calculate Premium Finance appetite scores (0-100 points total)</p>
+
+            <div id="rulesContainer" class="space-y-6">
+                <!-- Rules will be loaded here -->
+            </div>
+
+            <div class="flex justify-end gap-2 mt-6">
+                <button id="cancelRules" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="saveRules" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Save Changes
+                </button>
             </div>
         </div>
     </div>
@@ -257,6 +287,23 @@
 
             const statusClass = `status-${submission.status.toLowerCase().replace(/ /g, '-')}`;
 
+            // Determine appetite score badge color
+            let appetiteClass = 'bg-gray-400';
+            let appetiteLabel = 'N/A';
+
+            if (submission.appetite_score !== null && submission.appetite_score !== undefined) {
+                appetiteLabel = submission.appetite_score;
+                if (submission.appetite_score >= 80) {
+                    appetiteClass = 'bg-green-600';
+                } else if (submission.appetite_score >= 60) {
+                    appetiteClass = 'bg-blue-600';
+                } else if (submission.appetite_score >= 40) {
+                    appetiteClass = 'bg-yellow-600';
+                } else {
+                    appetiteClass = 'bg-red-600';
+                }
+            }
+
             card.innerHTML = `
                 <div class="flex items-start justify-between mb-2">
                     <h3 class="font-semibold text-gray-800 text-sm">${submission.insured_name}</h3>
@@ -264,7 +311,12 @@
                 </div>
                 <p class="text-xs text-gray-600 mb-1">Effective: ${submission.effective_date}</p>
                 ${submission.state ? `<p class="text-xs text-gray-500">State: ${submission.state}</p>` : ''}
-                <p class="text-xs text-gray-400 mt-2">Created: ${new Date(submission.created_at).toLocaleDateString()}</p>
+                <div class="flex items-center justify-between mt-2">
+                    <p class="text-xs text-gray-400">Created: ${new Date(submission.created_at).toLocaleDateString()}</p>
+                    <span class="${appetiteClass} text-white text-xs px-2 py-1 rounded font-semibold" title="PF Appetite Score">
+                        ${appetiteLabel}
+                    </span>
+                </div>
             `;
 
             // Add drag event listeners
@@ -329,6 +381,325 @@
 
         // Load submissions on page load
         loadSubmissions();
+
+        // ============================================================================
+        // RULES MANAGEMENT
+        // ============================================================================
+
+        let currentRules = [];
+
+        // Open rules modal
+        document.getElementById('rulesBtn').addEventListener('click', async function() {
+            document.getElementById('rulesModal').classList.remove('hidden');
+            await loadRules();
+        });
+
+        // Close rules modal
+        document.getElementById('closeRulesModal').addEventListener('click', function() {
+            document.getElementById('rulesModal').classList.add('hidden');
+        });
+
+        document.getElementById('cancelRules').addEventListener('click', function() {
+            document.getElementById('rulesModal').classList.add('hidden');
+        });
+
+        // Load rules from API
+        async function loadRules() {
+            try {
+                const response = await fetch('/api/appetite/rules');
+                const data = await response.json();
+
+                if (data.success) {
+                    currentRules = data.rules;
+                    renderRules();
+                }
+            } catch (error) {
+                console.error('Error loading rules:', error);
+                alert('Failed to load rules');
+            }
+        }
+
+        // Render rules in the modal
+        function renderRules() {
+            const container = document.getElementById('rulesContainer');
+            container.innerHTML = '';
+
+            currentRules.forEach(rule => {
+                const ruleDiv = document.createElement('div');
+                ruleDiv.className = 'border rounded-lg p-4 bg-gray-50';
+
+                let ruleHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <h3 class="text-lg font-semibold">${formatRuleType(rule.rule_type)}</h3>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox"
+                                       class="rule-enabled-toggle"
+                                       data-rule-id="${rule.id}"
+                                       ${rule.enabled ? 'checked' : ''}>
+                                <span class="text-sm ${rule.enabled ? 'text-green-600' : 'text-gray-400'}">
+                                    ${rule.enabled ? 'Enabled' : 'Disabled'}
+                                </span>
+                            </label>
+                        </div>
+                        <span class="text-sm text-gray-600">Max Score: ${rule.max_score} points</span>
+                    </div>
+                `;
+
+                if (rule.rule_type === 'premium_size' || rule.rule_type === 'down_payment_pct') {
+                    ruleHTML += renderRangeRules(rule);
+                } else if (rule.rule_type === 'state_risk') {
+                    ruleHTML += renderStateRiskRules(rule);
+                }
+
+                ruleDiv.innerHTML = ruleHTML;
+                container.appendChild(ruleDiv);
+            });
+        }
+
+        function formatRuleType(type) {
+            const names = {
+                'premium_size': 'Premium Size Scoring',
+                'down_payment_pct': 'Down Payment % Scoring',
+                'state_risk': 'State Risk Scoring'
+            };
+            return names[type] || type;
+        }
+
+        function renderRangeRules(rule) {
+            let html = '<div class="space-y-2">';
+
+            rule.rule_data.ranges.forEach((range, index) => {
+                html += `
+                    <div class="grid grid-cols-6 gap-2 items-center text-sm">
+                        <div>
+                            <label class="text-xs text-gray-600">Min</label>
+                            <input type="number"
+                                   class="w-full border rounded px-2 py-1"
+                                   value="${range.min}"
+                                   data-rule-id="${rule.id}"
+                                   data-range-index="${index}"
+                                   data-field="min">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Max</label>
+                            <input type="number"
+                                   class="w-full border rounded px-2 py-1"
+                                   value="${range.max >= 999999 ? '999999' : range.max}"
+                                   data-rule-id="${rule.id}"
+                                   data-range-index="${index}"
+                                   data-field="max">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Score</label>
+                            <input type="number"
+                                   class="w-full border rounded px-2 py-1"
+                                   value="${range.score}"
+                                   data-rule-id="${rule.id}"
+                                   data-range-index="${index}"
+                                   data-field="score">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="text-xs text-gray-600">Label</label>
+                            <input type="text"
+                                   class="w-full border rounded px-2 py-1"
+                                   value="${range.label}"
+                                   data-rule-id="${rule.id}"
+                                   data-range-index="${index}"
+                                   data-field="label">
+                        </div>
+                        <div class="flex items-end">
+                            <button class="remove-range-btn px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                                    data-rule-id="${rule.id}"
+                                    data-range-index="${index}">
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                <button class="add-range-btn mt-2 px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                        data-rule-id="${rule.id}">
+                    + Add Range
+                </button>
+            `;
+            html += '</div>';
+            return html;
+        }
+
+        function renderStateRiskRules(rule) {
+            let html = '<div class="space-y-3">';
+
+            const riskLevels = ['low_risk', 'medium_risk', 'high_risk', 'default'];
+
+            riskLevels.forEach(level => {
+                if (rule.rule_data[level]) {
+                    const data = rule.rule_data[level];
+                    html += `
+                        <div class="border-l-4 border-blue-500 pl-3">
+                            <div class="font-medium text-sm mb-1">${formatRiskLevel(level)}</div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-xs text-gray-600">Score</label>
+                                    <input type="number"
+                                           class="w-full border rounded px-2 py-1 text-sm"
+                                           value="${data.score}"
+                                           data-rule-id="${rule.id}"
+                                           data-risk-level="${level}"
+                                           data-field="score">
+                                </div>
+                                ${level !== 'default' ? `
+                                <div>
+                                    <label class="text-xs text-gray-600">States (comma-separated)</label>
+                                    <input type="text"
+                                           class="w-full border rounded px-2 py-1 text-sm"
+                                           value="${data.states ? data.states.join(', ') : ''}"
+                                           data-rule-id="${rule.id}"
+                                           data-risk-level="${level}"
+                                           data-field="states">
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            html += '</div>';
+            return html;
+        }
+
+        function formatRiskLevel(level) {
+            const names = {
+                'low_risk': 'Low Risk States',
+                'medium_risk': 'Medium Risk States',
+                'high_risk': 'High Risk States',
+                'default': 'Default (Unknown States)'
+            };
+            return names[level] || level;
+        }
+
+        // Event delegation for dynamic buttons
+        document.getElementById('rulesContainer').addEventListener('click', function(e) {
+            // Handle remove range button
+            if (e.target.classList.contains('remove-range-btn')) {
+                const ruleId = parseInt(e.target.dataset.ruleId);
+                const rangeIndex = parseInt(e.target.dataset.rangeIndex);
+                const rule = currentRules.find(r => r.id === ruleId);
+
+                if (rule && rule.rule_data.ranges.length > 1) {
+                    rule.rule_data.ranges.splice(rangeIndex, 1);
+                    renderRules();
+                } else {
+                    alert('Cannot remove the last range. Each rule must have at least one range.');
+                }
+            }
+
+            // Handle add range button
+            if (e.target.classList.contains('add-range-btn')) {
+                const ruleId = parseInt(e.target.dataset.ruleId);
+                const rule = currentRules.find(r => r.id === ruleId);
+
+                if (rule) {
+                    // Add a new range with default values
+                    const lastRange = rule.rule_data.ranges[rule.rule_data.ranges.length - 1];
+                    rule.rule_data.ranges.push({
+                        min: lastRange.max,
+                        max: lastRange.max + 10000,
+                        score: 0,
+                        label: 'New Range'
+                    });
+                    renderRules();
+                }
+            }
+        });
+
+        // Handle enable/disable toggle
+        document.getElementById('rulesContainer').addEventListener('change', function(e) {
+            if (e.target.classList.contains('rule-enabled-toggle')) {
+                const ruleId = parseInt(e.target.dataset.ruleId);
+                const rule = currentRules.find(r => r.id === ruleId);
+
+                if (rule) {
+                    rule.enabled = e.target.checked;
+                    // Update the label text and color
+                    const label = e.target.nextElementSibling;
+                    label.textContent = rule.enabled ? 'Enabled' : 'Disabled';
+                    label.className = `text-sm ${rule.enabled ? 'text-green-600' : 'text-gray-400'}`;
+                }
+            }
+        });
+
+        // Save rules
+        document.getElementById('saveRules').addEventListener('click', async function() {
+            try {
+                // Collect updated values from form
+                const inputs = document.querySelectorAll('#rulesContainer input:not(.rule-enabled-toggle)');
+
+                inputs.forEach(input => {
+                    const ruleId = parseInt(input.dataset.ruleId);
+                    const rule = currentRules.find(r => r.id === ruleId);
+
+                    if (!rule) return;
+
+                    if (input.dataset.rangeIndex !== undefined) {
+                        // Range-based rule
+                        const rangeIndex = parseInt(input.dataset.rangeIndex);
+                        const field = input.dataset.field;
+                        let value = input.value;
+
+                        if (field === 'min' || field === 'max' || field === 'score') {
+                            value = parseFloat(value);
+                            // Keep as large number for JSON compatibility
+                        }
+
+                        rule.rule_data.ranges[rangeIndex][field] = value;
+                    } else if (input.dataset.riskLevel) {
+                        // State risk rule
+                        const riskLevel = input.dataset.riskLevel;
+                        const field = input.dataset.field;
+
+                        if (field === 'score') {
+                            rule.rule_data[riskLevel].score = parseInt(input.value);
+                        } else if (field === 'states') {
+                            rule.rule_data[riskLevel].states = input.value.split(',').map(s => s.trim().toUpperCase());
+                        }
+                    }
+                });
+
+                // Save each rule via API
+                for (const rule of currentRules) {
+                    const response = await fetch(`/api/appetite/rules/${rule.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            rule_data: rule.rule_data,
+                            max_score: rule.max_score,
+                            enabled: rule.enabled
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to save rule');
+                    }
+                }
+
+                alert('Rules saved successfully! All submission scores have been recalculated.');
+                document.getElementById('rulesModal').classList.add('hidden');
+
+                // Reload submissions to show updated scores
+                await loadSubmissions();
+
+            } catch (error) {
+                console.error('Error saving rules:', error);
+                alert('Failed to save rules: ' + error.message);
+            }
+        });
     </script>
 </body>
 </html>
