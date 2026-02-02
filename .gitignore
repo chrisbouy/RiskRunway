@@ -56,3 +56,6 @@ media/students/
 *.png
 *.jpg
 *.jpeg
+
+#quotes
+*.pdf
