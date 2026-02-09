@@ -1,7 +1,8 @@
 # app/routes.py
-from flask import Blueprint, render_template, request, jsonify, current_app
+from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for
 import os
 import json
+from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from app.parsers import analyze_with_gemini
@@ -13,9 +14,92 @@ from app.database import (
     log_action,
     get_session
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole
 
 bp = Blueprint('main', __name__)
+
+
+# ============================================================================
+# AUTHENTICATION DECORATOR
+# ============================================================================
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('main.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    """Decorator to require admin role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('main.login'))
+        if session.get('user_role') != 'ADMIN':
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ============================================================================
+# AUTHENTICATION ROUTES
+# ============================================================================
+
+@bp.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page and authentication"""
+    if request.method == 'GET':
+        # If already logged in, redirect to kanban
+        if 'user_id' in session:
+            return redirect(url_for('main.kanban'))
+        return render_template('login.html')
+
+    # POST - handle login
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Username and password required'}), 400
+
+        # Get user from database
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(username=username).first()
+
+            if not user or not user.check_password(password):
+                return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+
+            if not user.is_active:
+                return jsonify({'success': False, 'error': 'Account is inactive'}), 401
+
+            # Set session
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['full_name'] = user.full_name
+            session['user_role'] = user.role.name
+
+            return jsonify({
+                'success': True,
+                'user': user.to_dict()
+            })
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/logout', methods=['POST'])
+def logout():
+    """Logout and clear session"""
+    session.clear()
+    return jsonify({'success': True})
 
 
 # ============================================================================
@@ -23,17 +107,52 @@ bp = Blueprint('main', __name__)
 # ============================================================================
 
 @bp.route('/', methods=['GET'])
+@login_required
 def kanban():
     """Display the Kanban board with all submissions"""
     return render_template('kanban.html')
 
 
 @bp.route('/api/submissions', methods=['GET'])
+@login_required
 def get_submissions():
     """API endpoint to get all submissions for the Kanban board"""
     try:
+        # Check if filtering by assigned user
+        filter_assigned = request.args.get('assigned_to_me', 'false').lower() == 'true'
+
         submissions = get_all_submissions()
+
+        # Filter by assigned user if requested
+        if filter_assigned and 'user_id' in session:
+            submissions = [s for s in submissions if s.get('assigned_to') == session['user_id']]
+
         return jsonify({'success': True, 'submissions': submissions})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/users', methods=['GET'])
+@login_required
+def get_users():
+    """API endpoint to get all active users"""
+    try:
+        db_session = get_session()
+        try:
+            users = db_session.query(User).filter_by(is_active=True).all()
+
+            # Get current user info
+            current_user = None
+            if 'user_id' in session:
+                current_user = db_session.query(User).filter_by(id=session['user_id']).first()
+
+            return jsonify({
+                'success': True,
+                'users': [u.to_dict() for u in users],
+                'current_user': current_user.to_dict() if current_user else None
+            })
+        finally:
+            db_session.close()
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -43,6 +162,7 @@ def get_submissions():
 # ============================================================================
 
 @bp.route('/submission/<int:submission_id>', methods=['GET'])
+@login_required
 def submission_detail(submission_id):
     """Display the submission detail page with all quotes"""
     submission = get_submission_by_id(submission_id)
@@ -52,6 +172,7 @@ def submission_detail(submission_id):
 
 
 @bp.route('/api/submission/<int:submission_id>', methods=['GET'])
+@login_required
 def get_submission_detail(submission_id):
     """API endpoint to get submission details with all quotes"""
     try:
@@ -84,6 +205,7 @@ def get_submission_detail(submission_id):
 # ============================================================================
 
 @bp.route('/api/upload_quote', methods=['POST'])
+@login_required
 def upload_quote():
     """
     Upload and process a quote PDF.
@@ -202,6 +324,7 @@ def upload_quote():
 # ============================================================================
 
 @bp.route('/api/quote/<int:quote_id>', methods=['DELETE'])
+@login_required
 def delete_quote(quote_id):
     """
     Delete a quote. If it's the last quote in a submission, delete the submission too.
@@ -260,10 +383,63 @@ def delete_quote(quote_id):
 
 
 # ============================================================================
+# SUBMISSION ASSIGNMENT
+# ============================================================================
+
+@bp.route('/api/submission/<int:submission_id>/assign', methods=['PUT'])
+@login_required
+def assign_submission(submission_id):
+    """Assign a submission to a user"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+
+        # user_id can be None to unassign
+        if user_id is not None and not isinstance(user_id, int):
+            return jsonify({'success': False, 'error': 'Invalid user_id'}), 400
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            # Verify user exists if assigning
+            if user_id is not None:
+                user = db_session.query(User).filter_by(id=user_id, is_active=True).first()
+                if not user:
+                    return jsonify({'success': False, 'error': 'User not found'}), 404
+
+            old_user_id = submission.assigned_to
+            submission.assigned_to = user_id
+            db_session.commit()
+
+            # Log the assignment change
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='assigned',
+                submission_id=submission_id,
+                details=f"Assigned from user {old_user_id} to user {user_id}"
+            )
+
+            return jsonify({
+                'success': True,
+                'submission': submission.to_dict()
+            })
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
 # APPETITE SCORING
 # ============================================================================
 
 @bp.route('/api/submission/<int:submission_id>/appetite', methods=['GET'])
+@login_required
 def get_submission_appetite(submission_id):
     """Get detailed appetite score breakdown for a submission"""
     try:
@@ -286,6 +462,7 @@ def get_submission_appetite(submission_id):
 
 
 @bp.route('/api/appetite/rules', methods=['GET'])
+@login_required
 def get_appetite_rules():
     """Get all appetite scoring rules"""
     try:
@@ -321,6 +498,7 @@ def get_appetite_rules():
 
 
 @bp.route('/api/appetite/rules/<int:rule_id>', methods=['PUT'])
+@admin_required
 def update_appetite_rule(rule_id):
     """Update an appetite scoring rule"""
     try:
@@ -388,6 +566,7 @@ def update_appetite_rule(rule_id):
 # ============================================================================
 
 @bp.route('/api/submission/<int:submission_id>/status', methods=['PUT'])
+@login_required
 def update_submission_status(submission_id):
     """Update submission status"""
     try:
@@ -424,6 +603,7 @@ def update_submission_status(submission_id):
 
 
 @bp.route('/api/quote/<int:quote_id>/status', methods=['PUT'])
+@login_required
 def update_quote_status(quote_id):
     """Update quote status"""
     try:
@@ -467,12 +647,14 @@ def update_quote_status(quote_id):
 # ============================================================================
 
 @bp.route('/admin', methods=['GET'])
+@admin_required
 def admin():
     """Display the admin page with database tables"""
     return render_template('admin.html')
 
 
 @bp.route('/api/admin/data', methods=['GET'])
+@admin_required
 def get_admin_data():
     """API endpoint to get all database data for admin view"""
     try:
@@ -485,6 +667,10 @@ def get_admin_data():
         session = get_session()
         quotes_query = session.query(Quote).order_by(Quote.created_at.desc()).all()
         quotes = [q.to_dict() for q in quotes_query]
+
+        # Get all users
+        users_query = session.query(User).order_by(User.created_at.desc()).all()
+        users = [u.to_dict() for u in users_query]
 
         # Get last 50 audit logs
         audit_logs = session.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(50).all()
@@ -506,8 +692,140 @@ def get_admin_data():
             'success': True,
             'submissions': submissions,
             'quotes': quotes,
+            'users': users,
             'audit_log': audit_data
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/admin/users', methods=['POST'])
+@admin_required
+def create_user():
+    """API endpoint to create a new user"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        full_name = data.get('full_name')
+        role = data.get('role')
+
+        if not all([username, password, full_name, role]):
+            return jsonify({'success': False, 'error': 'All fields are required'}), 400
+
+        # Validate role
+        try:
+            user_role = UserRole[role]
+        except KeyError:
+            return jsonify({'success': False, 'error': 'Invalid role'}), 400
+
+        db_session = get_session()
+        try:
+            # Check if username already exists
+            existing_user = db_session.query(User).filter_by(username=username).first()
+            if existing_user:
+                return jsonify({'success': False, 'error': 'Username already exists'}), 400
+
+            # Create new user
+            new_user = User(
+                username=username,
+                full_name=full_name,
+                role=user_role,
+                is_active=True
+            )
+            new_user.set_password(password)
+
+            db_session.add(new_user)
+            db_session.commit()
+
+            log_action(
+                entity_type='user',
+                entity_id=new_user.id,
+                action='created',
+                details=f"Created user {username} with role {role}"
+            )
+
+            return jsonify({'success': True, 'user': new_user.to_dict()})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@admin_required
+def update_user(user_id):
+    """API endpoint to update a user"""
+    try:
+        data = request.get_json()
+
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+
+            # Update fields if provided
+            if 'full_name' in data:
+                user.full_name = data['full_name']
+
+            if 'role' in data:
+                try:
+                    user.role = UserRole[data['role']]
+                except KeyError:
+                    return jsonify({'success': False, 'error': 'Invalid role'}), 400
+
+            if 'is_active' in data:
+                user.is_active = data['is_active']
+
+            if 'password' in data and data['password']:
+                user.set_password(data['password'])
+
+            db_session.commit()
+
+            log_action(
+                entity_type='user',
+                entity_id=user_id,
+                action='updated',
+                details=f"Updated user {user.username}"
+            )
+
+            return jsonify({'success': True, 'user': user.to_dict()})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def delete_user(user_id):
+    """API endpoint to deactivate a user"""
+    try:
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+
+            # Don't allow deleting yourself
+            if user_id == session.get('user_id'):
+                return jsonify({'success': False, 'error': 'Cannot deactivate your own account'}), 400
+
+            # Deactivate instead of delete
+            user.is_active = False
+            db_session.commit()
+
+            log_action(
+                entity_type='user',
+                entity_id=user_id,
+                action='deactivated',
+                details=f"Deactivated user {user.username}"
+            )
+
+            return jsonify({'success': True})
+        finally:
+            db_session.close()
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

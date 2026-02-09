@@ -3,9 +3,15 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Enum, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from werkzeug.security import generate_password_hash, check_password_hash
 import enum
 
 Base = declarative_base()
+
+
+class UserRole(enum.Enum):
+    ADMIN = "Admin"
+    VIEWER = "Viewer"
 
 
 class SubmissionStatus(enum.Enum):
@@ -22,6 +28,46 @@ class QuoteStatus(enum.Enum):
     CHOSEN = "Chosen"
 
 
+class User(Base):
+    """
+    Represents a user with authentication and role-based access.
+    """
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(255), nullable=False)
+    role = Column(Enum(UserRole), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    # Relationships
+    assigned_submissions = relationship("Submission", back_populates="assigned_user")
+
+    def set_password(self, password):
+        """Hash and set the user's password"""
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        """Check if the provided password matches the hash"""
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f"<User(id={self.id}, username='{self.username}', role='{self.role.value}')>"
+
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'full_name': self.full_name,
+            'role': self.role.value,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
 class Submission(Base):
     """
     Represents an insurance placement attempt for a specific insured.
@@ -36,10 +82,12 @@ class Submission(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(Enum(SubmissionStatus), default=SubmissionStatus.RECEIVED, nullable=False)
     appetite_score = Column(Integer, nullable=True)  # PF appetite score 0-100
-    
+    assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)  # User assignment
+
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="submission", cascade="all, delete-orphan")
+    assigned_user = relationship("User", back_populates="assigned_submissions")
 
     def __repr__(self):
         return f"<Submission(id={self.id}, insured='{self.insured_name}', effective_date='{self.effective_date}')>"
@@ -54,7 +102,9 @@ class Submission(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'status': self.status.value if self.status else None,
             'quote_count': len(self.quotes) if self.quotes else 0,
-            'appetite_score': self.appetite_score
+            'appetite_score': self.appetite_score,
+            'assigned_to': self.assigned_to,
+            'assigned_user': self.assigned_user.to_dict() if self.assigned_user else None
         }
 
 

@@ -538,9 +538,9 @@
                     }
                     return null;
                 })() },
-                { label: 'Agent Name', value: data.agent?.name || null },
-                { label: 'Agency (Broker)', value: data.agency?.name || null },
-                { label: 'Agency Phone', value: data.agency?.phone || null },
+                { label: 'Agent Name', value: data.general_agent_or_wholesale_broker?.['agent name'] || null },
+                { label: 'Genaral Agent / Broker', value: data.agency?.name || null },
+                { label: 'Agency Phone', value: data.general_agent_or_wholesale_broker?.phone || null },
                 { label: 'Quote #', value: data.quote_number || null },
                 { label: 'Account #', value: data.account_number || null }
             ];

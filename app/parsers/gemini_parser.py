@@ -14,22 +14,37 @@ from ollama import Client
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_PROMPT = dedent(
     """
-    You are extracting data for premium finance intake from insurance documents.
+    You are extracting structured data for PREMIUM FINANCE INTAKE from insurance QUOTE documents.
 
-    IMPORTANT INSTRUCTIONS:
-    1. Read the ENTIRE document carefully - check ALL pages
-    2. Extract ALL policies/coverage types found in the document - do not skip any
-    3. Each distinct coverage type should be a separate object in the policies array
-    4. If a value is not clearly present, return null - do not guess or calculate
-    5. Do NOT merge or combine multiple policies into one
-    6. Return ONLY valid JSON - no markdown formatting, no explanations
-    7. Include ALL fields from the schema in your response, even if the value is null
+    CRITICAL RULES (NON-NEGOTIABLE):
+    1. READ ALL PAGES of the document before extracting anything.
+    2. DO NOT GUESS. If a value is ambiguous, implied, or conflicts across pages, return null.
+    3. NEVER place a PERSON’S NAME in any of the following fields:
+    - Carrier
+    - Agent
+    - Broker / General Agent
+    - Any Finance-related field
+    If a person is listed (e.g., "Underwriter: John Smith"), that value MUST be ignored.
+    4. DO NOT merge coverages. Each distinct coverage type MUST be its own object in the policies array.
+    5. Quote numbers may repeat across policies. That is acceptable.
+    6. Fees, taxes, and premiums MUST ONLY be assigned at the policy level if they are explicitly tied to that policy.
+    - If fees or taxes are only shown in totals or summaries, leave policy-level values null.
+    7. Carrier MUST be a COMPANY that ultimately assumes risk.
+    - If multiple entities are mentioned and it is unclear which is the carrier, return null.
+    - “Underwritten by” does NOT automatically mean Carrier.
+    8. Return ONLY valid JSON. No markdown. No explanations.
 
-    Common locations to check for policies:
-    - Coverage type checkboxes or lists
-    - Premium breakdown sections
-    - Individual policy sections or clauses
-    - Declarations pages
+    ENTITY DEFINITIONS:
+    - Insured: the customer purchasing coverage
+    - Agency: the RETAIL agency only
+    - Broker / General Agent: WHOLESALE intermediary company (not a person)
+    - Carrier: insurance company assuming risk (not a syndicate individual, not a person)
+
+    EXTRACTION INSTRUCTIONS:
+    - Extract ALL coverage types found anywhere in the document.
+    - Submission tables often summarize multiple coverages; do not assume one row equals one policy unless coverage type is explicitly stated.
+    - Use null for any field not clearly stated.
+    - Include ALL fields in the schema, even if null.
 
     Return valid JSON only using this exact schema:
     {
@@ -42,8 +57,9 @@ DEFAULT_PROMPT = dedent(
                 "zip": "string or null"
             }
         },
-        "agency": {
+        "general_agent_or_wholesale_broker": {
             "name": "string or null",
+            "agent name": "string or null",
             "address": {
                 "street": "string or null",
                 "city": "string or null",
@@ -271,3 +287,9 @@ def analyze_with_ollama64(image_paths, analysis_prompt=DEFAULT_PROMPT, model_nam
         print(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
         print(f"Response text: {response.text if 'response' in locals() else 'N/A'}")
         raise
+
+def pil_to_base64(img):
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+ 

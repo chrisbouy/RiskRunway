@@ -267,11 +267,11 @@
             displayCompactField('Address', fullAddress, container);
 
             // Agency
-            const agencyName = data.agency?.name || null;
-            displayCompactField('Agency(Broker)', agencyName, container);
+            const agencyName = data.general_agent_or_wholesale_broker?.name || null;
+            displayCompactField('Genaral Agent / Broker', agencyName, container);
 
             // Agency Phone
-            const agencyPhone = data.agency?.phone || null;
+            const agencyPhone = data.general_agent_or_wholesale_broker?.phone || null;
             displayCompactField('Agency Phone', agencyPhone, container);
 
             // Quote Number
