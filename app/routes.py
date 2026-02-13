@@ -5,7 +5,7 @@ import json
 from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
-from app.parsers import analyze_with_gemini
+from app.parsers.three_pass_parser import process_quote_three_pass
 from app.database import (
     get_all_submissions,
     get_submission_by_id,
@@ -232,41 +232,46 @@ def upload_quote():
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
         file.save(filepath)
 
-        # Parse the document with Gemini
+        # Parse the document with three-pass system
         try:
-            result = analyze_with_gemini(filepath)
-            raw_response = result.get("response", "").strip()
+            # Get existing quotes for this submission (if adding to existing)
+            existing_quotes = []
+            if submission_id:
+                submission = get_submission_by_id(submission_id)
+                if submission and submission.get('quotes'):
+                    existing_quotes = [
+                        json.loads(q['extracted_json']) if q.get('extracted_json') else {}
+                        for q in submission['quotes']
+                    ]
 
-            # Clean markdown formatting if present
-            if raw_response.startswith("```"):
-                lines = raw_response.splitlines()
-                if lines:
-                    lines = lines[1:]  # remove ```json
-                if lines and lines[-1].strip().startswith("```"):
-                    lines = lines[:-1]  # remove ```
-                raw_response = "\n".join(lines).strip()
+            # Run three-pass processing
+            three_pass_result = process_quote_three_pass(filepath, existing_quotes)
 
-            # Parse JSON
-            try:
-                parsed_data = json.loads(raw_response)
-            except json.JSONDecodeError:
-                return jsonify({
-                    'success': False,
-                    'error': 'Failed to parse AI response as JSON',
-                    'raw_response': raw_response
-                }), 500
+            # Extract data from passes
+            layout_data = three_pass_result['pass1_layout']
+            parsed_data = three_pass_result['pass2_normalized']
+            # intent_data = three_pass_result['pass3_intent']
+
+            print(f"\n📊 Three-Pass Processing Results:")
+            print(f"parsed_data: {parsed_data}")
+            # print(f"  Pass 1: Extracted {layout_data.get('total_pages', 0)} pages")
+            # print(f"  Pass 2: Found {len(parsed_data.get('policies', []))} policies")
+            # print(f"  Pass 3: Intent = {intent_data.get('quote_intent')}, Confidence = {intent_data.get('confidence')}")
+            # print(f"  Comparison Groups: {intent_data.get('comparison_groups', [])}")
+            # print(f"  Notes: {intent_data.get('notes', 'N/A')}\n")
 
             # Extract key fields
             insured_name = parsed_data.get('insured', {}).get('name', 'Unknown')
             carrier_name = None
             effective_date = None
             state = parsed_data.get('insured', {}).get('address', {}).get('state')
-
+            print(f"insured_name: {insured_name}, state: {state}")
             # Try to get carrier and effective date from first policy
             if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
                 first_policy = parsed_data['policies'][0]
                 carrier_name = first_policy.get('carrier')
                 effective_date = first_policy.get('effective_date')
+                print(f"carrier_name: {carrier_name}, effective_date: {effective_date}")
 
             # Create or get submission
             if submission_id:
@@ -285,16 +290,21 @@ def upload_quote():
                     state=state,
                     user=None  # TODO: Add user authentication
                 )
+                print(f"Created new submission {submission_id}")
 
-            # Create quote record
+            # Create quote record with three-pass data
             quote_id = create_quote(
                 submission_id=submission_id,
                 carrier_name=carrier_name,
                 raw_document_path=filepath,
                 extracted_json=json.dumps(parsed_data),
+                pass1_layout_json=json.dumps(layout_data),
+                # pass3_intent_json=json.dumps(intent_data),
+                # quote_intent=intent_data.get('quote_intent'),
+                # comparison_group=','.join(intent_data.get('comparison_groups', [])),
                 user=None  # TODO: Add user authentication
             )
-
+            print(f"Created quote {quote_id} for submission {submission_id}")
             # Log parsing action
             log_action(
                 entity_type='quote',
@@ -309,7 +319,9 @@ def upload_quote():
                 'success': True,
                 'submission_id': submission_id,
                 'quote_id': quote_id,
-                'parsed_data': parsed_data
+                'parsed_data': parsed_data,
+                # 'intent_data': intent_data,
+                'processing_metadata': three_pass_result['processing_metadata']
             })
 
         except Exception as e:

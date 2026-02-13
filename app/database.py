@@ -117,7 +117,12 @@ def create_submission(insured_name, effective_date, state=None, user=None):
         session.close()
 
 
-def create_quote(submission_id, carrier_name, raw_document_path, extracted_json, user=None):
+# def create_quote(submission_id, carrier_name, raw_document_path, extracted_json, user=None,
+#                  pass1_layout_json=None, pass3_intent_json=None, quote_intent=None, comparison_group=None):
+def create_quote(submission_id, carrier_name, raw_document_path, extracted_json, user=None,
+                 pass1_layout_json=None):
+   
+    
     """
     Create a new quote and log the action.
 
@@ -133,6 +138,10 @@ def create_quote(submission_id, carrier_name, raw_document_path, extracted_json,
             carrier_name=carrier_name,
             raw_document_path=raw_document_path,
             extracted_json=extracted_json,
+            pass1_layout_json=pass1_layout_json,
+            # pass3_intent_json=pass3_intent_json,
+            # quote_intent=quote_intent,
+            # comparison_group=comparison_group,
             status=QuoteStatus.RECEIVED
         )
         session.add(quote)

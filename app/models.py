@@ -119,10 +119,17 @@ class Quote(Base):
     submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False, index=True)
     carrier_name = Column(String(255), nullable=True)  # Extracted from document
     raw_document_path = Column(String(500), nullable=False)  # Path to uploaded PDF
-    extracted_json = Column(Text, nullable=True)  # Full JSON extraction result
+    extracted_json = Column(Text, nullable=True)  # Full JSON extraction result (Pass 2 normalized data)
+
+    # Three-pass processing data
+    pass1_layout_json = Column(Text, nullable=True)  # Pass 1: OCR and layout extraction
+    # pass3_intent_json = Column(Text, nullable=True)  # Pass 3: Quote intent classification
+    # quote_intent = Column(String(50), nullable=True)  # Quick access: new_coverage, competing_quote, renewal, etc.
+    # comparison_group = Column(String(100), nullable=True)  # Quick access: GL, WC, Auto, etc.
+
     status = Column(Enum(QuoteStatus), default=QuoteStatus.RECEIVED, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    
+
     # Relationships
     submission = relationship("Submission", back_populates="quotes")
     audit_logs = relationship("AuditLog", back_populates="quote", cascade="all, delete-orphan")
@@ -138,6 +145,10 @@ class Quote(Base):
             'carrier_name': self.carrier_name,
             'raw_document_path': self.raw_document_path,
             'extracted_json': self.extracted_json,
+            'pass1_layout_json': self.pass1_layout_json,
+            # 'pass3_intent_json': self.pass3_intent_json,
+            # 'quote_intent': self.quote_intent,
+            # 'comparison_group': self.comparison_group,
             'status': self.status.value if self.status else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

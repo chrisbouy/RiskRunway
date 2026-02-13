@@ -20,23 +20,14 @@
             border-right: none !important;
         }
         
-        /* Alternating row colors - Excel style */
-        table tbody tr:nth-child(odd) {
-            background-color: #ffffff !important;
-        }
+
         
-        table tbody tr:nth-child(even) {
-            background-color: #e5e7eb !important; /* light gray */
-        }
-        
-        table tbody tr:hover {
-            background-color: #dbeafe !important; /* light blue hover */
-        }
+
         
         /* Cell borders for Excel look */
         table tbody td {
-            border-right: 1px solid #d1d5db !important;
-            border-bottom: 1px solid #d1d5db !important;
+            border-right: 1px solid #d1d5db;
+            border-bottom: 1px solid #d1d5db;
         }
         
         table tbody td:last-child {
@@ -46,7 +37,7 @@
         /* Make tables more structured */
         table {
             border-collapse: collapse !important;
-            border: 1px solid #9ca3af !important;
+            border: 1px solid #9ca3af!important ;
         }
         
         /* File upload section */
@@ -71,8 +62,17 @@
         .file-icon {
             width: 48px;
             height: 48px;
-            fill: #ef4444;
         }
+
+        /* Quote color palette */
+        .quote-color-0 { fill: #f59221; background-color: #fed7aa !important; } /* Orange */
+        .quote-color-1 { fill: #10b981; background-color: #d1fae5 !important; } /* Green */
+        .quote-color-2 { fill: #f59e0b; background-color: #fef3c7 !important; } /* Amber */
+        .quote-color-3 { fill: #8b5cf6; background-color: #ede9fe !important; } /* Purple */
+        .quote-color-4 { fill: #ec4899; background-color: #fce7f3 !important; } /* Pink */
+        .quote-color-5 { fill: #06b6d4; background-color: #cffafe !important; } /* Cyan */
+        .quote-color-6 { fill: #ef4444; background-color: #fee2e2 !important; } /* Red */
+        .quote-color-7 { fill: #84cc16; background-color: #ecfccb !important; } /* Lime */
         
         .file-name {
             font-size: 11px;
@@ -290,14 +290,15 @@
                 return;
             }
 
-            quotes.forEach(quote => {
+            quotes.forEach((quote, index) => {
                 const filename = quote.raw_document_path.split('/').pop();
-
+                const colorClass = `quote-color-${index % 8}`;
+                console.log('Color class for icon:', colorClass);
                 const fileItem = document.createElement('div');
                 fileItem.className = 'file-item';
                 fileItem.innerHTML = `
                     <div class="delete-btn" onclick="deleteQuote(${quote.id}, '${filename}')">×</div>
-                    <svg class="file-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <svg class="file-icon ${colorClass}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10,19L12,15H9V10H15V15L13,19H10Z"/>
                     </svg>
                     <span class="file-name" title="${filename}">${filename}</span>
@@ -346,11 +347,15 @@
             }
 
             // Convert quotes to the format expected by displayResults
-            const results = quotes.map(quote => {
+            const results = quotes.map((quote, index) => {
                 return {
                     response: quote.extracted_json,
                     quote_id: quote.id,
-                    carrier: quote.carrier_name
+                    quote_index: index,  // Add index for color coding
+                    carrier: quote.carrier_name,
+                    quote_intent: quote.quote_intent,
+                    comparison_group: quote.comparison_group,
+                    pass3_intent_json: quote.pass3_intent_json
                 };
             });
 
@@ -373,7 +378,13 @@
             formData.append('submission_id', submissionId);
 
             // Show processing message
-            const contentDiv = document.getElementById('parsedContent');
+            const contentDiv = document.getElementById('result');
+            // print the element id of the tables
+            console.log('contentDiv:', contentDiv);
+
+
+
+
             const processingMsg = document.createElement('div');
             processingMsg.className = 'text-center text-gray-500 py-8';
             processingMsg.textContent = 'Processing new quote...';
@@ -424,13 +435,15 @@
 
         function displayResults(results) {
             // Clear all tables
+            document.getElementById('basicInfoHeader').innerHTML = '';
             document.getElementById('basicInfoBody').innerHTML = '';
             document.getElementById('quotesHeader').innerHTML = '';
             document.getElementById('quotesBody').innerHTML = '';
+            document.getElementById('totalsHeader').innerHTML = '';
             document.getElementById('totalsBody').innerHTML = '';
 
             // Collect all data for tables
-            let allBasicInfo = null;
+            let allPDFInfo = [];
             let allQuotes = [];
             let allTotals = [];
 
@@ -438,24 +451,20 @@
                 try {
                     // Extract the JSON string from the response
                     let jsonString = result.response || JSON.stringify(result);
-
-                    // Remove markdown code block formatting if present
                     jsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '');
-
-                    // Parse the JSON
                     const data = JSON.parse(jsonString);
-
-                    // Capture basic info from first file
-                    if (fileIndex === 0) {
-                        allBasicInfo = data;
-                    }
+                    allPDFInfo.push({
+                                        data: data,
+                                        quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex
+                                    });
 
                     // Process policies
                     if (data.policies && Array.isArray(data.policies)) {
                         data.policies.forEach((policy, policyIndex) => {
-                            allQuotes.push({
-                                fileIndex: fileIndex + 1,
+                            const quoteData = {
+                                fileIndex: fileIndex + 1, //WHY ARE WE ADDING 1 HERE?
                                 policyIndex: policyIndex + 1,
+                                quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex,  // For color coding
                                 carrier: policy.carrier,
                                 coverage: policy.coverage_type,
                                 policyNumber: policy.policy_number,
@@ -467,14 +476,20 @@
                                 fee: policy.fee,
                                 brokerFee: policy.broker_fee,
                                 minEarnedPercent: policy.minimum_earned_percent,
-                                minEarnedAmount: policy.minimum_earned_amount
-                            });
+                                minEarnedAmount: policy.minimum_earned_amount,
+                                quote_intent: result.quote_intent,
+                                comparison_group: result.comparison_group,
+                                quote_id: result.quote_id
+                            };
+
+                            allQuotes.push(quoteData);
                         });
                     } else {
                         // Fallback if no policies array
-                        allQuotes.push({
+                        const quoteData = {
                             fileIndex: fileIndex + 1,
                             policyIndex: 1,
+                            quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex,  // For color coding
                             carrier: data.carrier,
                             coverage: data.coverage_type,
                             policyNumber: data.policy_number,
@@ -486,14 +501,19 @@
                             fee: data.fee,
                             brokerFee: data.broker_fee,
                             minEarnedPercent: data.minimum_earned_percent,
-                            minEarnedAmount: data.minimum_earned_amount
-                        });
+                            minEarnedAmount: data.minimum_earned_amount,
+                            quote_intent: result.quote_intent,
+                            comparison_group: result.comparison_group,
+                            quote_id: result.quote_id
+                        };
+                        allQuotes.push(quoteData);
                     }
 
                     // Collect totals (once per file)
                     if (data.totals) {
                         allTotals.push({
                             fileIndex: fileIndex + 1,
+                            quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex,
                             totalPremium: data.totals.total_premium,
                             totalTax: data.totals.total_tax,
                             totalFee: data.totals.total_fee,
@@ -514,59 +534,78 @@
                     console.error('Error parsing file', fileIndex + 1, ':', e.message);
                 }
             });
-
-            // Populate tables
-            if (allBasicInfo) {
-                populateBasicInfoTable(allBasicInfo);
-            }
+            console.log('allPDFInfo:', allPDFInfo);
+            populateBasicInfoTable(allPDFInfo);
+            //console.log('allQuotes:', allQuotes);
             populateQuotesTable(allQuotes);
-            populateTotalsTable(allTotals);
+            //console.log('allTotals:', allTotals);
+            populateTotalsTable(allPDFInfo );
         }
 
-        function populateBasicInfoTable(data) {
+        function populateBasicInfoTable(allPDFInfo) {
             const header = document.getElementById('basicInfoHeader');
             const tbody = document.getElementById('basicInfoBody');
             
-            // Create headers
-            const fields = [
-                { label: 'Insured Name', value: data.insured?.name || null },
-                { label: 'Address', value: (() => {
-                    if (data.insured?.address) {
-                        const addr = data.insured.address;
-                        const parts = [addr.street, addr.city, addr.state, addr.zip].filter(p => p);
-                        return parts.length > 0 ? parts.join(', ') : null;
-                    }
-                    return null;
-                })() },
-                { label: 'Agent Name', value: data.general_agent_or_wholesale_broker?.['agent name'] || null },
-                { label: 'Genaral Agent / Broker', value: data.agency?.name || null },
-                { label: 'Agency Phone', value: data.general_agent_or_wholesale_broker?.phone || null },
-                { label: 'Quote #', value: data.quote_number || null },
-                { label: 'Account #', value: data.account_number || null }
+            if (allPDFInfo.length === 0) return;
+            
+            // Create headers only once (using first PDF's structure)
+            const firstData = allPDFInfo[0].data;
+            const headerFields = [
+                'Insured Name',
+                'Address',
+                'Agent Name',
+                'Genaral Agent / Broker',
+                'Agency Phone',
+                'Quote #',
+                'Account #'
             ];
-
-            // Create header row
-            fields.forEach(field => {
+            
+            headerFields.forEach(label => {
                 const th = document.createElement('th');
                 th.className = 'px-3 py-2 text-left whitespace-nowrap';
-                th.textContent = field.label;
+                th.textContent = label;
                 header.appendChild(th);
             });
 
-            // Create data row
-            const dataRow = document.createElement('tr');
-            dataRow.className = 'border-b border-gray-200';
-            
-            fields.forEach(field => {
-                const td = document.createElement('td');
-                td.className = 'px-3 py-2 text-gray-900 cursor-pointer';
-                const value = field.value || 'null';
-                td.innerHTML = `<span class="field-value text-xs">${value === 'null' ? '<span class="text-gray-400 italic">null</span>' : value}</span>`;
-                td.onclick = () => copyToClipboard(value, td);
-                dataRow.appendChild(td);
+            // Create a row for each PDF
+            allPDFInfo.forEach((PDFInfo) => {
+                const data = PDFInfo.data;
+                const quoteIndex = PDFInfo.quoteIndex;
+                
+                const fields = [
+                    { label: 'Insured Name', value: data.insured?.name || null },
+                    { label: 'Address', value: (() => {
+                        if (data.insured?.address) {
+                            const addr = data.insured.address;
+                            const parts = [addr.street, addr.city, addr.state, addr.zip].filter(p => p);
+                            return parts.length > 0 ? parts.join(', ') : null;
+                        }
+                        return null;
+                    })() },
+                    { label: 'Agent Name', value: data.general_agent_or_wholesale_broker?.['agent name'] || null },
+                    { label: 'Genaral Agent / Broker', value: data.agency?.name || null },
+                    { label: 'Agency Phone', value: data.general_agent_or_wholesale_broker?.phone || null },
+                    { label: 'Quote #', value: data.quote_number || null },
+                    { label: 'Account #', value: data.account_number || null }
+                ];
+
+                // Create data row
+                const dataRow = document.createElement('tr');
+                const colorClass = `quote-color-${quoteIndex % 8}`;
+                console.log('Color class for row:', colorClass);
+                dataRow.className = `border-b border-gray-200 ${colorClass}`;
+                
+                fields.forEach(field => {
+                    const td = document.createElement('td');
+                    td.className = 'px-3 py-2 text-gray-900 cursor-pointer';
+                    const value = field.value || 'null';
+                    td.innerHTML = `<span class="field-value text-xs">${value === 'null' ? '<span class="text-gray-400 italic">null</span>' : value}</span>`;
+                    td.onclick = () => copyToClipboard(value, td);
+                    dataRow.appendChild(td);
+                });
+                
+                tbody.appendChild(dataRow);
             });
-            
-            tbody.appendChild(dataRow);
         }
 
         function populateQuotesTable(quotes) {
@@ -585,8 +624,11 @@
             // Create rows
             quotes.forEach((quote, index) => {
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-200';
-                
+                const colorClass = `quote-color-${quote.quoteIndex % 8}`;
+                console.log('Color class for row:', colorClass);
+                row.className = `border-b border-gray-200 ${colorClass}`;
+                console.log('Row class:', row.className);
+
                 const values = [
                     quote.coverage,
                     quote.carrier,
@@ -605,7 +647,7 @@
                 values.forEach((value, index) => {
                     const td = document.createElement('td');
                     td.className = 'px-3 py-2 text-xs text-gray-900 whitespace-nowrap cursor-pointer';
-                    
+
                     const cellValue = value || 'null';
                     td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400 italic">null</span>' : cellValue}</span>`;
                     td.onclick = () => copyToClipboard(cellValue, td);
@@ -616,11 +658,13 @@
             });
         }
 
-        function populateTotalsTable(totals) {
+        function populateTotalsTable(allPDFInfo) {
             const header = document.getElementById('totalsHeader');
             const tbody = document.getElementById('totalsBody');
-
-            // Create headers for all total fields
+            
+            if (allPDFInfo.length === 0) return;
+            
+            // Create headers for all total fields (only once)
             const totalFields = ['Total Premium', 'Total Tax', 'Total Fee', 'Grand Total', 'Deposit', 'Amount Financed'];
             
             totalFields.forEach(fieldLabel => {
@@ -630,44 +674,53 @@
                 header.appendChild(th);
             });
 
-            // Create data row - combine all totals from all files
-            const dataRow = document.createElement('tr');
-            dataRow.className = 'border-b border-gray-200';
+            // Create a row for each PDF
+            allPDFInfo.forEach((PDFInfo) => {
+                const data = PDFInfo.data;
+                const quoteIndex = PDFInfo.quoteIndex;
+                const totals = data.totals;
+                console.log('totals:', totals);
 
-            // For each field, get the value from the first file (or sum if multiple files)
-            totalFields.forEach(fieldLabel => {
-                const td = document.createElement('td');
-                td.className = 'px-3 py-2 text-gray-900 cursor-pointer';
-                
-                let value = null;
-                if (totals.length > 0) {
+                const dataRow = document.createElement('tr');
+                const colorClass = `quote-color-${quoteIndex % 8}`;
+                console.log('Color class for row:', colorClass);
+                dataRow.className = `border-b border-gray-200 ${colorClass}`;
+
+                // For each field, get the value from the current PDF
+                totalFields.forEach(fieldLabel => {
+                    const td = document.createElement('td');
+                    td.className = 'px-3 py-2 text-gray-900 cursor-pointer';
+                    
+                    let value = null;
                     const fieldMap = {
-                        'Total Premium': 'totalPremium',
-                        'Total Tax': 'totalTax', 
-                        'Total Fee': 'totalFee',
-                        'Grand Total': 'grandTotal',
-                        'Deposit': 'deposit',
-                        'Amount Financed': 'amountFinanced'
+                        'Total Premium': 'total_premium',     // snake_case
+                        'Total Tax': 'total_tax',             // snake_case
+                        'Total Fee': 'total_fee',             // snake_case
+                        'Grand Total': 'grand_total',         // snake_case
+                        'Deposit': 'down_payment',            // from financing object
+                        'Amount Financed': 'amount_financed' // from financing object
                     };
                     
                     const fieldName = fieldMap[fieldLabel];
-                    if (fieldName) {
-                        // If multiple files, sum the values; otherwise, use the single value
-                        if (totals.length > 1 && ['totalPremium', 'totalTax', 'totalFee', 'grandTotal'].includes(fieldName)) {
-                            value = totals.reduce((sum, total) => sum + (parseFloat(total[fieldName]) || 0), 0);
-                        } else {
-                            value = totals[0][fieldName];
+                    
+                    // Check if it's a financing field first
+                    if (fieldName === 'down_payment' || fieldName === 'amount_financed') {
+                        if (data.financing) {
+                            value = data.financing[fieldName] || null;
                         }
+                    } else if (fieldName && totals) {
+                        value = totals[fieldName] || null;
                     }
-                }
 
-                const cellValue = value !== null && value !== undefined ? value : 'null';
-                td.innerHTML = `<span class="field-value text-xs">${cellValue === 'null' ? '<span class="text-gray-400 italic">null</span>' : cellValue}</span>`;
-                td.onclick = () => copyToClipboard(cellValue, td);
-                dataRow.appendChild(td);
+                    const cellValue = value !== null ? value : 'null';
+                    console.log('cellValue:', cellValue);
+                    td.innerHTML = `<span class="field-value text-xs">${cellValue === 'null' ? '<span class="text-gray-400 italic">null</span>' : cellValue}</span>`;
+                    td.onclick = () => copyToClipboard(cellValue, td);
+                    dataRow.appendChild(td);
+                });
+
+                tbody.appendChild(dataRow);
             });
-
-            tbody.appendChild(dataRow);
         }
 
         // Track original status

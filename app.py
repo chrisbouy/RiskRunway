@@ -27,7 +27,7 @@ def main():
             result = extract_with_deepseek_ocr64(out_path)
             # result = analyze_with_ollama64(image_paths)
 
-            print(result)
+            # print(result)
     else:
         result = analyze_with_gemini(PDF_PATH)
         raw_response = result.get("response", "").strip()
@@ -40,9 +40,9 @@ def main():
             raw_response = "\n".join(lines).strip()
         try:
             parsed = json.loads(raw_response)
-            print(json.dumps(parsed, indent=2))
+            # print(json.dumps(parsed, indent=2))
         except json.JSONDecodeError:
-            print(result.get("response", ""))
+            # print(result.get("response", ""))
     
 if __name__ == "__main__":
     main()
