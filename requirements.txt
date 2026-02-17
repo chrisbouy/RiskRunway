@@ -10,5 +10,6 @@ google-genai
 python-dotenv
 flask
 flask-wtf
+flask-cors
 werkzeug
 sqlalchemy

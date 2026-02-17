@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Quote Extractor</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 420px;
+      min-height: 200px;
+      padding: 12px;
+      background: #f9fafb;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2937;
+      text-align: center;
+    }
+
+    .button-container {
+      display: flex;
+      justify-content: center;
+    }
+
+    #extractBtn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #extractBtn:hover:not(:disabled) {
+      background: #2563eb;
+    }
+
+    #extractBtn:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    #status {
+      text-align: center;
+      font-size: 12px;
+      padding: 6px;
+      border-radius: 4px;
+    }
+
+    #status.error {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    #status.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    #status.loading {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    #resultContainer {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #resultContainer.visible {
+      display: flex;
+    }
+
+    /* Summary Cards */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .card.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .card-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .card-value {
+      font-size: 12px;
+      font-weight: 500;
+      color: #1f2937;
+    }
+
+    .card-value.highlight {
+      color: #059669;
+      font-size: 14px;
+    }
+
+    /* Coverage Table */
+    .coverage-section {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .coverage-header {
+      background: #f3f4f6;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .coverage-table {
+      width: 100%;
+      font-size: 11px;
+      border-collapse: collapse;
+    }
+
+    .coverage-table th {
+      text-align: left;
+      padding: 6px 8px;
+      background: #f9fafb;
+      font-weight: 500;
+      color: #6b7280;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .coverage-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #f3f4f6;
+      color: #1f2937;
+    }
+
+    .coverage-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .coverage-table .premium {
+      font-weight: 600;
+      color: #059669;
+    }
+
+    /* Scrollable container for table */
+    .table-container {
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    /* Raw JSON */
+    #result {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 200px;
+      overflow: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 10px;
+      color: #1f2937;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #result.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #dc2626;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PDF Quote Extractor</h1>
+    
+    <div class="button-container">
+      <button id="extractBtn">Extract Quote</button>
+    </div>
+
+    <div id="status" style="display: none;"></div>
+
+    <div id="resultContainer">
+      <!-- Summary Cards -->
+      <div class="summary-cards" id="summaryCards"></div>
+      
+      <!-- Coverage Table -->
+      <div class="coverage-section" id="coverageSection">
+        <div class="coverage-header">Coverages</div>
+        <div class="table-container">
+          <table class="coverage-table" id="coverageTable">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Carrier</th>
+                <th>Policy #</th>
+                <th>Premium</th>
+              </tr>
+            </thead>
+            <tbody id="coverageBody"></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div id="result"></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

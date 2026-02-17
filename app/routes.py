@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for
 import os
 import json
+import requests
 from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -17,6 +18,91 @@ from app.database import (
 from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole
 
 bp = Blueprint('main', __name__)
+
+
+# ============================================================================
+# CHROME EXTENSION API - Parse PDF from URL
+# ============================================================================
+
+@bp.route('/api/parse', methods=['POST'])
+def parse_pdf_from_url():
+    """
+    Chrome Extension endpoint: Parse a PDF from a URL.
+    Expects JSON: { "pdf_url": "https://..." or "file:///path/to/file.pdf" }
+    """
+    try:
+        # Try to get JSON data
+        try:
+            data = request.get_json(silent=True)
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Invalid JSON: {str(e)}'}), 400
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided. Ensure Content-Type is application/json'}), 400
+        
+        pdf_url = data.get('pdf_url')
+        
+        if not pdf_url:
+            return jsonify({'success': False, 'error': 'pdf_url is required'}), 400
+        
+        temp_filepath = None
+        
+        # Handle file:// URLs (local files)
+        if pdf_url.startswith('file://'):
+            # Convert file:// URL to file path
+            import urllib.parse
+            filepath = urllib.parse.unquote(pdf_url.replace('file://', ''))
+            
+            if not os.path.exists(filepath):
+                return jsonify({'success': False, 'error': f'File not found: {filepath}'}), 400
+            
+            if not filepath.lower().endswith('.pdf'):
+                return jsonify({'success': False, 'error': 'File is not a PDF'}), 400
+            
+            temp_filepath = filepath
+        else:
+            # Handle HTTP/HTTPS URLs - download the PDF
+            try:
+                response = requests.get(pdf_url, timeout=30)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                return jsonify({'success': False, 'error': f'Failed to download PDF: {str(e)}'}), 400
+            
+            # Check content type or magic bytes
+            content_type = response.headers.get('Content-Type', '')
+            if 'pdf' not in content_type.lower() and not response.content[:4] == b'%PDF':
+                return jsonify({'success': False, 'error': 'URL does not point to a PDF file'}), 400
+            
+            # Save to temporary file
+            import uuid
+            
+            temp_filename = f"{uuid.uuid4()}.pdf"
+            temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+            
+            with open(temp_filepath, 'wb') as f:
+                f.write(response.content)
+        
+        try:
+            # Process the PDF with three-pass parser
+            three_pass_result = process_quote_three_pass(temp_filepath, [])
+            
+            # Extract data from passes
+            parsed_data = three_pass_result['pass2_normalized']
+            
+            return jsonify({
+                'success': True,
+                'parsed_data': parsed_data,
+                'processing_metadata': three_pass_result['processing_metadata']
+            })
+            
+        finally:
+            # Clean up temp file only if it was created from downloaded content
+            if temp_filepath and temp_filepath.startswith(current_app.config['UPLOAD_FOLDER']):
+                if os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+                
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Processing error: {str(e)}'}), 500
 
 
 # ============================================================================
