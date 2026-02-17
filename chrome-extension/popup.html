@@ -128,6 +128,23 @@
       font-size: 14px;
     }
 
+    .card-value.clickable {
+      cursor: pointer;
+      padding: 2px 4px;
+      margin: -2px -4px;
+      border-radius: 3px;
+      transition: background 0.15s;
+    }
+
+    .card-value.clickable:hover {
+      background: #e5e7eb;
+    }
+
+    .card-value.copy-success {
+      background: #059669 !important;
+      color: white !important;
+    }
+
     /* Coverage Table */
     .coverage-section {
       background: white;
@@ -176,46 +193,36 @@
       color: #059669;
     }
 
+    .coverage-table td.clickable {
+      cursor: pointer;
+      padding: 4px 8px;
+      margin: -4px -8px;
+      transition: background 0.15s;
+    }
+
+    .coverage-table td.clickable:hover {
+      background: #e5e7eb;
+    }
+
+    .coverage-table td.copy-success {
+      background: #059669 !important;
+      color: white !important;
+    }
+
     /* Scrollable container for table */
     .table-container {
       max-height: 180px;
       overflow-y: auto;
-    }
-
-    /* Raw JSON */
-    #result {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      padding: 12px;
-      max-height: 200px;
-      overflow: auto;
-      font-family: 'Monaco', 'Menlo', monospace;
-      font-size: 10px;
-      color: #1f2937;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    #result.error {
-      background: #fef2f2;
-      border-color: #fecaca;
-      color: #dc2626;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>PDF Quote Extractor</h1>
-    
-    <div class="button-container">
-      <button id="extractBtn">Extract Quote</button>
-    </div>
 
     <div id="status" style="display: none;"></div>
 
     <div id="resultContainer">
-      <!-- Summary Cards -->
       <div class="summary-cards" id="summaryCards"></div>
       
       <!-- Coverage Table -->
@@ -235,8 +242,6 @@
           </table>
         </div>
       </div>
-      
-      <div id="result"></div>
     </div>
   </div>
 
