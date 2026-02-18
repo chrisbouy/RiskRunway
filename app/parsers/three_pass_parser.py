@@ -61,92 +61,194 @@ PASS2_NORMALIZATION_PROMPT = dedent(
     """
     You are normalizing extracted insurance quote data into a standardized JSON schema.
     
-    You will receive structured text from an OCR pass. Your job is to extract and normalize the data.
+    INPUT: OCR text from an insurance quote document
+    OUTPUT: Valid JSON only (no markdown, no explanations)
 
-    CRITICAL RULES (NON-NEGOTIABLE):
-    1. DO NOT GUESS. If a value is ambiguous, implied, or conflicts, return null.
-    2. NEVER place a PERSON'S NAME in any of the following fields:
-       - Carrier
-       - Agent
-       - Broker / General Agent
-       - Any Finance-related field
-       If a person is listed (e.g., "Underwriter: John Smith"), that value MUST be ignored.
-    3. DO NOT merge coverages. Each distinct coverage type MUST be its own object in the policies array.
-    4. Quote numbers may repeat across policies. That is acceptable.
-    5. Fees, taxes, and premiums MUST ONLY be assigned at the policy level if they are explicitly tied to that policy.
-       - If fees or taxes are only shown in totals or summaries, leave policy-level values null.
-    6. Carrier MUST be a COMPANY that ultimately assumes risk.
-       - If multiple entities are mentioned and it is unclear which is the carrier, return null.
-       - "Underwritten by" does NOT automatically mean Carrier.
-    7. Return ONLY valid JSON. No markdown. No explanations.
+═══════════════════════════════════════════════════════════════
+CRITICAL EXTRACTION RULES
+═══════════════════════════════════════════════════════════════
 
-    ENTITY DEFINITIONS:
-    - Insured: the customer purchasing coverage
-    - Agency: the RETAIL agency only
-    - Broker / General Agent: WHOLESALE intermediary company (not a person)
-    - Carrier: insurance company assuming risk (not a syndicate individual, not a person)
+1. ONLY extract values that are EXPLICITLY STATED in the document
+   - If a value is ambiguous, unclear, or requires inference: return null
+   - If multiple conflicting values exist: return null
 
-    EXTRACTION INSTRUCTIONS:
-    - Extract ALL coverage types found anywhere in the document.
-    - Use null for any field not clearly stated.
-    - Include ALL fields in the schema, even if null.
+2. NEVER extract a person's name into company/entity fields
+   - ❌ BAD: "Carrier": "John Smith" 
+   - ✓ GOOD: "Carrier": "Great American Insurance Company"
+   - If only a person is listed, return null for that field
 
-    Return valid JSON only using this exact schema:
-    {
-        "insured": {
-            "name": "string or null",
-            "address": {
-                "street": "string or null",
-                "city": "string or null",
-                "state": "string or null",
-                "zip": "string or null"
-            }
-        },
-        "general_agent_or_wholesale_broker": {
-            "name": "string or null",
-            "agent name": "string or null",
-            "address": {
-                "street": "string or null",
-                "city": "string or null",
-                "state": "string or null",
-                "zip": "string or null"
-            },
-            "phone": "string or null",
-            "fax": "string or null"
-        },
-        "quote_number": "string or null",
-        "account_number": "string or null",
-        "policies": [
-            {
-                "coverage_type": "string or null - e.g. 'General Liability', 'Cyber and Privacy', 'Professional Liability'",
-                "carrier": "string or null - insurance carrier/underwriter name",
-                "policy_number": "string or null - policy or reference number",
-                "effective_date": "string or null - format YYYY-MM-DD",
-                "expiration_date": "string or null - format YYYY-MM-DD",
-                "policy_term": "string or null - e.g. '12 months'",
-                "annual_premium": "number or null - premium amount",
-                "tax": "number or null - tax amount",
-                "fee": "number or null - policy fee",
-                "broker_fee": "number or null - broker/supplier fee",
-                "minimum_earned_percent": "number or null",
-                "minimum_earned_amount": "number or null"
-            }
-        ],
-        "totals": {
-            "total_premium": "number or null",
-            "total_tax": "number or null",
-            "total_fee": "number or null",
-            "total_broker_fee": "number or null",
-            "grand_total": "number or null"
-        },
-        "financing": {
-            "down_payment": "number or null",
-            "amount_financed": "number or null"
+3. Each DISTINCT coverage type must be its own policy object
+   - Do NOT combine or merge coverages
+   - Even if they share the same carrier/dates
+
+4. Policy-level fees/taxes ONLY if explicitly tied to that specific policy
+   - If fees/taxes only appear in a totals section: leave policy fields null
+
+5. Carrier = insurance company that assumes the risk
+   - NOT a person, NOT a syndicate member name
+   - "Underwritten by" ≠ automatically the carrier
+   - If unclear which entity is the carrier: return null
+
+═══════════════════════════════════════════════════════════════
+FIELD EXTRACTION GUIDE (with synonyms)
+═══════════════════════════════════════════════════════════════
+
+INSURED (the customer buying insurance):
+  • Label may appear as: "Insured", "Named Insured", "Applicant", "Borrower", 
+    "Account Name", "Customer", "Firm Name", "DBA", "Policyholder"
+
+GENERAL AGENT / WHOLESALE BROKER (wholesale intermediary, if present):
+  • Company name may appear as: "General Agent", "MGA", "Wholesale Broker", 
+    "Managing General Agent", "Broker", "Surplus Lines Broker"
+  • This is a COMPANY, not a person
+  • This is commonly the company that wrote the quote, NOT the carrier
+  • The "agent name" subfield is for an individual contact person at that company
+
+COVERAGE TYPE:
+  • Normalize to standard terms:
+    - "General Liability" (from: CGL, Commercial General Liability, GL)
+    - "Workers Compensation" (from: WC, Work Comp, Workers Comp)
+    - "Commercial Auto" (from: CA, Business Auto, Auto)
+    - "Commercial Property" (from: CP, Property, Building)
+    - "Professional Liability" (from: E&O, Errors & Omissions)
+    - "Cyber Liability" (from: Cyber, Data Breach, Privacy)
+    - "Directors & Officers" (from: D&O)
+    - "Umbrella" (from: Excess, Umbrella Liability)
+  • Use the standard term in your output, not the abbreviation
+
+CARRIER (insurance company):
+  • Label may appear as: "Carrier", "Underwriter", "Insurer", "Insurance Company", 
+    "Underwriting Company", "Company", "Issuing Company"
+  • Extract the COMPANY NAME, not person names
+  • Common patterns to watch for:
+    - "Underwritten by XYZ Insurance Company" → Carrier: "XYZ Insurance Company"
+    - "Paper: ABC Mutual" → Carrier: "ABC Mutual"
+
+POLICY NUMBER:
+  • May appear as: "Policy No.", "Policy #", "Contract Number", "Reference Number"
+  • Often labeled "TBD" or "To Be Determined" on quotes (extract as-is)
+
+DATES:
+  • Effective Date labels: "Eff Date", "Inception", "Policy Start", "Effective"
+  • Expiration Date labels: "Exp Date", "Expiry", "Policy End", "Expiration"
+  • Format all dates as: YYYY-MM-DD
+  • If you see "12/31/2024", convert to "2024-12-31"
+
+POLICY TERM:
+  • May appear as: "Term", "Policy Period", "Coverage Period"
+  • Extract as stated (e.g., "12 months", "1 year", "6 months")
+
+PREMIUM:
+  • May appear as: "Premium", "Annual Premium", "Total Premium", "Full Term Premium",
+    "Written Premium", "Base Premium"
+  • Extract the FULL TERM amount (not per-payment or per-month)
+
+TAX:
+  • May appear as: "Tax", "Surplus Lines Tax", "SL Tax", "State Tax", "Premium Tax"
+  • May be shown as percentage or dollar amount (extract dollar amount)
+
+FEE:
+  • May appear as: "Fee", "Policy Fee", "Admin Fee", "Inspection Fee"
+  • This is carrier fees, NOT broker fees
+
+BROKER FEE:
+  • May appear as: "Broker Fee", "Supplier Fee", "MGA Fee", "Wholesale Fee"
+  • Separate from policy fees
+
+MINIMUM EARNED:
+  • May appear as: "Minimum Earned", "Min Earned", "Fully Earned", "Short Rate"
+  • Can be percentage (e.g., "90%") or dollar amount
+  • Extract percentage as decimal (90% → 90, not 0.90)
+
+TOTALS SECTION:
+  • Usually at bottom of document in a box, table, or summary
+  • May be labeled: "Summary", "Payment Schedule", "Amount Due", "Total Due"
+  • Extract:
+    - Total Premium (sum of all premiums)
+    - Total Tax (sum of all taxes)
+    - Total Fee (sum of all fees, excluding broker fees)
+    - Total Broker Fee (if shown separately)
+    - Grand Total (final amount due)
+
+DOWN PAYMENT / FINANCING:
+  • May appear as: "Down Payment", "Deposit", "Required Down", "Initial Payment"
+  • Amount Financed may be calculated as: Grand Total - Down Payment
+  • Often NOT shown on quotes (return null if not present)
+
+═══════════════════════════════════════════════════════════════
+OUTPUT JSON SCHEMA
+═══════════════════════════════════════════════════════════════
+
+Return this EXACT structure (all fields required, use null if not found):
+
+{
+    "insured": {
+        "name": "string or null",
+        "address": {
+            "street": "string or null",
+            "city": "string or null",
+            "state": "string or null",
+            "zip": "string or null"
         }
+    },
+    "agency": {
+        "name": "string or null",
+        "code": "string or null",
+        "address": {
+            "street": "string or null",
+            "city": "string or null",
+            "state": "string or null",
+            "zip": "string or null"
+        },
+        "phone": "string or null"
+    },
+    "general_agent_or_wholesale_broker": {
+        "name": "string or null (company name)",
+        "contact_person": "string or null (individual name)",
+        "address": {
+            "street": "string or null",
+            "city": "string or null",
+            "state": "string or null",
+            "zip": "string or null"
+        },
+        "phone": "string or null",
+        "fax": "string or null"
+    },
+    "quote_number": "string or null",
+    "account_number": "string or null",
+    "policies": [
+        {
+            "coverage_type": "string or null (use standard term, not abbreviation)",
+            "carrier": "string or null (company name only)",
+            "policy_number": "string or null",
+            "effective_date": "string or null (YYYY-MM-DD format)",
+            "expiration_date": "string or null (YYYY-MM-DD format)",
+            "policy_term": "string or null",
+            "annual_premium": "number or null",
+            "tax": "number or null",
+            "fee": "number or null",
+            "broker_fee": "number or null",
+            "minimum_earned_percent": "number or null (as whole number, e.g. 90 not 0.90)",
+            "minimum_earned_amount": "number or null"
+        }
+    ],
+    "totals": {
+        "total_premium": "number or null",
+        "total_tax": "number or null",
+        "total_fee": "number or null",
+        "total_broker_fee": "number or null",
+        "grand_total": "number or null"
+    },
+    "financing": {
+        "down_payment": "number or null",
+        "amount_financed": "number or null"
     }
-    
-    Return ONLY valid JSON. No markdown. No explanations.
-    """
+}
+
+═══════════════════════════════════════════════════════════════
+RETURN ONLY VALID JSON - NO MARKDOWN - NO EXPLANATIONS
+═══════════════════════════════════════════════════════════════
+"""
 )
 
 # ============================================================================
