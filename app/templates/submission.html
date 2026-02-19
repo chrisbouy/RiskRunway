@@ -428,6 +428,24 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
+        #combineTotalsBtn {
+            background: var(--color-primary);
+            color: white;
+            font-size: 0.75rem;
+            padding: 0.375rem 0.75rem;
+        }
+
+        #combineTotalsBtn:hover:not(:disabled) {
+            background: var(--color-primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        #combineTotalsBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* Appetite score badge */
         .appetite-badge {
             padding: 0.5rem 1rem;
@@ -652,6 +670,12 @@
             <div id="totalsTable" class="card">
                 <div class="card-header">
                     <h2 class="card-title">Financial Summary</h2>
+                    <button id="combineTotalsBtn" style="display: none;">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Combine Totals
+                    </button>
                 </div>
                 <div class="table-wrapper">
                     <table>
@@ -1074,12 +1098,12 @@
         function populateTotalsTable(allPDFInfo) {
             const header = document.getElementById('totalsHeader');
             const tbody = document.getElementById('totalsBody');
-            
+
             if (allPDFInfo.length === 0) return;
-            
+
             // Create headers
             const totalFields = ['Total Premium', 'Total Tax', 'Total Fee', 'Grand Total', 'Deposit', 'Amount Financed'];
-            
+
             totalFields.forEach(fieldLabel => {
                 const th = document.createElement('th');
                 th.textContent = fieldLabel;
@@ -1098,7 +1122,7 @@
 
                 totalFields.forEach(fieldLabel => {
                     const td = document.createElement('td');
-                    
+
                     let value = null;
                     const fieldMap = {
                         'Total Premium': 'total_premium',
@@ -1108,9 +1132,9 @@
                         'Deposit': 'down_payment',
                         'Amount Financed': 'amount_financed'
                     };
-                    
+
                     const fieldName = fieldMap[fieldLabel];
-                    
+
                     if (fieldName === 'down_payment' || fieldName === 'amount_financed') {
                         if (data.financing) {
                             value = data.financing[fieldName] || null;
@@ -1127,6 +1151,96 @@
 
                 tbody.appendChild(dataRow);
             });
+
+            // Update combine button state
+            updateCombineTotalsButton();
+        }
+
+        function updateCombineTotalsButton() {
+            const tbody = document.getElementById('totalsBody');
+            const combineBtn = document.getElementById('combineTotalsBtn');
+            const rowCount = tbody.querySelectorAll('tr').length;
+
+            if (rowCount > 1) {
+                combineBtn.style.display = 'inline-flex';
+                combineBtn.disabled = false;
+            } else if (rowCount === 1) {
+                combineBtn.style.display = 'inline-flex';
+                combineBtn.disabled = true;
+            } else {
+                combineBtn.style.display = 'none';
+            }
+        }
+
+        function combineTotals() {
+            const tbody = document.getElementById('totalsBody');
+            const rows = tbody.querySelectorAll('tr');
+
+            if (rows.length <= 1) return;
+
+            const totalFields = ['Total Premium', 'Total Tax', 'Total Fee', 'Grand Total', 'Deposit', 'Amount Financed'];
+            const combinedValues = {};
+
+            // Initialize combined values
+            totalFields.forEach(field => {
+                combinedValues[field] = 0;
+            });
+
+            // Sum up all values from all rows
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                cells.forEach((cell, index) => {
+                    const fieldLabel = totalFields[index];
+                    const valueSpan = cell.querySelector('.field-value');
+                    if (valueSpan) {
+                        const textContent = valueSpan.textContent.trim();
+                        // Skip null values and extract numeric value
+                        if (textContent !== 'null') {
+                            // Remove currency symbols, commas, and extract number
+                            const numericValue = parseFloat(textContent.replace(/[$,]/g, ''));
+                            if (!isNaN(numericValue)) {
+                                combinedValues[fieldLabel] += numericValue;
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Clear the table body
+            tbody.innerHTML = '';
+
+            // Create a single combined row
+            const combinedRow = document.createElement('tr');
+            combinedRow.className = 'quote-color-0'; // Use first color
+
+            totalFields.forEach(fieldLabel => {
+                const td = document.createElement('td');
+                const value = combinedValues[fieldLabel];
+
+                // Format the value (preserve original format if it was currency)
+                let formattedValue;
+                if (value === 0) {
+                    formattedValue = 'null';
+                } else {
+                    // Check if original values had $ sign by looking at first row
+                    formattedValue = value.toFixed(2);
+                    // Add $ if it looks like currency
+                    if (fieldLabel.includes('Premium') || fieldLabel.includes('Tax') ||
+                        fieldLabel.includes('Fee') || fieldLabel.includes('Total') ||
+                        fieldLabel.includes('Deposit') || fieldLabel.includes('Financed')) {
+                        formattedValue = '$' + formattedValue;
+                    }
+                }
+
+                td.innerHTML = `<span class="field-value">${formattedValue === 'null' ? '<span class="text-gray-400">null</span>' : formattedValue}</span>`;
+                td.onclick = () => copyToClipboard(formattedValue, td);
+                combinedRow.appendChild(td);
+            });
+
+            tbody.appendChild(combinedRow);
+
+            // Update button state
+            updateCombineTotalsButton();
         }
 
         // Track original status
@@ -1181,6 +1295,11 @@
         // Cancel button handler
         document.getElementById('cancelBtn').addEventListener('click', function() {
             window.location.href = '/';
+        });
+
+        // Combine totals button handler
+        document.getElementById('combineTotalsBtn').addEventListener('click', function() {
+            combineTotals();
         });
 
         // Load submission data on page load

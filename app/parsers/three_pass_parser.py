@@ -19,8 +19,6 @@ from app.parsers.llm_parsers import GeminiClient, GroqClient
 import settings
 import pdfplumber
 import pytesseract
-from PIL import Image, ImageEnhance, ImageFilter
-import io
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 
@@ -310,6 +308,70 @@ def get_llm_client():
 # ============================================================================
 # Processing Functions
 # ============================================================================
+def _find_last_relevant_page(pdf_path):
+    """
+    Quick scan to find the last page with financial data.
+    Looks for actual financial summary patterns, not just generic keywords.
+
+    Returns:
+        int: Last page number to process (1-indexed), or total pages if not found
+    """
+    import re
+
+    last_relevant_page = 0
+
+    with pdfplumber.open(pdf_path) as pdf:
+        total_pages = len(pdf.pages)
+        print(f"  Quick scan: checking {total_pages} pages for financial data...")
+
+        for page_num, page in enumerate(pdf.pages, start=1):
+            # Try text extraction first (fast for digital PDFs)
+            page_text = page.extract_text()
+
+            if not page_text or len(page_text.strip()) < 50:
+                # Scanned page - do quick low-res OCR
+                try:
+                    page_image = page.to_image(resolution=150).original  # Low res for speed
+                    config = '--oem 3 --psm 6'
+                    page_text = pytesseract.image_to_string(page_image, config=config)
+                except:
+                    page_text = ""
+
+            # Look for actual financial data patterns (dollar amounts with context)
+            # These patterns indicate real financial summaries, not just headers
+            page_text_lower = page_text.lower()
+
+            # Pattern 1: Dollar amounts near financial terms (e.g., "Total: $3,255.20")
+            has_financial_amount = bool(re.search(r'(total|premium|tax|fee|deposit|financed|due)[\s:$]*\$?\d+[,\d]*\.?\d*', page_text_lower))
+
+            # Pattern 2: Multiple dollar amounts (indicates a financial table/summary)
+            dollar_amounts = re.findall(r'\$\s*\d+[,\d]*\.?\d{2}', page_text)
+            has_multiple_amounts = len(dollar_amounts) >= 3
+
+            # Pattern 3: Specific financial summary phrases
+            summary_phrases = [
+                'grand total', 'total payable', 'amount financed',
+                'down payment', 'payment schedule', 'total due',
+                'premium breakdown', 'total premium', 'total tax', 'total fee'
+            ]
+            has_summary_phrase = any(phrase in page_text_lower for phrase in summary_phrases)
+
+            # Page is relevant if it has financial amounts AND context
+            if (has_financial_amount and has_multiple_amounts) or has_summary_phrase:
+                last_relevant_page = page_num
+                print(f"    Page {page_num}: Found financial data")
+
+        if last_relevant_page == 0:
+            # No financial data found, process first 3 pages only (safety fallback)
+            # Most quotes have financial data on first page
+            fallback_pages = min(3, total_pages)
+            print(f"  ⚠️  No financial data detected, processing first {fallback_pages} pages as fallback")
+            return fallback_pages
+        else:
+            # No buffer needed - we're detecting actual financial content, not just keywords
+            print(f"  ✓ Last financial data on page {last_relevant_page}, will process {last_relevant_page}/{total_pages} pages")
+            return last_relevant_page
+
 def pass1_extract_layout(pdf_path):
     """
     Pass 1: Extract text and layout from PDF using classic OCR (pdfplumber + pytesseract)
@@ -322,8 +384,16 @@ def pass1_extract_layout(pdf_path):
     """
     pages_data = []
 
+    # First, find the last relevant page to avoid processing useless pages
+    last_page_to_process = _find_last_relevant_page(pdf_path)
+
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
+            # Skip pages after financial data
+            if page_num > last_page_to_process:
+                print(f"  Skipping page {page_num} (after financial data)")
+                continue
+
             print(f"  Processing page {page_num}...")
 
             # Try text extraction first (for digital PDFs)
@@ -337,88 +407,36 @@ def pass1_extract_layout(pdf_path):
                     "text": page_text
                 })
             else:
-                # Scanned PDF - use OCR
-                print(f"    No text found, using OCR...actually skipping OCR for now")
+                # Scanned PDF - use OCR (single fast pass at full resolution)
+                print(f"    ⚠️  Scanned PDF, using OCR...")
 
-                # Convert page to image at high resolution
-                # page_image = page.to_image(resolution=300).original
+                # Convert page to image at 300 DPI (good balance of quality/speed)
+                page_image = page.to_image(resolution=300).original
 
-                # # Try multiple preprocessing methods
-                # best_text = ""
-                # best_char_count = 0
+                # Single-pass OCR with best settings for insurance docs
+                # PSM 6 = uniform block of text (best for structured documents)
+                # OEM 3 = default (LSTM + legacy)
+                try:
+                    config = '--oem 3 --psm 6'
+                    text = pytesseract.image_to_string(page_image, config=config)
+                    char_count = len(text)
+                    print(f"    ✓ OCR extracted {char_count} chars")
 
-                # for method_name, preprocess_func in [
-                #     ("high_contrast", _preprocess_high_contrast),
-                #     ("moderate", _preprocess_moderate),
-                #     ("minimal", _preprocess_minimal)
-                # ]:
-                #     img = preprocess_func(page_image)
-
-                #     # Try different Tesseract PSM modes
-                #     for psm in [6, 11]:  # 6=uniform block, 11=sparse text
-                #         try:
-                #             config = f'--oem 3 --psm {psm}'
-                #             text = pytesseract.image_to_string(img, config=config)
-
-                #             if len(text) > best_char_count:
-                #                 best_char_count = len(text)
-                #                 best_text = text
-                #         except Exception as e:
-                #             print(f"      Error with {method_name} PSM {psm}: {e}")
-
-                # print(f"    ✓ OCR extracted {best_char_count} chars")
-                # pages_data.append({
-                #     "page_number": page_num,
-                #     "text": best_text
-                # })
+                    pages_data.append({
+                        "page_number": page_num,
+                        "text": text
+                    })
+                except Exception as e:
+                    print(f"    ✗ OCR failed: {e}")
+                    # Add empty page so we don't skip it entirely
+                    pages_data.append({
+                        "page_number": page_num,
+                        "text": ""
+                    })
 
     return {
         "pages": pages_data
     }
-
-def _preprocess_high_contrast(image):
-    """High contrast preprocessing for OCR"""
-    if not isinstance(image, Image.Image):
-        image = Image.open(io.BytesIO(image))
-
-    img = image.convert('L')
-
-    # Increase contrast
-    enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(2.5)
-
-    # Increase sharpness
-    enhancer = ImageEnhance.Sharpness(img)
-    img = enhancer.enhance(2.0)
-
-    # Threshold
-    img = img.point(lambda x: 0 if x < 128 else 255, '1')
-
-    return img
-
-def _preprocess_moderate(image):
-    """Moderate preprocessing for OCR"""
-    if not isinstance(image, Image.Image):
-        image = Image.open(io.BytesIO(image))
-
-    img = image.convert('L')
-
-    # Slight contrast boost
-    enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(1.5)
-
-    # Denoise
-    img = img.filter(ImageFilter.MedianFilter(size=3))
-
-    return img
-
-def _preprocess_minimal(image):
-    """Minimal preprocessing for OCR"""
-    if not isinstance(image, Image.Image):
-        image = Image.open(io.BytesIO(image))
-
-    # Just convert to grayscale
-    return image.convert('L')
 
 def pass2_normalize_data(layout_data):
     """
