@@ -457,6 +457,10 @@
         });
 
         newSubmissionDropzone.on("addedfile", function(file) {
+            // Start timer
+            const uploadStartTime = performance.now();
+            console.log(`⏱️  Upload started: ${file.name}`);
+
             // Auto-upload when file is added
             const formData = new FormData();
             formData.append('file', file);
@@ -467,9 +471,19 @@
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                const uploadEndTime = performance.now();
+                const uploadDuration = ((uploadEndTime - uploadStartTime) / 1000).toFixed(2);
+                console.log(`⏱️  Server processing complete: ${uploadDuration}s`);
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
+                    const totalEndTime = performance.now();
+                    const totalDuration = ((totalEndTime - uploadStartTime) / 1000).toFixed(2);
+                    console.log(`⏱️  Total time (upload → redirect): ${totalDuration}s`);
+                    console.log(`✅ Redirecting to submission page...`);
+
                     // Redirect to the new submission
                     window.location.href = `/submission/${data.submission_id}`;
                 } else {
@@ -479,7 +493,9 @@
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
+                const errorTime = performance.now();
+                const errorDuration = ((errorTime - uploadStartTime) / 1000).toFixed(2);
+                console.error(`❌ Upload failed after ${errorDuration}s:`, error);
                 alert('Upload failed');
                 document.getElementById('newSubmissionModal').classList.add('hidden');
                 newSubmissionDropzone.removeAllFiles();

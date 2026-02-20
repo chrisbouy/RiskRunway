@@ -372,6 +372,53 @@ def _find_last_relevant_page(pdf_path):
             print(f"  ✓ Last financial data on page {last_relevant_page}, will process {last_relevant_page}/{total_pages} pages")
             return last_relevant_page
 
+def _is_text_garbage(text):
+    """
+    Check if extracted text is garbage/unreadable.
+
+    Returns True if text appears to be garbled, encoded incorrectly, or unusable.
+    """
+    if not text or len(text.strip()) < 50:
+        return True
+
+    # Check for CID encoding artifacts (common in PDFs with font issues)
+    # Pattern: (cid:0), (cid:1), etc.
+    if '(cid:' in text:
+        cid_count = text.count('(cid:')
+        # If more than 5% of text is CID references, it's garbage
+        if cid_count > len(text) * 0.05 / 7:  # Each CID is ~7 chars
+            return True
+
+    # Count readable ASCII characters vs total characters
+    readable_chars = sum(1 for c in text if c.isalnum() or c.isspace() or c in '.,;:!?-$()[]{}/@#%&*+=')
+    total_chars = len(text)
+
+    if total_chars == 0:
+        return True
+
+    readable_ratio = readable_chars / total_chars
+
+    # If less than 70% of characters are readable, it's probably garbage
+    if readable_ratio < 0.7:
+        return True
+
+    # Check for excessive special characters or encoding artifacts
+    # Common garbage patterns: lots of �, ?, boxes, etc.
+    garbage_chars = text.count('�') + text.count('\ufffd')
+    if garbage_chars > total_chars * 0.1:  # More than 10% garbage chars
+        return True
+
+    # Check if text has reasonable word-like patterns
+    # Split by whitespace and count "words" (sequences with letters)
+    words = text.split()
+    word_like = sum(1 for w in words if any(c.isalpha() for c in w))
+
+    if len(words) > 10 and word_like / len(words) < 0.5:
+        # Less than 50% of tokens look like words
+        return True
+
+    return False
+
 def pass1_extract_layout(pdf_path):
     """
     Pass 1: Extract text and layout from PDF using classic OCR (pdfplumber + pytesseract)
@@ -399,16 +446,20 @@ def pass1_extract_layout(pdf_path):
             # Try text extraction first (for digital PDFs)
             page_text = page.extract_text()
 
-            if page_text and len(page_text.strip()) > 50:
-                # Digital PDF with extractable text
+            # Check if extracted text is usable or garbage
+            if page_text and not _is_text_garbage(page_text):
+                # Digital PDF with good extractable text
                 print(f"    ✓ Extracted {len(page_text)} chars via text extraction")
                 pages_data.append({
                     "page_number": page_num,
                     "text": page_text
                 })
             else:
-                # Scanned PDF - use OCR (single fast pass at full resolution)
-                print(f"    ⚠️  Scanned PDF, using OCR...")
+                # Either no text, or garbage text - use OCR
+                if page_text:
+                    print(f"    ⚠️  Extracted text is garbage/unreadable, using OCR...")
+                else:
+                    print(f"    ⚠️  Scanned PDF, using OCR...")
 
                 # Convert page to image at 300 DPI (good balance of quality/speed)
                 page_image = page.to_image(resolution=300).original
