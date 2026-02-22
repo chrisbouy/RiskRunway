@@ -94,13 +94,38 @@ FIELD EXTRACTION GUIDE (with synonyms)
 INSURED (the customer buying insurance):
   • Label may appear as: "Insured", "Named Insured", "Applicant", "Borrower", 
     "Account Name", "Customer", "Firm Name", "DBA", "Policyholder"
-
-GENERAL AGENT / WHOLESALE BROKER (wholesale intermediary, if present):
-  • Company name may appear as: "General Agent", "MGA", "Wholesale Broker", 
-    "Managing General Agent", "Broker", "Surplus Lines Broker"
+    
+RETAIL AGENT (local insurance agency working directly with customer):
+  • Company name may appear as: "Agent", "Insurance Agent", "Local Agent", 
+    "Producer", "Retail Agent", "Producing Agent", "Agency of Record"
   • This is a COMPANY, not a person
-  • This is commonly the company that wrote the quote, NOT the carrier
-  • The "agent name" subfield is for an individual contact person at that company
+  • Usually located in the SAME STATE as the insured
+  • May have a "Producer Code" or "Agent Code"
+
+GENERAL AGENT / WHOLESALE BROKER (wholesale intermediary between retail agent and carrier):
+  • Company name may appear as: "General Agent", "MGA", "Wholesale Broker", 
+    "Managing General Agent", "Surplus Lines Broker", "Program Administrator"
+  • This is a COMPANY, not a person
+  • Often located in a DIFFERENT STATE than the insured
+  • May have "Surplus Lines License" or "SL License"
+  • Usually appears alongside a separate "Retail Agent" label
+
+DISAMBIGUATION RULES (when BOTH appear on same quote):
+  1. If you see TWO distinct agencies listed:
+     • The one labeled "Retail Agent", "Producer", or "Local Agent" → retail_agent
+     • The one labeled "Surplus Lines Broker", "Wholesale Broker", or "MGA" → general_agent_or_wholesale_broker
+  
+  2. Geographic matching:
+     • Retail agent typically in SAME STATE as insured
+     • Wholesale broker typically in DIFFERENT STATE
+  
+  3. License indicators:
+     • "Surplus Lines License #" or "SL License" → Wholesale broker
+     • "Producer Code" or "Agent Code" → Retail agent
+  
+  4. If only ONE agency appears:
+     • Put it in retail_agent
+     • Leave general_agent_or_wholesale_broker as null
 
 COVERAGE TYPE:
   • Normalize to standard terms:
@@ -189,8 +214,8 @@ Return this EXACT structure (all fields required, use null if not found):
             "zip": "string or null"
         }
     },
-    "agency": {
-        "name": "string or null",
+    "retail_agent": {
+        "name": "string or null (company name)",
         "code": "string or null",
         "address": {
             "street": "string or null",
@@ -202,7 +227,6 @@ Return this EXACT structure (all fields required, use null if not found):
     },
     "general_agent_or_wholesale_broker": {
         "name": "string or null (company name)",
-        "contact_person": "string or null (individual name)",
         "address": {
             "street": "string or null",
             "city": "string or null",

@@ -339,7 +339,9 @@ def upload_quote():
             # intent_data = three_pass_result['pass3_intent']
 
             print(f"\n📊 Three-Pass Processing Results:")
-            print(f"parsed_data: {parsed_data}")
+
+            print("parsed_data:")
+            print(json.dumps(parsed_data, indent=2))
             # print(f"  Pass 1: Extracted {layout_data.get('total_pages', 0)} pages")
             # print(f"  Pass 2: Found {len(parsed_data.get('policies', []))} policies")
             # print(f"  Pass 3: Intent = {intent_data.get('quote_intent')}, Confidence = {intent_data.get('confidence')}")

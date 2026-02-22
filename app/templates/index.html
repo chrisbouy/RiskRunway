@@ -267,12 +267,16 @@
             displayCompactField('Address', fullAddress, container);
 
             // Agency
-            const agencyName = data.general_agent_or_wholesale_broker?.name || null;
-            displayCompactField('General Agent / Broker', agencyName, container);
+            const agencyName = data.retail_agent?.name || null;
+            displayCompactField('Agency', agencyName, container);
 
             // Agency Phone
-            const agencyPhone = data.general_agent_or_wholesale_broker?.phone || null;
+            const agencyPhone = data.retail_agent?.phone || null;
             displayCompactField('Agency Phone', agencyPhone, container);
+
+            const agencyName = data.general_agent_or_wholesale_broker?.name || null;
+            displayCompactField('MGA / Wholesale Broker', agencyName, container);
+
 
             // Quote Number
             displayCompactField('Quote #', data.quote_number || null, container);

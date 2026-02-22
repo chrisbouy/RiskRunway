@@ -1015,9 +1015,9 @@
             const headerFields = [
                 'Insured Name',
                 'Address',
-                'Agent Name',
-                'General Agent / Broker',
+                'Agency',
                 'Agency Phone',
+                'MGA / Wholesale Broker',
                 'Quote #',
                 'Account #'
             ];
@@ -1043,9 +1043,9 @@
                         }
                         return null;
                     })() },
-                    { label: 'Agent Name', value: data.general_agent_or_wholesale_broker?.['agent name'] || null },
-                    { label: 'General Agent / Broker', value: data.general_agent_or_wholesale_broker?.name || null },
-                    { label: 'Agency Phone', value: data.general_agent_or_wholesale_broker?.phone || null },
+                    { label: 'Agency', value: data.retail_agent?.name || null },
+                    { label: 'Agency Phone', value: data.retail_agent?.phone || null },
+                    { label: 'General Agent / Wholesale Broker', value: data.general_agent_or_wholesale_broker?.name || null },
                     { label: 'Quote #', value: data.quote_number || null },
                     { label: 'Account #', value: data.account_number || null }
                 ];
