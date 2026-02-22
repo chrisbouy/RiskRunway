@@ -14,6 +14,14 @@ class Config:
     # Database settings
     DATABASE_PATH = os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
 
+    # Bug report email settings
+    BUG_REPORT_RECIPIENT = os.environ.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
+    BUG_REPORT_SMTP_HOST = os.environ.get('BUG_REPORT_SMTP_HOST', 'smtp.gmail.com')
+    BUG_REPORT_SMTP_PORT = int(os.environ.get('BUG_REPORT_SMTP_PORT', 587))
+    BUG_REPORT_SMTP_USER = os.getenv('EMAIL_HOST_USER')
+    BUG_REPORT_SMTP_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+    BUG_REPORT_SMTP_USE_TLS = os.environ.get('BUG_REPORT_SMTP_USE_TLS', 'true').lower() == 'true'
+
     # Premium Finance Appetite Scoring Rules
     # Score range: 0-100 (higher = better appetite)
     PF_APPETITE_RULES = {

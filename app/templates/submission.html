@@ -446,6 +446,17 @@
             cursor: not-allowed;
         }
 
+        #reportBugBtn {
+            background: var(--color-danger);
+            color: white;
+        }
+
+        #reportBugBtn:hover {
+            background: #b91c1c;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
         /* Appetite score badge */
         .appetite-badge {
             padding: 0.5rem 1rem;
@@ -568,6 +579,135 @@
             margin: 0.125rem 0;
             color: var(--color-neutral-600);
         }
+
+        /* Bug report modal */
+        .bug-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+        }
+
+        .bug-modal {
+            width: min(1200px, 100%);
+            max-height: 92vh;
+            background: white;
+            border-radius: 0.5rem;
+            border: 1px solid var(--color-neutral-200);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            overflow: hidden;
+        }
+
+        .bug-modal-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--color-neutral-200);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .bug-modal-title {
+            font-size: 0.938rem;
+            font-weight: 700;
+            color: var(--color-neutral-800);
+        }
+
+        .bug-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            padding: 0.625rem 1rem;
+            border-bottom: 1px solid var(--color-neutral-200);
+            background: var(--color-neutral-50);
+        }
+
+        .bug-toolbar button {
+            background: white;
+            color: var(--color-neutral-700);
+            border: 1px solid var(--color-neutral-300);
+            font-size: 0.75rem;
+            padding: 0.313rem 0.625rem;
+        }
+
+        .bug-toolbar button.active {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+            background: #eff6ff;
+        }
+
+        .bug-canvas-wrap {
+            overflow: auto;
+            padding: 0.75rem;
+            background: #eef2ff;
+            text-align: center;
+        }
+
+        #bugCanvas {
+            max-width: 100%;
+            border: 1px solid var(--color-neutral-300);
+            background: white;
+            cursor: crosshair;
+        }
+
+        .bug-modal-footer {
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--color-neutral-200);
+            display: grid;
+            gap: 0.625rem;
+        }
+
+        .bug-form-row {
+            display: grid;
+            gap: 0.375rem;
+        }
+
+        .bug-form-row label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--color-neutral-700);
+        }
+
+        .bug-form-row select,
+        .bug-form-row textarea {
+            width: 100%;
+            border: 1px solid var(--color-neutral-300);
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.625rem;
+            font-size: 0.813rem;
+            font-family: 'IBM Plex Sans', sans-serif;
+            background: white;
+        }
+
+        .bug-form-row textarea {
+            min-height: 90px;
+            resize: vertical;
+        }
+
+        .bug-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        #submitBugBtn {
+            background: var(--color-danger);
+            color: white;
+        }
+
+        #submitBugBtn:hover:not(:disabled) {
+            background: #b91c1c;
+        }
+
+        #closeBugModalBtn {
+            background: var(--color-neutral-500);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -602,6 +742,7 @@
                         Save
                     </button>
                     <button id="cancelBtn">Cancel</button>
+                    <button id="reportBugBtn">Report Bug</button>
                 </div>
             </div>
         </div>
@@ -693,7 +834,42 @@
         </div>
     </div>
 
+    <div id="bugModalBackdrop" class="bug-modal-backdrop">
+        <div class="bug-modal">
+            <div class="bug-modal-header">
+                <h3 class="bug-modal-title">Report Bug</h3>
+            </div>
+            <div class="bug-toolbar" id="bugToolbar">
+                <button type="button" data-tool="pen" class="active">Pen</button>
+                <button type="button" data-tool="highlighter">Highlighter</button>
+                <button type="button" data-tool="rect">Rectangle</button>
+                <button type="button" data-tool="circle">Circle</button>
+                <button type="button" data-tool="text">Text</button>
+                <button type="button" id="bugUndoBtn">Undo</button>
+                <button type="button" id="bugClearBtn">Clear</button>
+            </div>
+            <div class="bug-canvas-wrap">
+                <canvas id="bugCanvas"></canvas>
+            </div>
+            <div class="bug-modal-footer">
+                <div class="bug-form-row">
+                    <label for="bugQuoteSelect">Quote Being Tested</label>
+                    <select id="bugQuoteSelect"></select>
+                </div>
+                <div class="bug-form-row">
+                    <label for="bugDescription">Issue Description</label>
+                    <textarea id="bugDescription" placeholder="What went wrong and what did you expect?"></textarea>
+                </div>
+                <div class="bug-modal-actions">
+                    <button type="button" id="closeBugModalBtn">Close</button>
+                    <button type="button" id="submitBugBtn">Send Bug Report</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
         Dropzone.autoDiscover = false;
 
@@ -701,6 +877,154 @@
         const submissionId = parseInt('{{ submission_id }}');
         let submissionData = null;
         let quotes = [];
+        const bugState = {
+            activeTool: 'pen',
+            annotations: [],
+            drawing: false,
+            startX: 0,
+            startY: 0,
+            currentAnnotation: null,
+            baseImage: null
+        };
+
+        const bugModalBackdrop = document.getElementById('bugModalBackdrop');
+        const bugCanvas = document.getElementById('bugCanvas');
+        const bugCtx = bugCanvas.getContext('2d');
+        const bugToolbar = document.getElementById('bugToolbar');
+        const bugQuoteSelect = document.getElementById('bugQuoteSelect');
+        const bugDescription = document.getElementById('bugDescription');
+
+        function getQuoteLabel(quote) {
+            const filename = quote.raw_document_path ? quote.raw_document_path.split('/').pop() : `Quote ${quote.id}`;
+            const carrier = quote.carrier_name || 'Unknown Carrier';
+            return `${filename} (${carrier})`;
+        }
+
+        function applyBugToolButtonState() {
+            bugToolbar.querySelectorAll('button[data-tool]').forEach(btn => {
+                const isActive = btn.dataset.tool === bugState.activeTool;
+                btn.classList.toggle('active', isActive);
+            });
+        }
+
+        function drawSingleAnnotation(annotation) {
+            bugCtx.save();
+            if (annotation.type === 'path') {
+                bugCtx.globalAlpha = annotation.mode === 'highlighter' ? 0.3 : 1;
+                bugCtx.strokeStyle = annotation.mode === 'highlighter' ? '#facc15' : '#dc2626';
+                bugCtx.lineWidth = annotation.mode === 'highlighter' ? 16 : 3;
+                bugCtx.lineCap = 'round';
+                bugCtx.lineJoin = 'round';
+                bugCtx.beginPath();
+                annotation.points.forEach((point, index) => {
+                    if (index === 0) {
+                        bugCtx.moveTo(point.x, point.y);
+                    } else {
+                        bugCtx.lineTo(point.x, point.y);
+                    }
+                });
+                bugCtx.stroke();
+            } else if (annotation.type === 'rect') {
+                bugCtx.strokeStyle = '#dc2626';
+                bugCtx.lineWidth = 3;
+                bugCtx.strokeRect(annotation.x, annotation.y, annotation.w, annotation.h);
+            } else if (annotation.type === 'circle') {
+                bugCtx.strokeStyle = '#dc2626';
+                bugCtx.lineWidth = 3;
+                bugCtx.beginPath();
+                bugCtx.ellipse(
+                    annotation.cx,
+                    annotation.cy,
+                    Math.abs(annotation.rx),
+                    Math.abs(annotation.ry),
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                bugCtx.stroke();
+            } else if (annotation.type === 'text') {
+                bugCtx.fillStyle = '#dc2626';
+                bugCtx.font = '18px "IBM Plex Sans", sans-serif';
+                bugCtx.fillText(annotation.text, annotation.x, annotation.y);
+            }
+            bugCtx.restore();
+        }
+
+        function renderBugCanvas() {
+            if (!bugState.baseImage) return;
+            bugCtx.clearRect(0, 0, bugCanvas.width, bugCanvas.height);
+            bugCtx.drawImage(bugState.baseImage, 0, 0, bugCanvas.width, bugCanvas.height);
+            bugState.annotations.forEach(drawSingleAnnotation);
+            if (bugState.currentAnnotation) {
+                drawSingleAnnotation(bugState.currentAnnotation);
+            }
+        }
+
+        function getCanvasPoint(event) {
+            const rect = bugCanvas.getBoundingClientRect();
+            const scaleX = bugCanvas.width / rect.width;
+            const scaleY = bugCanvas.height / rect.height;
+            return {
+                x: (event.clientX - rect.left) * scaleX,
+                y: (event.clientY - rect.top) * scaleY
+            };
+        }
+
+        async function buildBugScreenshot() {
+            const screenshotTarget = document.body;
+            const captureCanvas = await html2canvas(screenshotTarget, {
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                scrollX: 0,
+                scrollY: -window.scrollY
+            });
+
+            const maxWidth = 1600;
+            const scale = Math.min(1, maxWidth / captureCanvas.width);
+            bugCanvas.width = Math.max(1, Math.round(captureCanvas.width * scale));
+            bugCanvas.height = Math.max(1, Math.round(captureCanvas.height * scale));
+
+            const baseDataUrl = captureCanvas.toDataURL('image/png');
+            const image = new Image();
+            image.src = baseDataUrl;
+            await image.decode();
+            bugState.baseImage = image;
+            bugState.annotations = [];
+            bugState.currentAnnotation = null;
+            renderBugCanvas();
+        }
+
+        async function openBugModal() {
+            if (!quotes.length) {
+                alert('No quotes available to report.');
+                return;
+            }
+
+            bugQuoteSelect.innerHTML = '';
+            quotes.forEach((quote) => {
+                const option = document.createElement('option');
+                option.value = quote.id;
+                option.textContent = getQuoteLabel(quote);
+                bugQuoteSelect.appendChild(option);
+            });
+
+            bugDescription.value = '';
+
+            try {
+                await buildBugScreenshot();
+                bugModalBackdrop.style.display = 'flex';
+            } catch (error) {
+                console.error('Error generating screenshot:', error);
+                alert('Could not capture screenshot for bug report.');
+            }
+        }
+
+        function closeBugModal() {
+            bugModalBackdrop.style.display = 'none';
+            bugState.annotations = [];
+            bugState.currentAnnotation = null;
+        }
 
         // Load submission data on page load
         async function loadSubmission() {
@@ -1317,6 +1641,160 @@
         document.getElementById('combineTotalsBtn').addEventListener('click', function() {
             combineTotals();
         });
+
+        // Report bug handlers
+        document.getElementById('reportBugBtn').addEventListener('click', function() {
+            openBugModal();
+        });
+
+        document.getElementById('closeBugModalBtn').addEventListener('click', function() {
+            closeBugModal();
+        });
+
+        document.getElementById('bugUndoBtn').addEventListener('click', function() {
+            bugState.annotations.pop();
+            renderBugCanvas();
+        });
+
+        document.getElementById('bugClearBtn').addEventListener('click', function() {
+            bugState.annotations = [];
+            bugState.currentAnnotation = null;
+            renderBugCanvas();
+        });
+
+        bugToolbar.addEventListener('click', function(event) {
+            const button = event.target.closest('button[data-tool]');
+            if (!button) return;
+            bugState.activeTool = button.dataset.tool;
+            applyBugToolButtonState();
+        });
+
+        bugCanvas.addEventListener('mousedown', function(event) {
+            const point = getCanvasPoint(event);
+            bugState.startX = point.x;
+            bugState.startY = point.y;
+
+            if (bugState.activeTool === 'text') {
+                const text = prompt('Add text annotation:');
+                if (text && text.trim()) {
+                    bugState.annotations.push({
+                        type: 'text',
+                        x: point.x,
+                        y: point.y,
+                        text: text.trim()
+                    });
+                    renderBugCanvas();
+                }
+                return;
+            }
+
+            bugState.drawing = true;
+            if (bugState.activeTool === 'pen' || bugState.activeTool === 'highlighter') {
+                bugState.currentAnnotation = {
+                    type: 'path',
+                    mode: bugState.activeTool,
+                    points: [point]
+                };
+            } else if (bugState.activeTool === 'rect') {
+                bugState.currentAnnotation = {
+                    type: 'rect',
+                    x: point.x,
+                    y: point.y,
+                    w: 0,
+                    h: 0
+                };
+            } else if (bugState.activeTool === 'circle') {
+                bugState.currentAnnotation = {
+                    type: 'circle',
+                    cx: point.x,
+                    cy: point.y,
+                    rx: 0,
+                    ry: 0
+                };
+            }
+            renderBugCanvas();
+        });
+
+        bugCanvas.addEventListener('mousemove', function(event) {
+            if (!bugState.drawing || !bugState.currentAnnotation) return;
+            const point = getCanvasPoint(event);
+            const active = bugState.currentAnnotation;
+
+            if (active.type === 'path') {
+                active.points.push(point);
+            } else if (active.type === 'rect') {
+                active.w = point.x - bugState.startX;
+                active.h = point.y - bugState.startY;
+            } else if (active.type === 'circle') {
+                active.cx = (bugState.startX + point.x) / 2;
+                active.cy = (bugState.startY + point.y) / 2;
+                active.rx = (point.x - bugState.startX) / 2;
+                active.ry = (point.y - bugState.startY) / 2;
+            }
+
+            renderBugCanvas();
+        });
+
+        function finalizeBugDrawing() {
+            if (!bugState.drawing) return;
+            if (bugState.currentAnnotation) {
+                bugState.annotations.push(bugState.currentAnnotation);
+            }
+            bugState.currentAnnotation = null;
+            bugState.drawing = false;
+            renderBugCanvas();
+        }
+
+        bugCanvas.addEventListener('mouseup', finalizeBugDrawing);
+        bugCanvas.addEventListener('mouseleave', finalizeBugDrawing);
+
+        document.getElementById('submitBugBtn').addEventListener('click', async function() {
+            const quoteId = parseInt(bugQuoteSelect.value, 10);
+            if (!quoteId) {
+                alert('Select the quote being tested.');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBugBtn');
+            submitBtn.disabled = true;
+
+            try {
+                const screenshotDataUrl = bugCanvas.toDataURL('image/png');
+                const response = await fetch(`/api/submission/${submissionId}/report_bug`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        quote_id: quoteId,
+                        description: bugDescription.value.trim(),
+                        screenshot_data_url: screenshotDataUrl,
+                        page_url: window.location.href
+                    })
+                });
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to send bug report');
+                }
+
+                alert('Bug report sent.');
+                closeBugModal();
+            } catch (error) {
+                console.error('Error sending bug report:', error);
+                alert('Could not send bug report: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && bugModalBackdrop.style.display === 'flex') {
+                closeBugModal();
+            }
+        });
+
+        applyBugToolButtonState();
 
         // Load submission data on page load
         loadSubmission();

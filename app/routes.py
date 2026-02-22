@@ -3,9 +3,12 @@ from flask import Blueprint, render_template, request, jsonify, current_app, ses
 import os
 import json
 import requests
+import base64
+import smtplib
 from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
+from email.message import EmailMessage
 from app.parsers.three_pass_parser import process_quote_three_pass
 from app.database import (
     get_all_submissions,
@@ -18,6 +21,40 @@ from app.database import (
 from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole
 
 bp = Blueprint('main', __name__)
+
+
+def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_filename):
+    """Send bug report email with screenshot attachment."""
+    smtp_host = current_app.config.get('BUG_REPORT_SMTP_HOST')
+    smtp_port = current_app.config.get('BUG_REPORT_SMTP_PORT')
+    smtp_user = current_app.config.get('BUG_REPORT_SMTP_USER')
+    smtp_password = current_app.config.get('BUG_REPORT_SMTP_PASSWORD')
+    smtp_use_tls = current_app.config.get('BUG_REPORT_SMTP_USE_TLS', True)
+    recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
+
+    if not smtp_host or not smtp_user or not smtp_password:
+        raise ValueError(
+            "Bug report email is not configured. "
+            "Set BUG_REPORT_SMTP_HOST, BUG_REPORT_SMTP_USER, and BUG_REPORT_SMTP_PASSWORD."
+        )
+
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = smtp_user
+    msg['To'] = recipient
+    msg.set_content(body_text)
+    msg.add_attachment(
+        screenshot_bytes,
+        maintype='image',
+        subtype='png',
+        filename=screenshot_filename
+    )
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        if smtp_use_tls:
+            server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
 
 
 # ============================================================================
@@ -282,6 +319,88 @@ def get_submission_detail(submission_id):
             'submission': submission,
             'quotes': quotes
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/submission/<int:submission_id>/report_bug', methods=['POST'])
+@login_required
+def report_submission_bug(submission_id):
+    """Create and send a bug report email for a submission detail view."""
+    try:
+        data = request.get_json() or {}
+        quote_id = data.get('quote_id')
+        description = (data.get('description') or '').strip()
+        screenshot_data_url = data.get('screenshot_data_url')
+        page_url = data.get('page_url', '')
+
+        if not quote_id:
+            return jsonify({'success': False, 'error': 'quote_id is required'}), 400
+
+        if not screenshot_data_url or not screenshot_data_url.startswith('data:image/png;base64,'):
+            return jsonify({'success': False, 'error': 'A PNG screenshot is required'}), 400
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            quote = db_session.query(Quote).filter_by(id=quote_id, submission_id=submission_id).first()
+            if not quote:
+                return jsonify({'success': False, 'error': 'Quote not found for this submission'}), 404
+
+            quote_data = {}
+            if quote.extracted_json:
+                try:
+                    quote_data = json.loads(quote.extracted_json)
+                except Exception:
+                    quote_data = {}
+
+            quote_numbers = []
+            for policy in quote_data.get('policies', []) if isinstance(quote_data, dict) else []:
+                policy_number = policy.get('policy_number')
+                if policy_number:
+                    quote_numbers.append(policy_number)
+
+            screenshot_b64 = screenshot_data_url.split(',', 1)[1]
+            screenshot_bytes = base64.b64decode(screenshot_b64)
+
+            timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+            reporter = session.get('username', 'unknown')
+            report_body = (
+                f"Bug reported by: {reporter}\n"
+                f"Reported at: {timestamp}\n"
+                f"Page URL: {page_url}\n\n"
+                f"Submission ID: {submission.id}\n"
+                f"Insured: {submission.insured_name}\n"
+                f"Effective Date: {submission.effective_date}\n\n"
+                f"Quote ID: {quote.id}\n"
+                f"Quote File: {os.path.basename(quote.raw_document_path)}\n"
+                f"Carrier: {quote.carrier_name or 'N/A'}\n"
+                f"Quote Number: {(quote_data.get('quote_number') if isinstance(quote_data, dict) else None) or 'N/A'}\n"
+                f"Account Number: {(quote_data.get('account_number') if isinstance(quote_data, dict) else None) or 'N/A'}\n"
+                f"Policy Numbers: {', '.join(quote_numbers) if quote_numbers else 'N/A'}\n\n"
+                f"Bug Description:\n{description or '(none provided)'}\n"
+            )
+
+            subject = f"[IPFS Mapper Bug] Submission {submission.id} / Quote {quote.id}"
+            screenshot_filename = f"submission_{submission.id}_quote_{quote.id}_bug.png"
+            _send_bug_report_email(subject, report_body, screenshot_bytes, screenshot_filename)
+
+            log_action(
+                entity_type='submission',
+                entity_id=submission.id,
+                action='bug_reported',
+                submission_id=submission.id,
+                quote_id=quote.id,
+                details=f"Bug reported by {reporter}"
+            )
+
+            return jsonify({'success': True})
+        finally:
+            db_session.close()
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
