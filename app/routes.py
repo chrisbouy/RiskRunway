@@ -30,6 +30,7 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
     smtp_user = (current_app.config.get('BUG_REPORT_SMTP_USER') or '').strip().strip("'\"")
     smtp_password = (current_app.config.get('BUG_REPORT_SMTP_PASSWORD') or '').strip().strip("'\"")
     smtp_use_tls = current_app.config.get('BUG_REPORT_SMTP_USE_TLS', True)
+    smtp_timeout = current_app.config.get('BUG_REPORT_SMTP_TIMEOUT', 15)
     recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
 
     if not smtp_host or not smtp_user or not smtp_password:
@@ -50,7 +51,7 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
         filename=screenshot_filename
     )
 
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
         if smtp_use_tls:
             server.starttls()
         server.login(smtp_user, smtp_password)
@@ -395,13 +396,20 @@ def report_submission_bug(submission_id):
             subject = f"[IPFS Mapper Bug] Submission {submission.id} / Quote {quote.id}"
             extension = 'jpg' if screenshot_subtype == 'jpeg' else 'png'
             screenshot_filename = f"submission_{submission.id}_quote_{quote.id}_bug.{extension}"
-            _send_bug_report_email(
-                subject,
-                report_body,
-                screenshot_bytes,
-                screenshot_filename,
-                screenshot_subtype=screenshot_subtype
-            )
+            try:
+                _send_bug_report_email(
+                    subject,
+                    report_body,
+                    screenshot_bytes,
+                    screenshot_filename,
+                    screenshot_subtype=screenshot_subtype
+                )
+            except smtplib.SMTPAuthenticationError:
+                return jsonify({'success': False, 'error': 'SMTP authentication failed. Check SMTP user/password.'}), 500
+            except (smtplib.SMTPConnectError, TimeoutError):
+                return jsonify({'success': False, 'error': 'SMTP connection failed or timed out. Check host/port/network.'}), 500
+            except smtplib.SMTPException as smtp_error:
+                return jsonify({'success': False, 'error': f'SMTP error: {str(smtp_error)}'}), 500
 
             log_action(
                 entity_type='submission',

@@ -24,6 +24,7 @@ class Config:
     BUG_REPORT_SMTP_USER = os.environ.get('BUG_REPORT_SMTP_USER') or os.environ.get('EMAIL_HOST_USER', '')
     BUG_REPORT_SMTP_PASSWORD = os.environ.get('BUG_REPORT_SMTP_PASSWORD') or os.environ.get('EMAIL_HOST_PASSWORD', '')
     BUG_REPORT_SMTP_USE_TLS = os.environ.get('BUG_REPORT_SMTP_USE_TLS', 'true').lower() == 'true'
+    BUG_REPORT_SMTP_TIMEOUT = int(os.environ.get('BUG_REPORT_SMTP_TIMEOUT', 15))
 
     # Premium Finance Appetite Scoring Rules
     # Score range: 0-100 (higher = better appetite)
