@@ -13,3 +13,5 @@ flask-wtf
 flask-cors
 werkzeug
 sqlalchemy
+gunicorn
+flask
