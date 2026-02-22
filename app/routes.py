@@ -23,12 +23,12 @@ from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, U
 bp = Blueprint('main', __name__)
 
 
-def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_filename):
+def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_filename, screenshot_subtype='png'):
     """Send bug report email with screenshot attachment."""
     smtp_host = current_app.config.get('BUG_REPORT_SMTP_HOST')
     smtp_port = current_app.config.get('BUG_REPORT_SMTP_PORT')
-    smtp_user = current_app.config.get('BUG_REPORT_SMTP_USER')
-    smtp_password = current_app.config.get('BUG_REPORT_SMTP_PASSWORD')
+    smtp_user = (current_app.config.get('BUG_REPORT_SMTP_USER') or '').strip().strip("'\"")
+    smtp_password = (current_app.config.get('BUG_REPORT_SMTP_PASSWORD') or '').strip().strip("'\"")
     smtp_use_tls = current_app.config.get('BUG_REPORT_SMTP_USE_TLS', True)
     recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
 
@@ -46,7 +46,7 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
     msg.add_attachment(
         screenshot_bytes,
         maintype='image',
-        subtype='png',
+        subtype=screenshot_subtype,
         filename=screenshot_filename
     )
 
@@ -337,8 +337,16 @@ def report_submission_bug(submission_id):
         if not quote_id:
             return jsonify({'success': False, 'error': 'quote_id is required'}), 400
 
-        if not screenshot_data_url or not screenshot_data_url.startswith('data:image/png;base64,'):
-            return jsonify({'success': False, 'error': 'A PNG screenshot is required'}), 400
+        if not screenshot_data_url:
+            return jsonify({'success': False, 'error': 'A screenshot is required'}), 400
+
+        screenshot_subtype = None
+        if screenshot_data_url.startswith('data:image/png;base64,'):
+            screenshot_subtype = 'png'
+        elif screenshot_data_url.startswith('data:image/jpeg;base64,'):
+            screenshot_subtype = 'jpeg'
+        else:
+            return jsonify({'success': False, 'error': 'Screenshot must be PNG or JPEG'}), 400
 
         db_session = get_session()
         try:
@@ -385,8 +393,15 @@ def report_submission_bug(submission_id):
             )
 
             subject = f"[IPFS Mapper Bug] Submission {submission.id} / Quote {quote.id}"
-            screenshot_filename = f"submission_{submission.id}_quote_{quote.id}_bug.png"
-            _send_bug_report_email(subject, report_body, screenshot_bytes, screenshot_filename)
+            extension = 'jpg' if screenshot_subtype == 'jpeg' else 'png'
+            screenshot_filename = f"submission_{submission.id}_quote_{quote.id}_bug.{extension}"
+            _send_bug_report_email(
+                subject,
+                report_body,
+                screenshot_bytes,
+                screenshot_filename,
+                screenshot_subtype=screenshot_subtype
+            )
 
             log_action(
                 entity_type='submission',

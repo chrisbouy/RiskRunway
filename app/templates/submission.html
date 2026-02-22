@@ -980,8 +980,13 @@
                 scrollY: -window.scrollY
             });
 
-            const maxWidth = 1600;
-            const scale = Math.min(1, maxWidth / captureCanvas.width);
+            const maxWidth = 1280;
+            const maxHeight = 2200;
+            const maxPixels = 1280 * 2200;
+            const widthScale = maxWidth / captureCanvas.width;
+            const heightScale = maxHeight / captureCanvas.height;
+            const pixelScale = Math.sqrt(maxPixels / (captureCanvas.width * captureCanvas.height));
+            const scale = Math.min(1, widthScale, heightScale, pixelScale);
             bugCanvas.width = Math.max(1, Math.round(captureCanvas.width * scale));
             bugCanvas.height = Math.max(1, Math.round(captureCanvas.height * scale));
 
@@ -1759,7 +1764,7 @@
             submitBtn.disabled = true;
 
             try {
-                const screenshotDataUrl = bugCanvas.toDataURL('image/png');
+                const screenshotDataUrl = bugCanvas.toDataURL('image/jpeg', 0.78);
                 const response = await fetch(`/api/submission/${submissionId}/report_bug`, {
                     method: 'POST',
                     headers: {
@@ -1773,7 +1778,10 @@
                     })
                 });
 
-                const data = await response.json();
+                const contentType = response.headers.get('content-type') || '';
+                const data = contentType.includes('application/json')
+                    ? await response.json()
+                    : { success: false, error: await response.text() };
                 if (!data.success) {
                     throw new Error(data.error || 'Failed to send bug report');
                 }
