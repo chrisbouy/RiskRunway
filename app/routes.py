@@ -51,11 +51,17 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
         filename=screenshot_filename
     )
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-        if smtp_use_tls:
-            server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.send_message(msg)
+    # Use SMTP_SSL for port 465, SMTP with STARTTLS for port 587
+    if smtp_port == 465:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+            if smtp_use_tls:
+                server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
 
 
 # ============================================================================
