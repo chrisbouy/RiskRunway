@@ -32,6 +32,7 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
     smtp_use_tls = current_app.config.get('BUG_REPORT_SMTP_USE_TLS', True)
     smtp_timeout = current_app.config.get('BUG_REPORT_SMTP_TIMEOUT', 15)
     recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
+    sender = current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
 
     if not smtp_host or not smtp_user or not smtp_password:
         raise ValueError(
@@ -41,7 +42,7 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
 
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = smtp_user
+    msg['From'] = sender
     msg['To'] = recipient
     msg.set_content(body_text)
     msg.add_attachment(
