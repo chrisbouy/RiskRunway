@@ -45,12 +45,12 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
     msg['From'] = sender
     msg['To'] = recipient
     msg.set_content(body_text)
-    msg.add_attachment(
-        screenshot_bytes,
-        maintype='image',
-        subtype=screenshot_subtype,
-        filename=screenshot_filename
-    )
+    # msg.add_attachment(
+    #     screenshot_bytes,
+    #     maintype='image',
+    #     subtype=screenshot_subtype,
+    #     filename=screenshot_filename
+    # )
 
     # Use SMTP_SSL for port 465, SMTP with STARTTLS for port 587
     if smtp_port == 465:
