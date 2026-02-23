@@ -19,9 +19,9 @@ class Config:
 
     # Bug report email settings
     BUG_REPORT_RECIPIENT = os.environ.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
-    BUG_REPORT_SMTP_HOST = os.environ.get('BUG_REPORT_SMTP_HOST') or os.environ.get('EMAIL_HOST') or 'smtp.gmail.com'
-    BUG_REPORT_SMTP_PORT = int(os.environ.get('BUG_REPORT_SMTP_PORT') or os.environ.get('EMAIL_PORT') or 587)
-    BUG_REPORT_SMTP_USER = os.environ.get('BUG_REPORT_SMTP_USER') or os.environ.get('EMAIL_HOST_USER', '')
+    BUG_REPORT_SMTP_HOST = os.environ.get('BUG_REPORT_SMTP_HOST') 
+    BUG_REPORT_SMTP_PORT = int(os.environ.get('BUG_REPORT_SMTP_PORT') or 587)
+    BUG_REPORT_SMTP_USER = os.environ.get('BUG_REPORT_SMTP_USER') 
     BUG_REPORT_SMTP_PASSWORD = os.environ.get('BUG_REPORT_SMTP_PASSWORD') or os.environ.get('EMAIL_HOST_PASSWORD', '')
     BUG_REPORT_SMTP_USE_TLS = os.environ.get('BUG_REPORT_SMTP_USE_TLS', 'true').lower() == 'true'
     BUG_REPORT_SMTP_TIMEOUT = int(os.environ.get('BUG_REPORT_SMTP_TIMEOUT', 15))
