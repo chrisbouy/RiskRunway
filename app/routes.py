@@ -34,11 +34,25 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
     recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
     sender = current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
 
+    # Debug logging
+    print(f"[BUG REPORT EMAIL] Config:")
+    print(f"  Host: {smtp_host}")
+    print(f"  Port: {smtp_port}")
+    print(f"  User: {smtp_user}")
+    print(f"  Password: {'*' * len(smtp_password) if smtp_password else 'NOT SET'}")
+    print(f"  Sender: {sender}")
+    print(f"  Recipient: {recipient}")
+    print(f"  Use TLS: {smtp_use_tls}")
+
     if not smtp_host or not smtp_user or not smtp_password:
-        raise ValueError(
-            "Bug report email is not configured. "
-            "Set BUG_REPORT_SMTP_HOST, BUG_REPORT_SMTP_USER, and BUG_REPORT_SMTP_PASSWORD."
-        )
+        error_msg = f"Bug report email is not configured. Missing: "
+        missing = []
+        if not smtp_host: missing.append("SMTP_HOST")
+        if not smtp_user: missing.append("SMTP_USER")
+        if not smtp_password: missing.append("SMTP_PASSWORD")
+        error_msg += ", ".join(missing)
+        print(f"[BUG REPORT EMAIL] ERROR: {error_msg}")
+        raise ValueError(error_msg)
 
     msg = EmailMessage()
     msg['Subject'] = subject
@@ -53,16 +67,31 @@ def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_file
     )
 
     # Use SMTP_SSL for port 465, SMTP with STARTTLS for port 587
-    if smtp_port == 465:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
-    else:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-            if smtp_use_tls:
-                server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
+    print(f"[BUG REPORT EMAIL] Attempting to connect to {smtp_host}:{smtp_port}")
+    try:
+        if smtp_port == 465:
+            print(f"[BUG REPORT EMAIL] Using SMTP_SSL")
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                print(f"[BUG REPORT EMAIL] Connected, attempting login...")
+                server.login(smtp_user, smtp_password)
+                print(f"[BUG REPORT EMAIL] Login successful, sending message...")
+                server.send_message(msg)
+                print(f"[BUG REPORT EMAIL] Message sent successfully!")
+        else:
+            print(f"[BUG REPORT EMAIL] Using SMTP with STARTTLS")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                print(f"[BUG REPORT EMAIL] Connected")
+                if smtp_use_tls:
+                    print(f"[BUG REPORT EMAIL] Starting TLS...")
+                    server.starttls()
+                print(f"[BUG REPORT EMAIL] Attempting login...")
+                server.login(smtp_user, smtp_password)
+                print(f"[BUG REPORT EMAIL] Login successful, sending message...")
+                server.send_message(msg)
+                print(f"[BUG REPORT EMAIL] Message sent successfully!")
+    except Exception as e:
+        print(f"[BUG REPORT EMAIL] FAILED: {type(e).__name__}: {str(e)}")
+        raise
 
 
 # ============================================================================
@@ -404,6 +433,7 @@ def report_submission_bug(submission_id):
             extension = 'jpg' if screenshot_subtype == 'jpeg' else 'png'
             screenshot_filename = f"submission_{submission.id}_quote_{quote.id}_bug.{extension}"
             try:
+                print(f"[BUG REPORT] Attempting to send bug report email...")
                 _send_bug_report_email(
                     subject,
                     report_body,
@@ -411,12 +441,29 @@ def report_submission_bug(submission_id):
                     screenshot_filename,
                     screenshot_subtype=screenshot_subtype
                 )
-            except smtplib.SMTPAuthenticationError:
-                return jsonify({'success': False, 'error': 'SMTP authentication failed. Check SMTP user/password.'}), 500
-            except (smtplib.SMTPConnectError, TimeoutError):
-                return jsonify({'success': False, 'error': 'SMTP connection failed or timed out. Check host/port/network.'}), 500
-            except smtplib.SMTPException as smtp_error:
-                return jsonify({'success': False, 'error': f'SMTP error: {str(smtp_error)}'}), 500
+                print(f"[BUG REPORT] Email sent successfully!")
+            except smtplib.SMTPAuthenticationError as e:
+                error_msg = f'SMTP authentication failed: {str(e)}'
+                print(f"[BUG REPORT] ERROR: {error_msg}")
+                return jsonify({'success': False, 'error': error_msg}), 500
+            except (smtplib.SMTPConnectError, TimeoutError, OSError) as e:
+                error_msg = f'SMTP connection failed: {str(e)}'
+                print(f"[BUG REPORT] ERROR: {error_msg}")
+                return jsonify({'success': False, 'error': error_msg}), 500
+            except smtplib.SMTPException as e:
+                error_msg = f'SMTP error: {str(e)}'
+                print(f"[BUG REPORT] ERROR: {error_msg}")
+                return jsonify({'success': False, 'error': error_msg}), 500
+            except ValueError as e:
+                error_msg = f'Configuration error: {str(e)}'
+                print(f"[BUG REPORT] ERROR: {error_msg}")
+                return jsonify({'success': False, 'error': error_msg}), 500
+            except Exception as e:
+                error_msg = f'Unexpected error: {type(e).__name__}: {str(e)}'
+                print(f"[BUG REPORT] ERROR: {error_msg}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({'success': False, 'error': error_msg}), 500
 
             log_action(
                 entity_type='submission',
