@@ -453,6 +453,7 @@ def pass1_extract_layout(pdf_path):
     Returns:
         dict: Structured layout data with pages array
     """
+    import gc
     pages_data = []
 
     # First, find the last relevant page to avoid processing useless pages
@@ -478,6 +479,9 @@ def pass1_extract_layout(pdf_path):
                     "page_number": page_num,
                     "text": page_text
                 })
+                # Clean up memory after each page
+                del page_text
+                gc.collect()
             else:
                 # Either no text, or garbage text - use OCR
                 if page_text:
@@ -501,6 +505,10 @@ def pass1_extract_layout(pdf_path):
                         "page_number": page_num,
                         "text": text
                     })
+
+                    # Clean up memory
+                    del page_image, text
+                    gc.collect()
                 except Exception as e:
                     print(f"    ✗ OCR failed: {e}")
                     # Add empty page so we don't skip it entirely
@@ -508,6 +516,10 @@ def pass1_extract_layout(pdf_path):
                         "page_number": page_num,
                         "text": ""
                     })
+                    # Clean up on error too
+                    if 'page_image' in locals():
+                        del page_image
+                    gc.collect()
 
     return {
         "pages": pages_data
