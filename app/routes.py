@@ -4,11 +4,9 @@ import os
 import json
 import requests
 import base64
-import smtplib
 from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
-from email.message import EmailMessage
 from app.parsers.three_pass_parser import process_quote_three_pass
 from app.database import (
     get_all_submissions,
@@ -24,71 +22,51 @@ bp = Blueprint('main', __name__)
 
 
 def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_filename, screenshot_subtype='png'):
-    """Send bug report email with screenshot attachment."""
-    smtp_host = current_app.config.get('BUG_REPORT_SMTP_HOST')
-    smtp_port = current_app.config.get('BUG_REPORT_SMTP_PORT')
-    smtp_user = (current_app.config.get('BUG_REPORT_SMTP_USER') or '').strip().strip("'\"")
-    smtp_password = (current_app.config.get('BUG_REPORT_SMTP_PASSWORD') or '').strip().strip("'\"")
-    smtp_use_tls = current_app.config.get('BUG_REPORT_SMTP_USE_TLS', True)
-    smtp_timeout = current_app.config.get('BUG_REPORT_SMTP_TIMEOUT', 15)
-    recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
+    """Send bug report email with screenshot attachment using SendGrid HTTP API."""
+    import base64
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+
+    api_key = current_app.config.get('SENDGRID_API_KEY')
     sender = current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
+    recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
 
     # Debug logging
     print(f"[BUG REPORT EMAIL] Config:")
-    print(f"  Host: {smtp_host}")
-    print(f"  Port: {smtp_port}")
-    print(f"  User: {smtp_user}")
-    print(f"  Password: {'*' * len(smtp_password) if smtp_password else 'NOT SET'}")
+    print(f"  API Key: {'*' * 20 if api_key else 'NOT SET'}")
     print(f"  Sender: {sender}")
     print(f"  Recipient: {recipient}")
-    print(f"  Use TLS: {smtp_use_tls}")
 
-    if not smtp_host or not smtp_user or not smtp_password:
-        error_msg = f"Bug report email is not configured. Missing: "
-        missing = []
-        if not smtp_host: missing.append("SMTP_HOST")
-        if not smtp_user: missing.append("SMTP_USER")
-        if not smtp_password: missing.append("SMTP_PASSWORD")
-        error_msg += ", ".join(missing)
+    if not api_key:
+        error_msg = "SendGrid API key is not configured. Set SENDGRID_API_KEY environment variable."
         print(f"[BUG REPORT EMAIL] ERROR: {error_msg}")
         raise ValueError(error_msg)
 
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = sender
-    msg['To'] = recipient
-    msg.set_content(body_text)
-    msg.add_attachment(
-        screenshot_bytes,
-        maintype='image',
-        subtype=screenshot_subtype,
-        filename=screenshot_filename
+    # Create the email message
+    message = Mail(
+        from_email=sender,
+        to_emails=recipient,
+        subject=subject,
+        plain_text_content=body_text
     )
 
-    # Use SMTP_SSL for port 465, SMTP with STARTTLS for port 587
-    print(f"[BUG REPORT EMAIL] Attempting to connect to {smtp_host}:{smtp_port}")
+    # Add screenshot attachment
+    encoded_file = base64.b64encode(screenshot_bytes).decode()
+    attached_file = Attachment(
+        FileContent(encoded_file),
+        FileName(screenshot_filename),
+        FileType(f'image/{screenshot_subtype}'),
+        Disposition('attachment')
+    )
+    message.attachment = attached_file
+
+    # Send via SendGrid HTTP API
+    print(f"[BUG REPORT EMAIL] Sending via SendGrid HTTP API...")
     try:
-        if smtp_port == 465:
-            print(f"[BUG REPORT EMAIL] Using SMTP_SSL")
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-                print(f"[BUG REPORT EMAIL] Connected, attempting login...")
-                server.login(smtp_user, smtp_password)
-                print(f"[BUG REPORT EMAIL] Login successful, sending message...")
-                server.send_message(msg)
-                print(f"[BUG REPORT EMAIL] Message sent successfully!")
-        else:
-            print(f"[BUG REPORT EMAIL] Using SMTP with STARTTLS")
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
-                print(f"[BUG REPORT EMAIL] Connected")
-                if smtp_use_tls:
-                    print(f"[BUG REPORT EMAIL] Starting TLS...")
-                    server.starttls()
-                print(f"[BUG REPORT EMAIL] Attempting login...")
-                server.login(smtp_user, smtp_password)
-                print(f"[BUG REPORT EMAIL] Login successful, sending message...")
-                server.send_message(msg)
-                print(f"[BUG REPORT EMAIL] Message sent successfully!")
+        sg = SendGridAPIClient(api_key)
+        response = sg.send(message)
+        print(f"[BUG REPORT EMAIL] Success! Status code: {response.status_code}")
+        return response
     except Exception as e:
         print(f"[BUG REPORT EMAIL] FAILED: {type(e).__name__}: {str(e)}")
         raise
@@ -442,24 +420,12 @@ def report_submission_bug(submission_id):
                     screenshot_subtype=screenshot_subtype
                 )
                 print(f"[BUG REPORT] Email sent successfully!")
-            except smtplib.SMTPAuthenticationError as e:
-                error_msg = f'SMTP authentication failed: {str(e)}'
-                print(f"[BUG REPORT] ERROR: {error_msg}")
-                return jsonify({'success': False, 'error': error_msg}), 500
-            except (smtplib.SMTPConnectError, TimeoutError, OSError) as e:
-                error_msg = f'SMTP connection failed: {str(e)}'
-                print(f"[BUG REPORT] ERROR: {error_msg}")
-                return jsonify({'success': False, 'error': error_msg}), 500
-            except smtplib.SMTPException as e:
-                error_msg = f'SMTP error: {str(e)}'
-                print(f"[BUG REPORT] ERROR: {error_msg}")
-                return jsonify({'success': False, 'error': error_msg}), 500
             except ValueError as e:
                 error_msg = f'Configuration error: {str(e)}'
                 print(f"[BUG REPORT] ERROR: {error_msg}")
                 return jsonify({'success': False, 'error': error_msg}), 500
             except Exception as e:
-                error_msg = f'Unexpected error: {type(e).__name__}: {str(e)}'
+                error_msg = f'Email send failed: {type(e).__name__}: {str(e)}'
                 print(f"[BUG REPORT] ERROR: {error_msg}")
                 import traceback
                 traceback.print_exc()
