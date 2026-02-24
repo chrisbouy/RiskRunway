@@ -748,7 +748,7 @@
         </div>
     </div>
 
-    <div class="main-container">
+    <div id="bugCaptureRoot" class="main-container">
         <!-- Upload section -->
         <div class="card" style="margin-bottom: 1rem;">
             <div class="card-header">
@@ -893,6 +893,8 @@
         const bugToolbar = document.getElementById('bugToolbar');
         const bugQuoteSelect = document.getElementById('bugQuoteSelect');
         const bugDescription = document.getElementById('bugDescription');
+        const bugCaptureRoot = document.getElementById('bugCaptureRoot');
+        const MAX_SCREENSHOT_DATA_URL_CHARS = 5_500_000;
 
         function getQuoteLabel(quote) {
             const filename = quote.raw_document_path ? quote.raw_document_path.split('/').pop() : `Quote ${quote.id}`;
@@ -953,6 +955,8 @@
         function renderBugCanvas() {
             if (!bugState.baseImage) return;
             bugCtx.clearRect(0, 0, bugCanvas.width, bugCanvas.height);
+            bugCtx.fillStyle = '#ffffff';
+            bugCtx.fillRect(0, 0, bugCanvas.width, bugCanvas.height);
             bugCtx.drawImage(bugState.baseImage, 0, 0, bugCanvas.width, bugCanvas.height);
             bugState.annotations.forEach(drawSingleAnnotation);
             if (bugState.currentAnnotation) {
@@ -971,13 +975,32 @@
         }
 
         async function buildBugScreenshot() {
-            const screenshotTarget = document.body;
+            const screenshotTarget = bugCaptureRoot || document.body;
+            // Let DOM/layout settle so all tables are fully painted before capture.
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             const captureCanvas = await html2canvas(screenshotTarget, {
                 useCORS: true,
                 logging: false,
                 backgroundColor: '#ffffff',
+                scale: 1.25,
+                onclone: (clonedDoc) => {
+                    const clonedRoot = clonedDoc.getElementById('bugCaptureRoot');
+                    if (clonedRoot) {
+                        clonedRoot.style.background = '#ffffff';
+                    }
+
+                    // Remove visual effects that can cause partial/faded capture output.
+                    clonedDoc.querySelectorAll('*').forEach((el) => {
+                        el.style.animation = 'none';
+                        el.style.transition = 'none';
+                    });
+                    clonedDoc.querySelectorAll('table thead th').forEach((el) => {
+                        el.style.position = 'static';
+                        el.style.top = 'auto';
+                    });
+                },
                 scrollX: 0,
-                scrollY: -window.scrollY
+                scrollY: 0
             });
 
             const maxWidth = 1280;
@@ -998,6 +1021,45 @@
             bugState.annotations = [];
             bugState.currentAnnotation = null;
             renderBugCanvas();
+        }
+
+        function downscaleCanvas(sourceCanvas, scale) {
+            const scaledCanvas = document.createElement('canvas');
+            scaledCanvas.width = Math.max(1, Math.floor(sourceCanvas.width * scale));
+            scaledCanvas.height = Math.max(1, Math.floor(sourceCanvas.height * scale));
+            const scaledCtx = scaledCanvas.getContext('2d');
+            scaledCtx.fillStyle = '#ffffff';
+            scaledCtx.fillRect(0, 0, scaledCanvas.width, scaledCanvas.height);
+            scaledCtx.drawImage(sourceCanvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
+            return scaledCanvas;
+        }
+
+        function buildScreenshotDataUrl() {
+            // Default to PNG for fidelity; only compress when payload is too large.
+            let dataUrl = bugCanvas.toDataURL('image/png');
+            if (dataUrl.length <= MAX_SCREENSHOT_DATA_URL_CHARS) {
+                return dataUrl;
+            }
+
+            dataUrl = bugCanvas.toDataURL('image/jpeg', 0.9);
+            if (dataUrl.length <= MAX_SCREENSHOT_DATA_URL_CHARS) {
+                return dataUrl;
+            }
+
+            dataUrl = bugCanvas.toDataURL('image/jpeg', 0.78);
+            if (dataUrl.length <= MAX_SCREENSHOT_DATA_URL_CHARS) {
+                return dataUrl;
+            }
+
+            let workingCanvas = downscaleCanvas(bugCanvas, 0.85);
+            dataUrl = workingCanvas.toDataURL('image/jpeg', 0.78);
+            if (dataUrl.length <= MAX_SCREENSHOT_DATA_URL_CHARS) {
+                return dataUrl;
+            }
+
+            workingCanvas = downscaleCanvas(workingCanvas, 0.85);
+            dataUrl = workingCanvas.toDataURL('image/jpeg', 0.72);
+            return dataUrl;
         }
 
         async function openBugModal() {
@@ -1764,7 +1826,7 @@
             submitBtn.disabled = true;
 
             try {
-                const screenshotDataUrl = bugCanvas.toDataURL('image/jpeg', 0.78);
+                const screenshotDataUrl = buildScreenshotDataUrl();
                 const response = await fetch(`/api/submission/${submissionId}/report_bug`, {
                     method: 'POST',
                     headers: {
