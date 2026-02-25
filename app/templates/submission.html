@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Submission Detail - IPFS Mapper</title>
+    <title>Submission Detail - PF Converge</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
+        /* Theme Variables */
         :root {
             --color-primary: #1e40af;
             --color-primary-dark: #1e3a8a;
@@ -23,12 +24,97 @@
             --color-neutral-700: #334155;
             --color-neutral-800: #1e293b;
             --color-neutral-900: #0f172a;
-            
+
             /* Excel-inspired table colors */
             --table-header-bg: #4472c4;
             --table-header-text: #ffffff;
             --table-border: #d0d7de;
             --table-row-hover: #f6f8fa;
+
+            /* Theme-specific variables */
+            --bg-gradient-start: #f8fafc;
+            --bg-gradient-end: #e2e8f0;
+            --card-bg: white;
+            --text-primary: var(--color-neutral-800);
+            --border-color: var(--color-neutral-200);
+            --header-gradient-start: var(--color-primary-dark);
+            --header-gradient-end: var(--color-primary);
+
+            /* Typography */
+            --font-weight-normal: 400;
+            --font-weight-medium: 500;
+            --font-weight-semibold: 600;
+            --font-weight-bold: 700;
+            --letter-spacing-normal: -0.025em;
+            --letter-spacing-wide: 0.05em;
+
+            /* Button styles */
+            --button-border-width: 0px;
+            --button-border-radius: 0.375rem;
+        }
+
+        /* Traditional Dark Theme */
+        [data-theme="traditional-dark"] {
+            --bg-gradient-start: #1e293b;
+            --bg-gradient-end: #0f172a;
+            --card-bg: #334155;
+            --text-primary: #f1f5f9;
+            --border-color: #475569;
+            --header-gradient-start: #0f172a;
+            --header-gradient-end: #1e293b;
+            --table-header-bg: #1e3a8a;
+            --table-border: #475569;
+            --table-row-hover: #475569;
+            --color-neutral-50: #334155;
+            --color-neutral-100: #475569;
+            --color-neutral-200: #64748b;
+            --color-neutral-300: #94a3b8;
+            --color-neutral-400: #cbd5e1;
+            --color-neutral-500: #e2e8f0;
+            --color-neutral-600: #f1f5f9;
+            --color-neutral-700: #f8fafc;
+        }
+
+        /* Modern Light Theme */
+        [data-theme="modern-light"] {
+            --font-weight-normal: 300;
+            --font-weight-medium: 400;
+            --font-weight-semibold: 500;
+            --font-weight-bold: 600;
+            --letter-spacing-normal: 0.01em;
+            --letter-spacing-wide: 0.08em;
+            --button-border-width: 0px;
+            --button-border-radius: 0.5rem;
+        }
+
+        /* Modern Dark Theme */
+        [data-theme="modern-dark"] {
+            --bg-gradient-start: #0f172a;
+            --bg-gradient-end: #020617;
+            --card-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --border-color: #334155;
+            --header-gradient-start: #020617;
+            --header-gradient-end: #0f172a;
+            --table-header-bg: #1e3a8a;
+            --table-border: #334155;
+            --table-row-hover: #334155;
+            --color-neutral-50: #1e293b;
+            --color-neutral-100: #334155;
+            --color-neutral-200: #475569;
+            --color-neutral-300: #64748b;
+            --color-neutral-400: #94a3b8;
+            --color-neutral-500: #cbd5e1;
+            --color-neutral-600: #e2e8f0;
+            --color-neutral-700: #f1f5f9;
+            --font-weight-normal: 300;
+            --font-weight-medium: 400;
+            --font-weight-semibold: 500;
+            --font-weight-bold: 600;
+            --letter-spacing-normal: 0.01em;
+            --letter-spacing-wide: 0.08em;
+            --button-border-width: 0px;
+            --button-border-radius: 0.5rem;
         }
 
         * {
@@ -39,15 +125,17 @@
 
         body {
             font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            color: var(--color-neutral-800);
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            color: var(--text-primary);
             line-height: 1.6;
             min-height: 100vh;
+            font-weight: var(--font-weight-normal);
+            letter-spacing: var(--letter-spacing-normal);
         }
 
         /* Professional header styling */
         .app-header {
-            background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%);
+            background: linear-gradient(135deg, var(--header-gradient-start) 0%, var(--header-gradient-end) 100%);
             color: white;
             padding: 0.75rem 1.5rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -56,8 +144,8 @@
 
         .app-title {
             font-size: 1.125rem;
-            font-weight: 700;
-            letter-spacing: -0.025em;
+            font-weight: var(--font-weight-bold);
+            letter-spacing: var(--letter-spacing-normal);
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -70,11 +158,12 @@
             color: rgba(255, 255, 255, 0.9);
             text-decoration: none;
             font-size: 0.875rem;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             padding: 0.375rem 0.75rem;
-            border-radius: 0.375rem;
+            border-radius: var(--button-border-radius);
             transition: all 0.2s;
             background: rgba(255, 255, 255, 0.1);
+            border: var(--button-border-width) solid rgba(255, 255, 255, 0.2);
         }
 
         .back-link:hover {
@@ -91,10 +180,10 @@
 
         /* Card styling */
         .card {
-            background: white;
+            background: var(--card-bg);
             border-radius: 0.5rem;
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            border: 1px solid var(--color-neutral-200);
+            border: 1px solid var(--border-color);
             overflow: hidden;
             transition: all 0.2s;
         }
@@ -106,7 +195,7 @@
         .card-header {
             background: linear-gradient(to right, var(--color-neutral-50), var(--color-neutral-100));
             padding: 0.5rem 1rem;
-            border-bottom: 2px solid var(--color-neutral-200);
+            border-bottom: 2px solid var(--border-color);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -114,9 +203,9 @@
 
         .card-title {
             font-size: 0.75rem;
-            font-weight: 700;
+            font-weight: var(--font-weight-bold);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: var(--letter-spacing-wide);
             color: var(--color-neutral-700);
         }
 
@@ -355,8 +444,35 @@
 
         .status-label {
             font-size: 0.813rem;
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Theme selector */
+        .theme-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.375rem 0.75rem;
+            border-radius: var(--button-border-radius);
+            border: var(--button-border-width) solid rgba(255, 255, 255, 0.2);
+        }
+
+        .theme-selector label {
+            font-size: 0.813rem;
+            font-weight: var(--font-weight-semibold);
+            color: rgba(255, 255, 255, 0.9);
+            white-space: nowrap;
+        }
+
+        .theme-selector select {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: var(--color-neutral-800);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            min-width: 140px;
         }
 
         select {
@@ -390,15 +506,16 @@
         button {
             font-family: 'IBM Plex Sans', sans-serif;
             padding: 0.375rem 1rem;
-            border-radius: 0.375rem;
+            border-radius: var(--button-border-radius);
             font-size: 0.813rem;
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             cursor: pointer;
             transition: all 0.2s;
-            border: none;
+            border: var(--button-border-width) solid transparent;
             display: inline-flex;
             align-items: center;
             gap: 0.375rem;
+            letter-spacing: var(--letter-spacing-normal);
         }
 
         #saveBtn {
@@ -727,6 +844,15 @@
                 <div id="appetiteScoreBadge" style="display: none;">
                     <!-- Appetite score will be inserted here -->
                 </div>
+                <div class="theme-selector">
+                    <label for="themeSelect">Theme:</label>
+                    <select id="themeSelect">
+                        <option value="traditional-light">Traditional Light</option>
+                        <option value="traditional-dark">Traditional Dark</option>
+                        <option value="modern-light">Modern Light</option>
+                        <option value="modern-dark">Modern Dark</option>
+                    </select>
+                </div>
                 <div class="status-controls">
                     <label class="status-label">Status:</label>
                     <select id="statusDropdown">
@@ -871,6 +997,34 @@
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
+        // Theme Management
+        function initTheme() {
+            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            const themeSelect = document.getElementById('themeSelect');
+            if (themeSelect) {
+                themeSelect.value = savedTheme;
+            }
+        }
+
+        function changeTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('ipfs-mapper-theme', theme);
+        }
+
+        // Initialize theme on page load
+        initTheme();
+
+        // Theme selector event listener
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeSelect = document.getElementById('themeSelect');
+            if (themeSelect) {
+                themeSelect.addEventListener('change', function(e) {
+                    changeTheme(e.target.value);
+                });
+            }
+        });
+
         Dropzone.autoDiscover = false;
 
         // Get submission ID from URL
