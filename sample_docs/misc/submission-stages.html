@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFConverge – Submission Stage Mockups</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #e8eaf0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    color: #1a1a2e;
+    padding: 32px 16px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 6px;
+    letter-spacing: -0.3px;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 40px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* Stage tabs nav */
+  .stage-nav {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 32px;
+  }
+
+  .stage-tab {
+    padding: 10px 28px;
+    border: 1px solid #ccc;
+    background: #fff;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .stage-tab:first-child { border-radius: 6px 0 0 6px; }
+  .stage-tab:last-child { border-radius: 0 6px 6px 0; }
+  .stage-tab:not(:first-child) { border-left: none; }
+
+  .stage-tab.active-submission { background: #2d4a8a; color: #fff; border-color: #2d4a8a; }
+  .stage-tab.active-quoting { background: #d4720a; color: #fff; border-color: #d4720a; }
+  .stage-tab.active-bind { background: #1a7a4a; color: #fff; border-color: #1a7a4a; }
+
+  .stage-tab .tab-num {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    font-size: 11px;
+    text-align: center;
+    line-height: 18px;
+    margin-right: 6px;
+  }
+
+  /* Panels */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* App frame */
+  .app-frame {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: #2d4a8a;
+    color: #fff;
+    flex-wrap: wrap;
+  }
+
+  .back-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  .topbar-title {
+    font-size: 16px;
+    font-weight: 700;
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .appetite-badge {
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .status-select {
+    padding: 6px 10px;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    background: #fff;
+    color: #1a1a2e;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+  }
+
+  .btn {
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  .btn-save { background: #2ea86b; color: #fff; }
+  .btn-cancel { background: #6b7280; color: #fff; }
+  .btn-bug { background: #dc2626; color: #fff; }
+
+  /* Stage progress bar */
+  .progress-bar {
+    display: flex;
+    background: #f0f2f7;
+    border-bottom: 1px solid #dde1ea;
+  }
+
+  .progress-step {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-right: 1px solid #dde1ea;
+    position: relative;
+  }
+
+  .progress-step:last-child { border-right: none; }
+
+  .progress-step.done { color: #1a7a4a; background: #f0faf5; }
+  .progress-step.current-submission { color: #2d4a8a; background: #eef1fa; font-weight: 700; }
+  .progress-step.current-quoting { color: #d4720a; background: #fff7ed; font-weight: 700; }
+  .progress-step.current-bind { color: #1a7a4a; background: #f0faf5; font-weight: 700; }
+
+  .step-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .step-dot.done { background: #1a7a4a; color: #fff; }
+  .step-dot.active-sub { background: #2d4a8a; color: #fff; }
+  .step-dot.active-quote { background: #d4720a; color: #fff; }
+  .step-dot.active-bind { background: #1a7a4a; color: #fff; }
+  .step-dot.pending { background: #dde1ea; color: #999; }
+
+  /* Content area */
+  .content { padding: 20px; }
+
+  /* Section */
+  .section {
+    border: 1px solid #dde1ea;
+    border-radius: 6px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    background: #2d4a8a;
+    color: #fff;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .section-header.orange { background: #d4720a; }
+  .section-header.green { background: #1a7a4a; }
+  .section-header.gray { background: #4b5563; }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: #3d5fa0;
+    color: #fff;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  thead th.orange { background: #c4650a; }
+  thead th.green { background: #166b40; }
+
+  tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eef0f5;
+    color: #1a1a2e;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { background: #fef9f0; }
+  tbody tr:nth-child(even) { background: #fdf5e8; }
+
+  .null-val { color: #bbb; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed #ccc;
+    border-radius: 6px;
+    padding: 28px;
+    text-align: center;
+    color: #999;
+    margin: 12px;
+    font-size: 13px;
+    background: #fafbfc;
+  }
+
+  .dropzone strong { color: #555; display: block; margin-bottom: 4px; }
+  .dropzone small { font-size: 11px; color: #bbb; }
+
+  .file-icons { display: flex; gap: 10px; padding: 12px; flex-wrap: wrap; }
+
+  .file-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+  }
+
+  .file-icon .icon-box {
+    width: 56px;
+    height: 64px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+
+  .file-icon .icon-box.orange { background: #fff7ed; }
+  .file-icon .icon-box.blue { background: #eff6ff; }
+  .file-icon .icon-name { font-size: 10px; color: #666; font-family: 'IBM Plex Mono', monospace; }
+  .file-icon .remove { position: absolute; top: -6px; right: -6px; background: #dc2626; color: #fff; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+
+  /* Info grid for submission stage */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+
+  .info-field {
+    padding: 12px 16px;
+    border-bottom: 1px solid #eef0f5;
+    border-right: 1px solid #eef0f5;
+  }
+
+  .info-field:nth-child(even) { border-right: none; }
+  .info-field label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 4px; }
+  .info-field .val { font-size: 14px; color: #1a1a2e; font-weight: 500; }
+  .info-field .val.empty { color: #bbb; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+  /* Checklist */
+  .checklist { padding: 12px 16px; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #eef0f5;
+    font-size: 13px;
+  }
+  .check-item:last-child { border-bottom: none; }
+
+  .check-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .check-icon.done { background: #dcfce7; color: #1a7a4a; }
+  .check-icon.pending { background: #fee2e2; color: #dc2626; }
+  .check-icon.warn { background: #fef9c3; color: #a16207; }
+
+  /* Quote cards in quoting stage */
+  .quote-cards { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+
+  .quote-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .quote-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: #fff7ed;
+    border-bottom: 1px solid #fed7aa;
+    font-size: 12px;
+    font-weight: 700;
+    color: #92400e;
+  }
+
+  .quote-card-header .carrier { color: #1a1a2e; font-size: 14px; }
+  .quote-card-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0; }
+
+  .quote-field {
+    padding: 8px 14px;
+    border-right: 1px solid #eef0f5;
+    border-bottom: 1px solid #eef0f5;
+  }
+  .quote-field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: #888; font-weight: 700; display: block; margin-bottom: 3px; }
+  .quote-field .val { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+  .quote-field .val.highlight { color: #d4720a; }
+
+  /* Comparison badge */
+  .best-badge { background: #dcfce7; color: #1a7a4a; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .alt-badge { background: #e0e7ff; color: #3730a3; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Bind stage */
+  .bind-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+  }
+
+  .bind-stat {
+    padding: 16px 20px;
+    border-right: 1px solid #eef0f5;
+    text-align: center;
+  }
+  .bind-stat:last-child { border-right: none; }
+  .bind-stat .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #888; font-weight: 700; margin-bottom: 6px; }
+  .bind-stat .stat-val { font-size: 22px; font-weight: 700; color: #1a7a4a; font-family: 'IBM Plex Mono', monospace; }
+  .bind-stat .stat-sub { font-size: 11px; color: #888; margin-top: 3px; }
+
+  .action-row {
+    display: flex;
+    gap: 10px;
+    padding: 16px;
+    background: #f8fafb;
+    border-top: 1px solid #e5e7eb;
+    flex-wrap: wrap;
+  }
+
+  .action-btn {
+    padding: 9px 20px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    transition: opacity 0.15s;
+  }
+  .action-btn:hover { opacity: 0.88; }
+  .action-btn.primary { background: #2d4a8a; color: #fff; }
+  .action-btn.success { background: #1a7a4a; color: #fff; }
+  .action-btn.warning { background: #d4720a; color: #fff; }
+  .action-btn.outline { background: #fff; color: #2d4a8a; border: 1.5px solid #2d4a8a; }
+
+  /* PF section */
+  .pf-banner {
+    background: linear-gradient(135deg, #2d4a8a 0%, #1e3a7a 100%);
+    color: #fff;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .pf-banner .pf-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; }
+  .pf-banner .pf-title { font-size: 15px; font-weight: 700; }
+  .pf-banner .pf-action { background: #fff; color: #2d4a8a; padding: 7px 18px; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; font-family: 'IBM Plex Sans', sans-serif; }
+
+  .label-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-left: 8px;
+  }
+  .label-tag.blue { background: #dbeafe; color: #1e3a8a; }
+  .label-tag.orange { background: #ffedd5; color: #9a3412; }
+  .label-tag.green { background: #dcfce7; color: #14532d; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media(max-width: 700px) { .two-col { grid-template-columns: 1fr; } .info-grid { grid-template-columns: 1fr; } .bind-summary { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>PFConverge — Submission Stage Mockups</h1>
+<p class="subtitle">Click a stage to preview what the card looks like at each step</p>
+
+<!-- Stage Nav -->
+<div class="stage-nav">
+  <div class="stage-tab active-submission" onclick="showPanel('submission', this)">
+    <span class="tab-num">1</span> Submission
+  </div>
+  <div class="stage-tab" onclick="showPanel('quoting', this)">
+    <span class="tab-num">2</span> Quoting
+  </div>
+  <div class="stage-tab" onclick="showPanel('bind', this)">
+    <span class="tab-num">3</span> Selection & Bind
+  </div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- STAGE 1: SUBMISSION -->
+<!-- ============================================ -->
+<div id="panel-submission" class="panel active">
+<div class="app-frame">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <button class="back-btn">← Back to Submissions</button>
+    <div class="topbar-title">Martinez Construction Inc – 2024-04-01</div>
+    <div class="topbar-actions">
+      <span class="appetite-badge" style="background:#e67e22;color:#fff;">PF Appetite: 45/100</span>
+      <span style="font-size:12px;color:rgba(255,255,255,0.7);">Status:</span>
+      <select class="status-select"><option>Submission</option><option>Quoting</option><option>Selection & Bind</option></select>
+      <button class="btn btn-save">✓ Save</button>
+      <button class="btn btn-cancel">Cancel</button>
+      <button class="btn btn-bug">Report Bug</button>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-bar">
+    <div class="progress-step current-submission">
+      <div class="step-dot active-sub">1</div> Submission
+      <span class="label-tag blue">Current</span>
+    </div>
+    <div class="progress-step">
+      <div class="step-dot pending">2</div> Quoting
+    </div>
+    <div class="progress-step">
+      <div class="step-dot pending">3</div> Selection & Bind
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Client Info -->
+    <div class="section">
+      <div class="section-header">Client & Submission Info</div>
+      <div class="info-grid">
+        <div class="info-field"><label>Insured Name</label><div class="val">Martinez Construction Inc</div></div>
+        <div class="info-field"><label>Submission Date</label><div class="val">2024-04-01</div></div>
+        <div class="info-field"><label>Address</label><div class="val">Baton Rouge, LA</div></div>
+        <div class="info-field"><label>Agency</label><div class="val">Paulin Insurance</div></div>
+        <div class="info-field"><label>Agency Phone</label><div class="val empty">null</div></div>
+        <div class="info-field"><label>MGA / Wholesale Broker</label><div class="val">Amwins</div></div>
+        <div class="info-field"><label>Coverage Type(s) Needed</label><div class="val">GL, Commercial Property, WC</div></div>
+        <div class="info-field"><label>Effective Date</label><div class="val">2026-02-10</div></div>
+      </div>
+    </div>
+
+    <!-- Submission Readiness Checklist -->
+    <div class="two-col">
+      <div class="section">
+        <div class="section-header">Submission Readiness</div>
+        <div class="checklist">
+          <div class="check-item"><div class="check-icon done">✓</div> ACORD Application uploaded</div>
+          <div class="check-item"><div class="check-icon done">✓</div> Loss runs (5yr) attached</div>
+          <div class="check-item"><div class="check-icon warn">!</div> SOV — missing for property</div>
+          <div class="check-item"><div class="check-icon pending">✗</div> Prior carrier loss history</div>
+          <div class="check-item"><div class="check-icon pending">✗</div> Signed application</div>
+        </div>
+      </div>
+
+      <!-- Documents uploaded -->
+      <div class="section">
+        <div class="section-header">Submission Documents</div>
+        <div class="file-icons">
+          <div class="file-icon">
+            <div class="icon-box orange">📄</div>
+            <div class="icon-name">acord_app.pdf</div>
+            <div class="remove">×</div>
+          </div>
+          <div class="file-icon">
+            <div class="icon-box blue">📄</div>
+            <div class="icon-name">loss_runs.pdf</div>
+            <div class="remove">×</div>
+          </div>
+        </div>
+        <div class="dropzone">
+          <strong>Drag & drop submission docs here</strong>
+          ACORD forms, loss runs, SOV, signed apps<br>
+          <small>PDF, PNG, JPG</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notes / market routing -->
+    <div class="section">
+      <div class="section-header gray">Market Routing Notes</div>
+      <div style="padding:14px 16px;">
+        <textarea style="width:100%;height:80px;border:1px solid #dde1ea;border-radius:4px;padding:10px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:#555;resize:vertical;" placeholder="Add notes for wholesaler / MGA routing, special appetite considerations..."></textarea>
+      </div>
+      <div class="action-row">
+        <button class="action-btn primary">Send to Markets →</button>
+        <button class="action-btn outline">Save Draft</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- STAGE 2: QUOTING (PFConverge lives here) -->
+<!-- ============================================ -->
+<div id="panel-quoting" class="panel">
+<div class="app-frame">
+
+  <div class="topbar">
+    <button class="back-btn">← Back to Submissions</button>
+    <div class="topbar-title">Martinez Construction Inc – 2024-04-01</div>
+    <div class="topbar-actions">
+      <span class="appetite-badge" style="background:#d4720a;color:#fff;">PF Appetite: 45/100</span>
+      <span style="font-size:12px;color:rgba(255,255,255,0.7);">Status:</span>
+      <select class="status-select"><option>Submission</option><option selected>Quoting</option><option>Selection & Bind</option></select>
+      <button class="btn btn-save">✓ Save</button>
+      <button class="btn btn-cancel">Cancel</button>
+      <button class="btn btn-bug">Report Bug</button>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-step done">
+      <div class="step-dot done">✓</div> Submission
+    </div>
+    <div class="progress-step current-quoting">
+      <div class="step-dot active-quote">2</div> Quoting
+      <span class="label-tag orange">Current</span>
+    </div>
+    <div class="progress-step">
+      <div class="step-dot pending">3</div> Selection & Bind
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Quote upload zone — PFConverge core feature -->
+    <div class="section">
+      <div class="section-header orange">
+        📤 Quote Documents
+        <span style="font-size:10px;font-weight:400;opacity:0.8;">AI-powered extraction — PFConverge</span>
+      </div>
+      <div class="file-icons">
+        <div class="file-icon">
+          <div class="icon-box orange">📄</div>
+          <div class="icon-name">quote_frogB.pdf</div>
+          <div class="remove">×</div>
+        </div>
+        <div class="file-icon">
+          <div class="icon-box blue">📄</div>
+          <div class="icon-name">amwins_gl.pdf</div>
+          <div class="remove">×</div>
+        </div>
+      </div>
+      <div class="dropzone">
+        <strong>Drag & drop quote PDFs here or click to browse</strong>
+        Each PDF is auto-extracted and added as a quote row below<br>
+        <small>PDF, PNG, JPG</small>
+      </div>
+    </div>
+
+    <!-- Extracted Quotes comparison -->
+    <div class="section">
+      <div class="section-header orange">Extracted Quotes <span style="font-weight:400;font-size:11px;opacity:0.8;margin-left:8px;">2 quotes received • 1 coverage type</span></div>
+
+      <div class="quote-cards">
+
+        <div class="quote-card">
+          <div class="quote-card-header">
+            <span class="carrier">Covington Specialty</span>
+            <span style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:11px;font-weight:400;color:#666;">Commercial Property</span>
+              <span class="best-badge">✓ Lowest Premium</span>
+            </span>
+          </div>
+          <div class="quote-card-body">
+            <div class="quote-field"><label>Premium</label><div class="val highlight">$4,809</div></div>
+            <div class="quote-field"><label>Tax</label><div class="val">$254.58</div></div>
+            <div class="quote-field"><label>Fee</label><div class="val">$440</div></div>
+            <div class="quote-field"><label>Broker Fee</label><div class="val null-val">null</div></div>
+            <div class="quote-field"><label>Min Earned %</label><div class="val">25%</div></div>
+            <div class="quote-field"><label>Effective</label><div class="val">2026-02-10</div></div>
+            <div class="quote-field"><label>Expiration</label><div class="val">2027-02-10</div></div>
+            <div class="quote-field"><label>Term</label><div class="val">1 year</div></div>
+          </div>
+        </div>
+
+        <div class="quote-card">
+          <div class="quote-card-header">
+            <span class="carrier">Amwins / Berkley One</span>
+            <span style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:11px;font-weight:400;color:#666;">Commercial Property</span>
+              <span class="alt-badge">Alt Option</span>
+            </span>
+          </div>
+          <div class="quote-card-body">
+            <div class="quote-field"><label>Premium</label><div class="val highlight">$5,200</div></div>
+            <div class="quote-field"><label>Tax</label><div class="val">$280.00</div></div>
+            <div class="quote-field"><label>Fee</label><div class="val">$500</div></div>
+            <div class="quote-field"><label>Broker Fee</label><div class="val">$150</div></div>
+            <div class="quote-field"><label>Min Earned %</label><div class="val">20%</div></div>
+            <div class="quote-field"><label>Effective</label><div class="val">2026-02-10</div></div>
+            <div class="quote-field"><label>Expiration</label><div class="val">2027-02-10</div></div>
+            <div class="quote-field"><label>Term</label><div class="val">1 year</div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Financial summary -->
+    <div class="section">
+      <div class="section-header orange">Financial Summary <span style="font-size:10px;font-weight:400;opacity:0.8;margin-left:8px;">based on selected quote</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th class="orange">Total Premium</th>
+            <th class="orange">Total Tax</th>
+            <th class="orange">Total Fee</th>
+            <th class="orange">Grand Total</th>
+            <th class="orange">Deposit</th>
+            <th class="orange">Amount Financed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>$5,503.58</td>
+            <td>$254.58</td>
+            <td>$440</td>
+            <td><strong>$5,503.58</strong></td>
+            <td class="null-val">null</td>
+            <td class="null-val">null</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="action-row">
+        <button class="action-btn warning">Move to Selection & Bind →</button>
+        <button class="action-btn outline">+ Add Another Quote</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ============================================ -->
+<!-- STAGE 3: SELECTION & BIND -->
+<!-- ============================================ -->
+<div id="panel-bind" class="panel">
+<div class="app-frame">
+
+  <div class="topbar">
+    <button class="back-btn">← Back to Submissions</button>
+    <div class="topbar-title">Martinez Construction Inc – 2024-04-01</div>
+    <div class="topbar-actions">
+      <span class="appetite-badge" style="background:#1a7a4a;color:#fff;">PF Appetite: 45/100</span>
+      <span style="font-size:12px;color:rgba(255,255,255,0.7);">Status:</span>
+      <select class="status-select"><option>Submission</option><option>Quoting</option><option selected>Selection & Bind</option></select>
+      <button class="btn btn-save">✓ Save</button>
+      <button class="btn btn-cancel">Cancel</button>
+      <button class="btn btn-bug">Report Bug</button>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-step done">
+      <div class="step-dot done">✓</div> Submission
+    </div>
+    <div class="progress-step done">
+      <div class="step-dot done">✓</div> Quoting
+    </div>
+    <div class="progress-step current-bind">
+      <div class="step-dot active-bind">3</div> Selection & Bind
+      <span class="label-tag green">Current</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Selected policy -->
+    <div class="section">
+      <div class="section-header green">✓ Selected Quote — Covington Specialty (Commercial Property)</div>
+      <table>
+        <thead>
+          <tr>
+            <th class="green">Coverage</th>
+            <th class="green">Carrier</th>
+            <th class="green">Policy #</th>
+            <th class="green">Effective</th>
+            <th class="green">Expiration</th>
+            <th class="green">Premium</th>
+            <th class="green">Tax</th>
+            <th class="green">Fee</th>
+            <th class="green">Min Earned %</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Commercial Property</td>
+            <td>Covington Specialty</td>
+            <td class="null-val">pending</td>
+            <td>2026-02-10</td>
+            <td>2027-02-10</td>
+            <td><strong>$4,809</strong></td>
+            <td>$254.58</td>
+            <td>$440</td>
+            <td>25%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Bind summary stats -->
+    <div class="section">
+      <div class="section-header green">Bind Summary</div>
+      <div class="bind-summary">
+        <div class="bind-stat">
+          <div class="stat-label">Grand Total</div>
+          <div class="stat-val">$5,503</div>
+          <div class="stat-sub">premium + tax + fee</div>
+        </div>
+        <div class="bind-stat">
+          <div class="stat-label">Binder Status</div>
+          <div class="stat-val" style="font-size:16px;">⏳ Pending</div>
+          <div class="stat-sub">awaiting carrier confirmation</div>
+        </div>
+        <div class="bind-stat">
+          <div class="stat-label">Days to Effective</div>
+          <div class="stat-val">—</div>
+          <div class="stat-sub">eff. 2026-02-10</div>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="action-btn success">✓ Mark as Bound</button>
+        <button class="action-btn outline">← Back to Quoting</button>
+        <button class="action-btn outline">Upload Binder Doc</button>
+      </div>
+    </div>
+
+    <!-- PF Decision — conditional -->
+    <div class="section">
+      <div class="section-header">Premium Finance Decision</div>
+      <div style="padding:14px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:13px;color:#555;">Will client finance this policy?</div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;color:#1a7a4a;">
+          <input type="radio" name="pf" value="yes"> Yes — generate finance agreement
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;color:#666;">
+          <input type="radio" name="pf" value="no"> No — client paying in full
+        </label>
+      </div>
+
+      <!-- PF Agreement section — shows if Yes selected -->
+      <div class="pf-banner">
+        <div>
+          <div class="pf-label">PFConverge</div>
+          <div class="pf-title">Generate AMS360 Finance Agreement</div>
+        </div>
+        <button class="pf-action">⚡ Generate Finance Agreement →</button>
+      </div>
+
+      <!-- AMS360 output preview -->
+      <table>
+        <thead>
+          <tr>
+            <th>Total Premium</th>
+            <th>Total Tax</th>
+            <th>Total Fee</th>
+            <th>Grand Total</th>
+            <th>Deposit</th>
+            <th>Amount Financed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>$5,503.58</td>
+            <td>$254.58</td>
+            <td>$440</td>
+            <td><strong>$5,503.58</strong></td>
+            <td class="null-val">—</td>
+            <td class="null-val">—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="action-row">
+        <button class="action-btn primary">📋 Copy to AMS360</button>
+        <button class="action-btn outline">Download Finance Summary</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+  function showPanel(id, el) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + id).classList.add('active');
+    document.querySelectorAll('.stage-tab').forEach(t => {
+      t.classList.remove('active-submission','active-quoting','active-bind');
+    });
+    const map = { submission: 'active-submission', quoting: 'active-quoting', bind: 'active-bind' };
+    el.classList.add(map[id]);
+  }
+</script>
+</body>
+</html>

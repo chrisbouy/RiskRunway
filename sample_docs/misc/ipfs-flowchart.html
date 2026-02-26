@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPFS Pipeline Map</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --border: #1e1e2e;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --pfconverge: #00e5a0;
+    --pfconverge-dim: rgba(0, 229, 160, 0.12);
+    --riskrunway: #ff6b35;
+    --riskrunway-dim: rgba(255, 107, 53, 0.12);
+    --overlap: #a78bfa;
+    --overlap-dim: rgba(167, 139, 250, 0.12);
+    --neutral: #3a3a5c;
+    --neutral-dim: rgba(58, 58, 92, 0.3);
+    --arrow: #2a2a40;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    padding: 40px 20px;
+    overflow-x: hidden;
+  }
+
+  /* Noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  header {
+    margin-bottom: 48px;
+    text-align: center;
+  }
+
+  header h1 {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+
+  header p {
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 48px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* Pipeline */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .stage {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 0;
+    position: relative;
+  }
+
+  .stage-label {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 24px 20px 24px 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: right;
+    padding-top: 28px;
+  }
+
+  .stage-content {
+    border-left: 1px solid var(--border);
+    padding: 16px 0 16px 24px;
+    position: relative;
+  }
+
+  /* Spine dot */
+  .stage-content::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 28px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--bg);
+  }
+
+  .stage:first-child .stage-content::before { border-color: var(--neutral); }
+
+  /* Arrow between stages */
+  .arrow {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+  }
+  .arrow-line {
+    border-left: 1px solid var(--border);
+    margin-left: 0;
+    padding-left: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+  }
+  .arrow-line::after {
+    content: '↓';
+    font-size: 14px;
+    color: var(--muted);
+    position: relative;
+    left: -7px;
+  }
+
+  .nodes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .node {
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+    position: relative;
+    transition: transform 0.15s;
+    cursor: default;
+  }
+
+  .node:hover { transform: translateY(-1px); }
+
+  .node.neutral {
+    background: var(--neutral-dim);
+    border-color: var(--neutral);
+    color: #9898bb;
+  }
+
+  .node.pfconverge {
+    background: var(--pfconverge-dim);
+    border-color: var(--pfconverge);
+    color: var(--pfconverge);
+  }
+
+  .node.riskrunway {
+    background: var(--riskrunway-dim);
+    border-color: var(--riskrunway);
+    color: var(--riskrunway);
+  }
+
+  .node.overlap {
+    background: var(--overlap-dim);
+    border-color: var(--overlap);
+    color: var(--overlap);
+  }
+
+  .node .tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    display: block;
+    margin-top: 3px;
+  }
+
+  /* Section dividers */
+  .phase-header {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 0;
+    margin-bottom: 4px;
+  }
+
+  .phase-title {
+    grid-column: 2;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-left: 1px solid var(--border);
+    padding: 20px 0 8px 24px;
+    margin-top: 8px;
+  }
+
+  /* Note callout */
+  .callout {
+    background: rgba(167,139,250,0.07);
+    border: 1px solid rgba(167,139,250,0.25);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 32px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #c4b5fd;
+  }
+
+  .callout strong {
+    color: var(--overlap);
+    font-weight: 700;
+  }
+
+  .callout-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--overlap);
+    margin-bottom: 8px;
+  }
+
+  /* Title gradient */
+  .grad-pf { color: var(--pfconverge); }
+  .grad-rr { color: var(--riskrunway); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>The IPFS Pipeline</h1>
+    <p>From submission chaos → bound policy → finance agreement</p>
+  </header>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--pfconverge);"></div>
+      PFConverge (your app)
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--riskrunway);"></div>
+      RiskRunway (Brooke's vision)
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--overlap);"></div>
+      Overlap / Shared territory
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--neutral);"></div>
+      External / Neutral process
+    </div>
+  </div>
+
+  <div class="pipeline">
+
+    <!-- PHASE 1 -->
+    <div class="phase-header">
+      <div></div>
+      <div class="phase-title">Phase 1 — Submission</div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label">Retail Agent</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node neutral">Client Application Received</div>
+          <div class="node neutral">ACORD Forms / SOV / Loss Runs</div>
+          <div class="node riskrunway">Submission Packaged
+            <span class="tag">RiskRunway — organize docs</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">Submission Intel</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node riskrunway">Readiness Scoring
+            <span class="tag">RiskRunway — is sub complete?</span>
+          </div>
+          <div class="node riskrunway">Appetite Matching
+            <span class="tag">RiskRunway — route to right markets</span>
+          </div>
+          <div class="node riskrunway">Market Routing
+            <span class="tag">RiskRunway — carriers / MGAs / wholesalers</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="phase-header">
+      <div></div>
+      <div class="phase-title">Phase 2 — Quoting</div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">Carrier / MGA</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node neutral">Underwriting Review</div>
+          <div class="node neutral">Quote Generated (PDF / Email)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">Quote Handling</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node riskrunway">Quote Tracking
+            <span class="tag">RiskRunway — responses logged</span>
+          </div>
+          <div class="node overlap">Quote Aggregation / Comparison
+            <span class="tag">Both — who owns this?</span>
+          </div>
+          <div class="node pfconverge">Quote OCR + Extraction
+            <span class="tag">PFConverge — parse PDF quotes</span>
+          </div>
+          <div class="node pfconverge">Normalize to Structured Data
+            <span class="tag">PFConverge — AI normalization pipeline</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="phase-header">
+      <div></div>
+      <div class="phase-title">Phase 3 — Selection & Bind</div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">Broker Decision</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node overlap">Present Options to Client
+            <span class="tag">Both — visibility into quotes</span>
+          </div>
+          <div class="node neutral">Client Selects Coverage(s)</div>
+          <div class="node riskrunway">Speed to Bind Tracking
+            <span class="tag">RiskRunway — pipeline velocity</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">Bind</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node neutral">Binder Issued</div>
+          <div class="node neutral">Policy Issued</div>
+          <div class="node neutral">⚠️ Not all quotes reach this step</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 4 -->
+    <div class="phase-header">
+      <div></div>
+      <div class="phase-title">Phase 4 — Premium Finance (conditional)</div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">PF Decision</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node neutral">Client Pays in Full?</div>
+          <div class="node neutral">→ Yes: Done. No PF needed.</div>
+          <div class="node pfconverge">→ No: Finance Agreement Needed
+            <span class="tag">PFConverge — this is your core zone</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"><div></div><div class="arrow-line"></div></div>
+
+    <div class="stage">
+      <div class="stage-label">AMS360</div>
+      <div class="stage-content">
+        <div class="nodes">
+          <div class="node pfconverge">Consolidate Quote Fields
+            <span class="tag">PFConverge — pull all AMS360 fields</span>
+          </div>
+          <div class="node pfconverge">Multi-Coverage Totals
+            <span class="tag">PFConverge — premium + fees + taxes</span>
+          </div>
+          <div class="node pfconverge">One-Click AMS360 Output
+            <span class="tag">PFConverge — no re-keying</span>
+          </div>
+          <div class="node pfconverge">Finance Agreement Generated
+            <span class="tag">PFConverge — end goal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end pipeline -->
+
+  <div class="callout">
+    <div class="callout-title">⚡ Strategic Reality Check</div>
+    <strong>RiskRunway</strong> owns Phases 1–3: submission organization, appetite routing, pipeline velocity, speed to bind. It's a broad platform play across retail, wholesale, and carrier layers.<br><br>
+    <strong>PFConverge</strong> owns Phase 4: quote data extraction and finance agreement generation inside AMS360. It's narrow, deep, and solves a specific daily pain for PF teams — but only activates <em>after</em> a policy binds and only if the client finances.<br><br>
+    <strong>The overlap zone</strong> (quote aggregation / comparison) is the battleground. RiskRunway wants to track quotes as pipeline data. PFConverge wants to extract and normalize quote data for finance. These are compatible if positioned right — <strong>RiskRunway is the pipeline, PFConverge is the finance handoff layer.</strong>
+  </div>
+
+</div>
+</body>
+</html>
