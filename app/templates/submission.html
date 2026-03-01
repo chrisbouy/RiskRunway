@@ -213,6 +213,27 @@
             padding: 0;
         }
 
+        /* Basic Info Labels */
+        .info-label-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .info-label-title {
+            font-size: 0.75rem;
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-neutral-500);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .info-label-value {
+            font-size: 0.938rem;
+            font-weight: var(--font-weight-medium);
+            color: var(--text-primary);
+        }
+
         /* Excel-inspired professional tables */
         table {
             width: 100%;
@@ -545,23 +566,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        #combineTotalsBtn {
-            background: var(--color-primary);
-            color: white;
-            font-size: 0.75rem;
-            padding: 0.375rem 0.75rem;
-        }
 
-        #combineTotalsBtn:hover:not(:disabled) {
-            background: var(--color-primary-dark);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        #combineTotalsBtn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
 
         #reportBugBtn {
             background: var(--color-danger);
@@ -895,64 +900,49 @@
 
         <!-- Results Display -->
         <div id="result" style="display: grid; gap: 1rem;">
-            <!-- Basic Info Table -->
-            <div id="basicInfoTable" class="card">
+            <!-- Basic Information Labels -->
+            <div id="basicInfoLabels" class="card">
+
+
+                    <div id="basicInfoContent" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                        <!-- Basic info will be populated here as labels -->
+                    </div>
+
+            </div>
+
+            <!-- Table 1: Quotes by Broker -->
+            <div id="quotesByBrokerTable" class="card">
                 <div class="card-header">
-                    <h2 class="card-title">Basic Information</h2>
+                    <h2 class="card-title">Quotes - by Broker</h2>
                 </div>
                 <div class="table-wrapper">
                     <table>
                         <thead>
-                            <tr id="basicInfoHeader">
-                                <!-- Basic info headers will be populated here -->
+                            <tr id="quotesByBrokerHeader">
+                                <!-- Quote by broker headers will be populated here -->
                             </tr>
                         </thead>
-                        <tbody id="basicInfoBody">
-                            <!-- Basic info data will be populated here -->
+                        <tbody id="quotesByBrokerBody">
+                            <!-- Quote by broker data will be populated here -->
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Quotes Table -->
-            <div id="quotesTable" class="card">
+            <!-- Table 2: Policy Details -->
+            <div id="policyDetailsTable" class="card">
                 <div class="card-header">
                     <h2 class="card-title">Policy Details</h2>
                 </div>
                 <div class="table-wrapper">
                     <table>
                         <thead>
-                            <tr id="quotesHeader">
-                                <!-- Quote headers will be populated here -->
+                            <tr id="policyDetailsHeader">
+                                <!-- Policy details headers will be populated here -->
                             </tr>
                         </thead>
-                        <tbody id="quotesBody">
-                            <!-- Quote data will be populated here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Totals Table -->
-            <div id="totalsTable" class="card">
-                <div class="card-header">
-                    <h2 class="card-title">Financial Summary</h2>
-                    <button id="combineTotalsBtn" style="display: none;">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        Combine Totals
-                    </button>
-                </div>
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr id="totalsHeader">
-                                <!-- Totals headers will be populated here -->
-                            </tr>
-                        </thead>
-                        <tbody id="totalsBody">
-                            <!-- Totals data will be populated here -->
+                        <tbody id="policyDetailsBody">
+                            <!-- Policy details data will be populated here -->
                         </tbody>
                     </table>
                 </div>
@@ -1468,13 +1458,12 @@
         }
 
         function displayResults(results) {
-            // Clear all tables
-            document.getElementById('basicInfoHeader').innerHTML = '';
-            document.getElementById('basicInfoBody').innerHTML = '';
-            document.getElementById('quotesHeader').innerHTML = '';
-            document.getElementById('quotesBody').innerHTML = '';
-            document.getElementById('totalsHeader').innerHTML = '';
-            document.getElementById('totalsBody').innerHTML = '';
+            // Clear all content areas
+            document.getElementById('basicInfoContent').innerHTML = '';
+            document.getElementById('quotesByBrokerHeader').innerHTML = '';
+            document.getElementById('quotesByBrokerBody').innerHTML = '';
+            document.getElementById('policyDetailsHeader').innerHTML = '';
+            document.getElementById('policyDetailsBody').innerHTML = '';
 
             // Collect all data for tables
             let allPDFInfo = [];
@@ -1545,78 +1534,128 @@
                 }
             });
             
-            populateBasicInfoTable(allPDFInfo);
-            populateQuotesTable(allQuotes);
-            populateTotalsTable(allPDFInfo);
+            populateBasicInfoLabels(allPDFInfo);
+            populateQuotesByBrokerTable(allPDFInfo);
+            populatePolicyDetailsTable(allQuotes);
         }
 
-        function populateBasicInfoTable(allPDFInfo) {
-            const header = document.getElementById('basicInfoHeader');
-            const tbody = document.getElementById('basicInfoBody');
-            
-            if (allPDFInfo.length === 0) return;
-            
-            // Create headers only once
-            const headerFields = [
-                'Insured Name',
-                'Address',
-                'Agency',
-                'Agency Phone',
-                'MGA / Wholesale Broker',
-                'Quote #',
-                'Account #'
-            ];
-            
-            headerFields.forEach(label => {
-                const th = document.createElement('th');
-                th.textContent = label;
-                header.appendChild(th);
-            });
+        function populateBasicInfoLabels(allPDFInfo) {
+            const container = document.getElementById('basicInfoContent');
 
-            // Create a row for each PDF
-            allPDFInfo.forEach((PDFInfo) => {
-                const data = PDFInfo.data;
-                const quoteIndex = PDFInfo.quoteIndex;
-                
-                const fields = [
-                    { label: 'Insured Name', value: data.insured?.name || null },
-                    { label: 'Address', value: (() => {
+            if (allPDFInfo.length === 0) return;
+
+            // Get data from first quote (since basic info should be the same across quotes)
+            const data = allPDFInfo[0].data;
+
+            const fields = [
+                {
+                    label: 'Insured Name',
+                    value: data.insured?.name || 'N/A'
+                },
+                {
+                    label: 'Address',
+                    value: (() => {
                         if (data.insured?.address) {
                             const addr = data.insured.address;
                             const parts = [addr.street, addr.city, addr.state, addr.zip].filter(p => p);
-                            return parts.length > 0 ? parts.join(', ') : null;
+                            return parts.length > 0 ? parts.join(', ') : 'N/A';
                         }
-                        return null;
-                    })() },
-                    { label: 'Agency', value: data.retail_agent?.name || null },
-                    { label: 'Agency Phone', value: data.retail_agent?.phone || null },
-                    { label: 'General Agent / Wholesale Broker', value: data.general_agent_or_wholesale_broker?.name || null },
-                    { label: 'Quote #', value: data.quote_number || null },
-                    { label: 'Account #', value: data.account_number || null }
-                ];
+                        return 'N/A';
+                    })()
+                },
+                {
+                    label: 'Agency',
+                    value: data.retail_agent?.name || 'N/A'
+                },
+                {
+                    label: 'Agency Phone',
+                    value: data.retail_agent?.phone || 'N/A'
+                }
+            ];
 
-                const dataRow = document.createElement('tr');
-                const colorClass = `quote-color-${quoteIndex % 8}`;
-                dataRow.className = colorClass;
-                
-                fields.forEach(field => {
-                    const td = document.createElement('td');
-                    const value = field.value || 'null';
-                    td.innerHTML = `<span class="field-value">${value === 'null' ? '<span class="text-gray-400">null</span>' : value}</span>`;
-                    td.onclick = () => copyToClipboard(value, td);
-                    dataRow.appendChild(td);
-                });
-                
-                tbody.appendChild(dataRow);
+            fields.forEach(field => {
+                const labelGroup = document.createElement('div');
+                labelGroup.className = 'info-label-group';
+
+                const labelTitle = document.createElement('div');
+                labelTitle.className = 'info-label-title';
+                labelTitle.textContent = field.label;
+
+                const labelValue = document.createElement('div');
+                labelValue.className = 'info-label-value';
+                labelValue.textContent = field.value;
+                labelValue.style.cursor = 'pointer';
+                labelValue.onclick = () => copyToClipboard(field.value, labelValue);
+
+                labelGroup.appendChild(labelTitle);
+                labelGroup.appendChild(labelValue);
+                container.appendChild(labelGroup);
             });
         }
 
-        function populateQuotesTable(quotes) {
-            const header = document.getElementById('quotesHeader');
-            const tbody = document.getElementById('quotesBody');
+        function populateQuotesByBrokerTable(allPDFInfo) {
+            const header = document.getElementById('quotesByBrokerHeader');
+            const tbody = document.getElementById('quotesByBrokerBody');
+
+            if (allPDFInfo.length === 0) return;
 
             // Create headers
-            const headers = ['Coverage', 'Carrier', 'Policy #', 'Effective', 'Expiration', 'Term', 'Premium', 'Tax', 'Fee', 'Broker Fee', 'Min Earned %', 'Min Earned $'];
+            const headers = ['MGA / Wholesale Broker', 'Quote #', 'Grand Total', '% Min Earned', 'Deposit', 'Amount Financed'];
+            headers.forEach(headerText => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                header.appendChild(th);
+            });
+
+            // Create a row for each quote/PDF
+            allPDFInfo.forEach((PDFInfo) => {
+                const data = PDFInfo.data;
+                const quoteIndex = PDFInfo.quoteIndex;
+                const totals = data.totals;
+
+                const row = document.createElement('tr');
+                const colorClass = `quote-color-${quoteIndex % 8}`;
+                row.className = colorClass;
+
+                // Calculate min earned percentage (average across all policies if multiple)
+                let minEarnedPercent = null;
+                if (data.policies && Array.isArray(data.policies) && data.policies.length > 0) {
+                    const percentages = data.policies
+                        .map(p => p.minimum_earned_percent)
+                        .filter(p => p !== null && p !== undefined);
+                    if (percentages.length > 0) {
+                        const avg = percentages.reduce((a, b) => parseFloat(a) + parseFloat(b), 0) / percentages.length;
+                        minEarnedPercent = avg.toFixed(1) + '%';
+                    }
+                }
+
+                const values = [
+                    data.general_agent_or_wholesale_broker?.name || null,
+                    data.quote_number || null,
+                    totals?.grand_total || null,
+                    minEarnedPercent,
+                    data.financing?.down_payment || null,
+                    data.financing?.amount_financed || null
+                ];
+
+                values.forEach((value) => {
+                    const td = document.createElement('td');
+                    const cellValue = value || 'null';
+                    td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
+                    td.onclick = () => copyToClipboard(cellValue, td);
+                    row.appendChild(td);
+                });
+
+                tbody.appendChild(row);
+            });
+        }
+
+        function populatePolicyDetailsTable(quotes) {
+            const header = document.getElementById('policyDetailsHeader');
+            const tbody = document.getElementById('policyDetailsBody');
+
+            // Create headers
+            const headers = ['Coverage', 'Carrier', 'Policy #', 'Effective', 'Expiration', 'Term', 'Base Premium', 'Tax', 'Fee', 'Broker Fee'];
             headers.forEach(headerText => {
                 const th = document.createElement('th');
                 th.textContent = headerText;
@@ -1639,9 +1678,7 @@
                     quote.premium,
                     quote.tax,
                     quote.fee,
-                    quote.brokerFee,
-                    quote.minEarnedPercent,
-                    quote.minEarnedAmount
+                    quote.brokerFee
                 ];
 
                 values.forEach((value, index) => {
@@ -1656,153 +1693,7 @@
             });
         }
 
-        function populateTotalsTable(allPDFInfo) {
-            const header = document.getElementById('totalsHeader');
-            const tbody = document.getElementById('totalsBody');
 
-            if (allPDFInfo.length === 0) return;
-
-            // Create headers
-            const totalFields = ['Total Premium', 'Total Tax', 'Total Fee', 'Grand Total', 'Deposit', 'Amount Financed'];
-
-            totalFields.forEach(fieldLabel => {
-                const th = document.createElement('th');
-                th.textContent = fieldLabel;
-                header.appendChild(th);
-            });
-
-            // Create a row for each PDF
-            allPDFInfo.forEach((PDFInfo) => {
-                const data = PDFInfo.data;
-                const quoteIndex = PDFInfo.quoteIndex;
-                const totals = data.totals;
-
-                const dataRow = document.createElement('tr');
-                const colorClass = `quote-color-${quoteIndex % 8}`;
-                dataRow.className = colorClass;
-
-                totalFields.forEach(fieldLabel => {
-                    const td = document.createElement('td');
-
-                    let value = null;
-                    const fieldMap = {
-                        'Total Premium': 'total_premium',
-                        'Total Tax': 'total_tax',
-                        'Total Fee': 'total_fee',
-                        'Grand Total': 'grand_total',
-                        'Deposit': 'down_payment',
-                        'Amount Financed': 'amount_financed'
-                    };
-
-                    const fieldName = fieldMap[fieldLabel];
-
-                    if (fieldName === 'down_payment' || fieldName === 'amount_financed') {
-                        if (data.financing) {
-                            value = data.financing[fieldName] || null;
-                        }
-                    } else if (fieldName && totals) {
-                        value = totals[fieldName] || null;
-                    }
-
-                    const cellValue = value !== null ? value : 'null';
-                    td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
-                    td.onclick = () => copyToClipboard(cellValue, td);
-                    dataRow.appendChild(td);
-                });
-
-                tbody.appendChild(dataRow);
-            });
-
-            // Update combine button state
-            updateCombineTotalsButton();
-        }
-
-        function updateCombineTotalsButton() {
-            const tbody = document.getElementById('totalsBody');
-            const combineBtn = document.getElementById('combineTotalsBtn');
-            const rowCount = tbody.querySelectorAll('tr').length;
-
-            if (rowCount > 1) {
-                combineBtn.style.display = 'inline-flex';
-                combineBtn.disabled = false;
-            } else if (rowCount === 1) {
-                combineBtn.style.display = 'inline-flex';
-                combineBtn.disabled = true;
-            } else {
-                combineBtn.style.display = 'none';
-            }
-        }
-
-        function combineTotals() {
-            const tbody = document.getElementById('totalsBody');
-            const rows = tbody.querySelectorAll('tr');
-
-            if (rows.length <= 1) return;
-
-            const totalFields = ['Total Premium', 'Total Tax', 'Total Fee', 'Grand Total', 'Deposit', 'Amount Financed'];
-            const combinedValues = {};
-
-            // Initialize combined values
-            totalFields.forEach(field => {
-                combinedValues[field] = 0;
-            });
-
-            // Sum up all values from all rows
-            rows.forEach(row => {
-                const cells = row.querySelectorAll('td');
-                cells.forEach((cell, index) => {
-                    const fieldLabel = totalFields[index];
-                    const valueSpan = cell.querySelector('.field-value');
-                    if (valueSpan) {
-                        const textContent = valueSpan.textContent.trim();
-                        // Skip null values and extract numeric value
-                        if (textContent !== 'null') {
-                            // Remove currency symbols, commas, and extract number
-                            const numericValue = parseFloat(textContent.replace(/[$,]/g, ''));
-                            if (!isNaN(numericValue)) {
-                                combinedValues[fieldLabel] += numericValue;
-                            }
-                        }
-                    }
-                });
-            });
-
-            // Clear the table body
-            tbody.innerHTML = '';
-
-            // Create a single combined row
-            const combinedRow = document.createElement('tr');
-            combinedRow.className = 'quote-color-0'; // Use first color
-
-            totalFields.forEach(fieldLabel => {
-                const td = document.createElement('td');
-                const value = combinedValues[fieldLabel];
-
-                // Format the value (preserve original format if it was currency)
-                let formattedValue;
-                if (value === 0) {
-                    formattedValue = 'null';
-                } else {
-                    // Check if original values had $ sign by looking at first row
-                    formattedValue = value.toFixed(2);
-                    // Add $ if it looks like currency
-                    if (fieldLabel.includes('Premium') || fieldLabel.includes('Tax') ||
-                        fieldLabel.includes('Fee') || fieldLabel.includes('Total') ||
-                        fieldLabel.includes('Deposit') || fieldLabel.includes('Financed')) {
-                        formattedValue = '$' + formattedValue;
-                    }
-                }
-
-                td.innerHTML = `<span class="field-value">${formattedValue === 'null' ? '<span class="text-gray-400">null</span>' : formattedValue}</span>`;
-                td.onclick = () => copyToClipboard(formattedValue, td);
-                combinedRow.appendChild(td);
-            });
-
-            tbody.appendChild(combinedRow);
-
-            // Update button state
-            updateCombineTotalsButton();
-        }
 
         // Track original status
         let originalStatus = null;
@@ -1858,10 +1749,7 @@
             window.location.href = '/';
         });
 
-        // Combine totals button handler
-        document.getElementById('combineTotalsBtn').addEventListener('click', function() {
-            combineTotals();
-        });
+
 
         // Report bug handlers
         document.getElementById('reportBugBtn').addEventListener('click', function() {
