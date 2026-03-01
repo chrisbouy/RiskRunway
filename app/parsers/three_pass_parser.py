@@ -106,26 +106,9 @@ GENERAL AGENT / WHOLESALE BROKER (wholesale intermediary between retail agent an
   • Company name may appear as: "General Agent", "MGA", "Wholesale Broker", 
     "Managing General Agent", "Surplus Lines Broker", "Program Administrator"
   • This is a COMPANY, not a person
-  • Often located in a DIFFERENT STATE than the insured
   • May have "Surplus Lines License" or "SL License"
-  • Usually appears alongside a separate "Retail Agent" label
+  • This is the producer/proposer of the quote.  Company that originally created the document, so it could appear in the header or footer.
 
-DISAMBIGUATION RULES (when BOTH appear on same quote):
-  1. If you see TWO distinct agencies listed:
-     • The one labeled "Retail Agent", "Producer", or "Local Agent" → retail_agent
-     • The one labeled "Surplus Lines Broker", "Wholesale Broker", or "MGA" → general_agent_or_wholesale_broker
-  
-  2. Geographic matching:
-     • Retail agent typically in SAME STATE as insured
-     • Wholesale broker typically in DIFFERENT STATE
-  
-  3. License indicators:
-     • "Surplus Lines License #" or "SL License" → Wholesale broker
-     • "Producer Code" or "Agent Code" → Retail agent
-  
-  4. If only ONE agency appears:
-     • Put it in retail_agent
-     • Leave general_agent_or_wholesale_broker as null
 
 COVERAGE TYPE:
   • Normalize to standard terms:
@@ -161,10 +144,14 @@ POLICY TERM:
   • May appear as: "Term", "Policy Period", "Coverage Period"
   • Extract as stated (e.g., "12 months", "1 year", "6 months")
 
+
 PREMIUM:
-  • May appear as: "Premium", "Annual Premium", "Total Premium", "Full Term Premium",
-    "Written Premium", "Base Premium"
+  • The BASE premium BEFORE taxes and fees
+  • "Base Premium", "Written Premium", "Annual Premium" = correct field
+  • "Total Annual Premium", "Total Due", "Amount Due" = WRONG - 
+    this includes taxes/fees, do NOT use this as premium
   • Extract the FULL TERM amount (not per-payment or per-month)
+
 
 TAX:
   • May appear as: "Tax", "Surplus Lines Tax", "SL Tax", "State Tax", "Premium Tax"
@@ -172,6 +159,8 @@ TAX:
 
 FEE:
   • May appear as: "Fee", "Policy Fee", "Admin Fee", "Inspection Fee"
+  • If multiple carrier fees exist (Policy Fee, Inspection Fee, Admin Fee),
+    sum them into a single total fee value
   • This is carrier fees, NOT broker fees
 
 BROKER FEE:
@@ -187,11 +176,11 @@ TOTALS SECTION:
   • Usually at bottom of document in a box, table, or summary
   • May be labeled: "Summary", "Payment Schedule", "Amount Due", "Total Due"
   • Extract:
-    - Total Premium (sum of all premiums)
+    - Total Premium (sum of all premiums) -The BASE premium BEFORE taxes and fees
     - Total Tax (sum of all taxes)
     - Total Fee (sum of all fees, excluding broker fees)
     - Total Broker Fee (if shown separately)
-    - Grand Total (final amount due)
+    - Grand Total (final amount due) - The final amount due, including taxes and fees
 
 DOWN PAYMENT / FINANCING:
   • May appear as: "Down Payment", "Deposit", "Required Down", "Initial Payment"
