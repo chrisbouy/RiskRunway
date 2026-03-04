@@ -76,6 +76,11 @@ def _ensure_schema_updates(engine):
             conn.exec_driver_sql("ALTER TABLE quotes ADD COLUMN quote_outcome VARCHAR(20)")
             print("Applied schema update: added quotes.quote_outcome")
 
+        submission_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(submissions)").fetchall()]
+        if 'status_label' not in submission_columns:
+            conn.exec_driver_sql("ALTER TABLE submissions ADD COLUMN status_label VARCHAR(255)")
+            print("Applied schema update: added submissions.status_label")
+
 
 def get_session():
     """Get a database session"""
@@ -84,7 +89,7 @@ def get_session():
 
 
 # Helper functions for common operations
-def create_submission(insured_name, effective_date, state=None, user=None):
+def create_submission(insured_name, effective_date, state=None, user=None, assigned_to=None):
     """
     Create a new submission and log the action.
 
@@ -99,7 +104,8 @@ def create_submission(insured_name, effective_date, state=None, user=None):
             insured_name=insured_name,
             effective_date=effective_date,
             state=state,
-            status=SubmissionStatus.RECEIVED
+            status=SubmissionStatus.RECEIVED,
+            assigned_to=assigned_to
         )
         session.add(submission)
         session.flush()  # Get the ID

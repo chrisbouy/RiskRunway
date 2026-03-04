@@ -6,185 +6,329 @@
     <title>PF Converge - Submissions</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" type="text/css" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /* Theme Variables */
         :root {
-            --bg-color: #f9fafb;
-            --card-bg: white;
-            --text-primary: #1f2937;
-            --text-secondary: #6b7280;
-            --border-color: #e5e7eb;
-            --header-bg: white;
+            --blue:   #2d4a8a;
+            --orange: #d4720a;
+            --green:  #1a7a4a;
 
-            /* Typography */
-            --font-weight-normal: 400;
-            --font-weight-medium: 500;
-            --font-weight-semibold: 600;
-            --font-weight-bold: 700;
-            --letter-spacing-normal: -0.025em;
+            --bg:          #f4f2ef;
+            --surface:     #ffffff;
+            --border:      #ddd9d3;
+            --border-soft: #e8e5e0;
+            --text:        #1a1814;
+            --text-muted:  #6b6760;
+            --text-xmuted: #9c9893;
 
-            /* Button styles */
-            --button-border-width: 0px;
-            --button-border-radius: 0.375rem;
+            --rail-bg:     #1e2d50;
+            --rail-text:   #e8ecf5;
+            --rail-muted:  #8b9ac0;
+            --rail-border: #2d3f6e;
+            --rail-hover:  #2a3d6a;
         }
 
-        /* Traditional Dark Theme */
-        [data-theme="traditional-dark"] {
-            --bg-color: #1f2937;
-            --card-bg: #374151;
-            --text-primary: #f9fafb;
-            --text-secondary: #d1d5db;
-            --border-color: #4b5563;
-            --header-bg: #111827;
-        }
+        *, *::before, *::after { box-sizing: border-box; }
 
-        /* Modern Light Theme */
-        [data-theme="modern-light"] {
-            --font-weight-normal: 300;
-            --font-weight-medium: 400;
-            --font-weight-semibold: 500;
-            --font-weight-bold: 600;
-            --letter-spacing-normal: 0.01em;
-            --button-border-width: 0px;
-            --button-border-radius: 0.5rem;
-        }
-
-        /* Modern Dark Theme */
-        [data-theme="modern-dark"] {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --border-color: #334155;
-            --header-bg: #020617;
-            --font-weight-normal: 300;
-            --font-weight-medium: 400;
-            --font-weight-semibold: 500;
-            --font-weight-bold: 600;
-            --letter-spacing-normal: 0.01em;
-            --button-border-width: 0px;
-            --button-border-radius: 0.5rem;
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            font-size: 13px;
         }
 
         body {
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            font-weight: var(--font-weight-normal);
-            letter-spacing: var(--letter-spacing-normal);
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
         }
 
+        .page-layout {
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 168px 1fr;
+        }
+
+        /* ── LEFT RAIL ── */
+        .left-rail {
+            background: var(--rail-bg);
+            border-right: 1px solid var(--rail-border);
+            padding: 14px 10px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .left-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--rail-muted);
+            padding: 0 2px;
+            margin-bottom: 4px;
+        }
+
+        .left-divider {
+            height: 1px;
+            background: var(--rail-border);
+            margin: 4px 0;
+        }
+
+        .left-control {
+            width: 100%;
+            font-size: 11px;
+            font-family: inherit;
+            padding: 4px 6px;
+            border: 1px solid var(--rail-border);
+            border-radius: 4px;
+            background: rgba(255,255,255,0.07);
+            color: var(--rail-text);
+            line-height: 1.3;
+        }
+
+        .left-control option { background: #1e2d50; color: var(--rail-text); }
+
+        .left-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--rail-muted);
+            padding: 3px 4px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .left-checkbox-row:hover { background: var(--rail-hover); color: var(--rail-text); }
+        .left-checkbox-row input { accent-color: #7b9fd4; }
+
+        .stage-count {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+            padding: 3px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.02em;
+        }
+        .stage-count::before {
+            content: '';
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        #count-submission { color: #92a8d8; }
+        #count-submission::before { background: #4a72c4; }
+        #count-quoting    { color: #d4a265; }
+        #count-quoting::before    { background: var(--orange); }
+        #count-bind       { color: #5fba8a; }
+        #count-bind::before       { background: var(--green); }
+
+        .left-btn {
+            width: 100%;
+            text-align: left;
+            font-size: 11px;
+            font-family: inherit;
+            font-weight: 500;
+            padding: 5px 8px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: filter 0.15s, background 0.15s;
+            line-height: 1.3;
+        }
+        .left-btn:hover { filter: brightness(1.12); }
+
+        .btn-rules   { background: rgba(255,255,255,0.1); color: var(--rail-text); }
+        .btn-new     { background: var(--blue); color: #fff; }
+        .btn-logout  { background: rgba(200,60,60,0.25); color: #f07070; }
+
+        .user-block {
+            margin-top: auto;
+            padding: 8px 6px 4px;
+            border-top: 1px solid var(--rail-border);
+        }
+        .user-label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--rail-muted); }
+        .user-name  { font-size: 11px; font-weight: 600; color: var(--rail-text); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-role  { display: inline-block; margin-top: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; background: rgba(74,114,196,0.3); color: #92a8d8; padding: 1px 5px; border-radius: 3px; }
+
+        /* ── BOARD ── */
+        .board-panel { overflow: hidden; display: flex; flex-direction: column; }
+
+        .runway-board {
+            background: var(--surface);
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .runway-header {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            background: var(--surface);
+            border-bottom: 2px solid var(--border);
+            height: 30px;
+            flex-shrink: 0;
+        }
+
+        .runway-header-cell {
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            gap: 7px;
+            border-right: 1px solid var(--border-soft);
+        }
+        .runway-header-cell:last-child { border-right: none; }
+        .runway-header-cell .stage-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .dot-sub  { background: var(--blue); }
+        .dot-quot { background: var(--orange); }
+        .dot-bind { background: var(--green); }
+        .header-label-sub  { color: var(--blue); }
+        .header-label-quot { color: var(--orange); }
+        .header-label-bind { color: var(--green); }
+
+        #runwayRows {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .runway-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            border-bottom: 1px solid var(--border-soft);
+            min-height: 48px;
+        }
+        .runway-row:hover { background: #faf9f7; }
+
+        .runway-lane {
+            display: flex;
+            align-items: center;
+            padding: 4px 6px;
+            border-right: 1px solid var(--border-soft);
+            min-height: 48px;
+        }
+        .runway-lane:last-child { border-right: none; }
+
+        /* Lane tints when active */
+        .runway-lane.active-sub  { background: #f0f3fa; }
+        .runway-lane.active-quot { background: #fdf6ee; }
+        .runway-lane.active-bind { background: #f0f8f3; }
+
+        /* ── SUBMISSION CARD ── */
         .submission-card {
-            transition: all 0.2s;
-            cursor: move;
-            background-color: var(--card-bg);
-            color: var(--text-primary);
-            border-color: var(--border-color);
+            width: 100%;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
         }
-        .submission-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+
+        .card-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+            padding: 0 1px;
         }
-        .submission-card.dragging {
-            opacity: 0.5;
-        }
-        .kanban-column {
-            transition: background-color 0.2s;
-            background-color: var(--card-bg);
-            border-color: var(--border-color);
-        }
-        .kanban-column.drag-over {
-            background-color: var(--bg-color);
-            border: 2px dashed #3b82f6;
-        }
+
         .status-badge {
-            font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
-            border-radius: var(--button-border-radius);
-            font-weight: var(--font-weight-medium);
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            padding: 1px 5px;
+            border-radius: 3px;
+            line-height: 1.4;
         }
-        .status-submission { background-color: #e0e7ff; color: #4338ca; }
-        .status-quoting { background-color: #fef3c7; color: #92400e; }
-        .status-bind { background-color: #d1fae5; color: #065f46; }
+        .status-submission { background: #dde5f5; color: var(--blue); }
+        .status-quoting    { background: #fdecd8; color: #a0540a; }
+        .status-bind       { background: #d5f0e2; color: #145c38; }
+
+        .status-label-input {
+            font-size: 10px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-muted);
+            border: 1px solid transparent;
+            border-radius: 3px;
+            padding: 1px 4px;
+            background: transparent;
+            width: 100%;
+            line-height: 1.3;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .status-label-input:hover,
+        .status-label-input:focus {
+            border-color: var(--border);
+            background: white;
+            outline: none;
+            color: var(--text);
+        }
+        .status-label-input::placeholder { color: var(--text-xmuted); }
+
+            font-size: 10px;
+            font-family: 'IBM Plex Sans', inherit;
+            color: var(--text-muted);
+            border: 1px solid var(--border-soft);
+            border-radius: 3px;
+            padding: 2px 5px;
+            background: #f9f8f6;
+            width: 100%;
+            line-height: 1.3;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .card-control:hover, .card-control:focus { border-color: var(--border); outline: none; }
+        .card-control option { font-size: 11px; }
     </style>
 </head>
 <body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-6">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm" style="background-color: var(--header-bg);">
-            <h1 class="text-3xl font-bold" style="color: var(--text-primary); font-weight: var(--font-weight-bold);">Submissions</h1>
-            <div class="flex items-center gap-3">
-                <!-- Theme Selector -->
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg border" style="background-color: var(--card-bg); border-color: var(--border-color);">
-                    <label for="themeSelect" class="text-sm font-semibold" style="color: var(--text-primary); font-weight: var(--font-weight-semibold);">Theme:</label>
-                    <select id="themeSelect" class="text-sm px-2 py-1 rounded border" style="background-color: var(--bg-color); color: var(--text-primary); border-color: var(--border-color); border-radius: var(--button-border-radius);">
-                        <option value="traditional-light">Traditional Light</option>
-                        <option value="traditional-dark">Traditional Dark</option>
-                        <option value="modern-light">Modern Light</option>
-                        <option value="modern-dark">Modern Dark</option>
-                    </select>
-                </div>
-                <!-- Filter Toggle -->
-                <div class="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="filterMyCards" class="rounded">
-                        <span class="text-sm font-medium text-gray-700">My Cards Only</span>
-                    </label>
-                </div>
-
-                <!-- User Info -->
-                <div class="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
-                    <span class="text-sm text-gray-600">👤</span>
-                    <span id="currentUserName" class="text-sm font-medium text-gray-800"></span>
-                    <span id="currentUserRole" class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800"></span>
-                </div>
-
-                <button id="rulesBtn" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                    ⚙️ Appetite Rules
-                </button>
-                <button id="newSubmissionBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                    + New Submission
-                </button>
-                <button id="logoutBtn" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">
-                    Logout
-                </button>
+    <div class="page-layout">
+        <aside class="left-rail">
+            <div class="left-title">RiskRunway</div>
+            <div class="left-divider"></div>
+            <label class="left-checkbox-row">
+                <input type="checkbox" id="filterMyCards">
+                <span>My Cards Only</span>
+            </label>
+            <div class="left-divider"></div>
+            <span id="count-submission" class="stage-count">Submission: 0</span>
+            <span id="count-quoting" class="stage-count">Quoting: 0</span>
+            <span id="count-bind" class="stage-count">Bind: 0</span>
+            <div class="left-divider"></div>
+            <button id="rulesBtn" class="left-btn btn-rules">Appetite Rules</button>
+            <button id="newSubmissionBtn" class="left-btn btn-new">+ New Submission</button>
+            <div class="user-block">
+                <div class="user-label">Logged in as</div>
+                <div id="currentUserName" class="user-name"></div>
+                <div id="currentUserRole" class="user-role"></div>
             </div>
-        </div>
+            <button id="logoutBtn" class="left-btn btn-logout" style="margin-top:6px;">Logout</button>
+        </aside>
 
-        <!-- Kanban Board -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Submission Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Submission</span>
-                    <span id="count-submission" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-submission" class="kanban-column space-y-3 min-h-[200px]" data-status="RECEIVED">
-                    <!-- Cards will be inserted here -->
+        <main class="board-panel">
+            <div class="runway-board">
+                <div class="runway-header">
+                    <div class="runway-header-cell"><span class="stage-dot dot-sub"></span><span class="header-label-sub">Submission</span></div>
+                    <div class="runway-header-cell"><span class="stage-dot dot-quot"></span><span class="header-label-quot">Quoting</span></div>
+                    <div class="runway-header-cell"><span class="stage-dot dot-bind"></span><span class="header-label-bind">Selection &amp; Bind</span></div>
                 </div>
+                <div id="runwayRows"></div>
             </div>
-
-            <!-- Quoting Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Quoting</span>
-                    <span id="count-quoting" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-quoting" class="kanban-column space-y-3 min-h-[200px]" data-status="IN_PROGRESS">
-                    <!-- Cards will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Selection & Bind Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Selection &amp; Bind</span>
-                    <span id="count-bind" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-bind" class="kanban-column space-y-3 min-h-[200px]" data-status="CHOSEN">
-                    <!-- Cards will be inserted here -->
-                </div>
-            </div>
-        </div>
+        </main>
     </div>
 
     <!-- Rules Management Modal -->
@@ -281,10 +425,14 @@
         let currentUser = null;
         let filterMyCards = false;
         const STAGE_COLUMNS = [
-            { key: 'submission', statuses: ['Received'], columnId: 'column-submission', countId: 'count-submission' },
-            { key: 'quoting', statuses: ['In Progress'], columnId: 'column-quoting', countId: 'count-quoting' },
-            { key: 'bind', statuses: ['Chosen', 'Sent to Finance'], columnId: 'column-bind', countId: 'count-bind' }
+            { key: 'submission', statuses: ['Received'], apiStatus: 'RECEIVED', label: 'Submission', countId: 'count-submission' },
+            { key: 'quoting', statuses: ['In Progress'], apiStatus: 'IN_PROGRESS', label: 'Quoting', countId: 'count-quoting' },
+            { key: 'bind', statuses: ['Chosen', 'Sent to Finance'], apiStatus: 'CHOSEN', label: 'Selection & Bind', countId: 'count-bind' }
         ];
+        const STAGE_BY_KEY = STAGE_COLUMNS.reduce((acc, item) => {
+            acc[item.key] = item;
+            return acc;
+        }, {});
 
         // Load current user info
         async function loadCurrentUser() {
@@ -340,216 +488,148 @@
         });
 
         function renderKanban() {
-            // Clear all columns
-            STAGE_COLUMNS.forEach(stage => {
-                document.getElementById(stage.columnId).innerHTML = '';
-                document.getElementById(stage.countId).textContent = '0';
-            });
+            const rows = document.getElementById('runwayRows');
+            rows.innerHTML = '';
 
-            // Group submissions by stage
-            const grouped = { submission: [], quoting: [], bind: [] };
-
+            const grouped = { submission: 0, quoting: 0, bind: 0 };
             submissions.forEach(sub => {
-                const stage = STAGE_COLUMNS.find(col => col.statuses.includes(sub.status));
-                if (stage) {
-                    grouped[stage.key].push(sub);
+                const stageKey = getStageKey(sub.status);
+                grouped[stageKey] += 1;
+                rows.appendChild(createRunwayRow(sub));
+            });
+
+            document.getElementById('count-submission').textContent = `Submission: ${grouped.submission}`;
+            document.getElementById('count-quoting').textContent = `Quoting: ${grouped.quoting}`;
+            document.getElementById('count-bind').textContent = `Selection & Bind: ${grouped.bind}`;
+        }
+
+        async function updateSubmissionStatusLabel(submissionId, statusLabel) {
+            const response = await fetch(`/api/submission/${submissionId}/status_label`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status_label: statusLabel })
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to update status label');
+            }
+            return data.status_label;
+        }
+
+        function getStageKey(status) {
+            if (status === 'Received') return 'submission';
+            if (status === 'In Progress') return 'quoting';
+            return 'bind';
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function createRunwayRow(submission) {
+            const row = document.createElement('div');
+            row.className = 'runway-row';
+            row.dataset.submissionId = submission.id;
+
+            const stageKey = getStageKey(submission.status);
+
+            ['submission', 'quoting', 'bind'].forEach((laneKey) => {
+                const lane = document.createElement('div');
+                const tint = laneKey === 'submission' ? 'active-sub' : laneKey === 'quoting' ? 'active-quot' : 'active-bind';
+                lane.className = 'runway-lane' + (laneKey === stageKey ? ' ' + tint : '');
+                lane.dataset.lane = laneKey;
+                if (laneKey === stageKey) {
+                    lane.appendChild(createSubmissionCard(submission, stageKey));
                 }
+                row.appendChild(lane);
             });
 
-            // Render cards in each column
-            STAGE_COLUMNS.forEach(stage => {
-                const column = document.getElementById(stage.columnId);
-                const count = document.getElementById(stage.countId);
-                const cards = grouped[stage.key];
-
-                count.textContent = cards.length;
-                cards.forEach(sub => {
-                    const card = createSubmissionCard(sub);
-                    column.appendChild(card);
-                });
-            });
-
-            // Setup drop zones
-            setupDropZones();
+            return row;
         }
 
-        function setupDropZones() {
-            const columns = document.querySelectorAll('.kanban-column');
-            columns.forEach(column => {
-                column.addEventListener('dragover', handleDragOver);
-                column.addEventListener('drop', handleDrop);
-                column.addEventListener('dragleave', handleDragLeave);
-            });
-        }
-
-        let draggedCard = null;
-
-        function handleDragStart(e) {
-            draggedCard = e.target;
-            e.target.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-        }
-
-        function handleDragEnd(e) {
-            e.target.classList.remove('dragging');
-        }
-
-        function handleDragOver(e) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
-            e.dataTransfer.dropEffect = 'move';
-            e.currentTarget.classList.add('drag-over');
-            return false;
-        }
-
-        function handleDragLeave(e) {
-            e.currentTarget.classList.remove('drag-over');
-        }
-
-        async function handleDrop(e) {
-            if (e.stopPropagation) {
-                e.stopPropagation();
-            }
-            e.preventDefault();
-
-            const column = e.currentTarget;
-            column.classList.remove('drag-over');
-
-            if (draggedCard) {
-                const submissionId = draggedCard.dataset.submissionId;
-                const newStatus = column.dataset.status;
-
-                try {
-                    const response = await fetch(`/api/submission/${submissionId}/status`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ status: newStatus })
-                    });
-
-                    const data = await response.json();
-
-                    if (data.success) {
-                        // Reload submissions to update the board
-                        loadSubmissions();
-                    } else {
-                        alert('Error updating status: ' + data.error);
-                    }
-                } catch (error) {
-                    console.error('Error updating status:', error);
-                    alert('Error updating status');
-                }
-            }
-
-            return false;
-        }
-
-        function createSubmissionCard(submission) {
+        function createSubmissionCard(submission, stageKey) {
             const card = document.createElement('div');
-            card.className = 'submission-card bg-gray-50 rounded-lg p-4 cursor-pointer border border-gray-200';
-            card.draggable = true;
+            card.className = 'submission-card';
             card.dataset.submissionId = submission.id;
 
-            const stageKey = submission.status === 'Received'
-                ? 'submission'
-                : submission.status === 'In Progress'
-                    ? 'quoting'
-                    : 'bind';
-            const statusClass = `status-${stageKey}`;
-            const stageLabel = stageKey === 'submission'
-                ? 'Submission'
-                : stageKey === 'quoting'
-                    ? 'Quoting'
-                    : 'Selection & Bind';
+            const stageMeta = STAGE_BY_KEY[stageKey];
+            const defaultStageLabel = stageMeta ? stageMeta.label : 'Selection & Bind';
+            const displayLabel = (submission.status_label || '').trim() || (submission.is_bound ? 'Bound' : defaultStageLabel);
 
-            // Determine appetite score badge color
-            let appetiteClass = 'bg-gray-400';
-            let appetiteLabel = 'N/A';
+            const docOptions = (submission.documents || []).map((doc) => {
+                const label = `${doc.document_type}: ${doc.name}`;
+                return `<option value="${doc.id}">${escapeHtml(label)}</option>`;
+            }).join('');
 
-            if (submission.appetite_score !== null && submission.appetite_score !== undefined) {
-                appetiteLabel = submission.appetite_score;
-                if (submission.appetite_score >= 80) {
-                    appetiteClass = 'bg-green-600';
-                } else if (submission.appetite_score >= 60) {
-                    appetiteClass = 'bg-blue-600';
-                } else if (submission.appetite_score >= 40) {
-                    appetiteClass = 'bg-yellow-600';
-                } else {
-                    appetiteClass = 'bg-red-600';
-                }
-            }
-
-            // Build assigned user dropdown options
-            let assignedOptions = '<option value="">Unassigned</option>';
-            allUsers.forEach(user => {
-                const selected = submission.assigned_to === user.id ? 'selected' : '';
-                assignedOptions += `<option value="${user.id}" ${selected}>${user.full_name}</option>`;
-            });
-
+            const stageBadgeClass = stageKey === 'submission' ? 'status-submission' : stageKey === 'quoting' ? 'status-quoting' : 'status-bind';
+            const stageBadgeLabel = stageKey === 'submission' ? 'Submission' : stageKey === 'quoting' ? 'Quoting' : 'Bind';
             card.innerHTML = `
-                <div class="flex items-start justify-between mb-2">
-                    <h3 class="font-semibold text-gray-800 text-sm">${submission.insured_name}</h3>
-                    <span class="status-badge ${statusClass}">${stageLabel}</span>
+                <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
+                    <span class="status-badge ${stageBadgeClass}">${stageBadgeLabel}</span>
+                    ${docOptions ? `<select class="documents-select card-control" style="flex:1;" data-submission-id="${submission.id}"><option value="">Docs</option>${docOptions}</select>` : ''}
                 </div>
-                <p class="text-xs text-gray-600 mb-1">${submission.quote_count} quote${submission.quote_count !== 1 ? 's' : ''}</p>
-                <p class="text-xs text-gray-600 mb-1">Effective: ${submission.effective_date}</p>
-                ${submission.state ? `<p class="text-xs text-gray-500 mb-1">State: ${submission.state}</p>` : ''}
-
-                <div class="mb-2">
-                    <label class="text-xs text-gray-500 block mb-1">Assigned to:</label>
-                    <select class="assigned-to-select text-xs border border-gray-300 rounded px-2 py-1 w-full"
-                            data-submission-id="${submission.id}"
-                            onclick="event.stopPropagation()">
-                        ${assignedOptions}
-                    </select>
-                </div>
-
-                <div class="flex items-center justify-between mt-2">
-                    <p class="text-xs text-gray-400">Created: ${new Date(submission.created_at).toLocaleDateString()}</p>
-                    <span class="${appetiteClass} text-white text-xs px-2 py-1 rounded font-semibold" title="PF Appetite Score">
-                        ${appetiteLabel}
-                    </span>
-                </div>
+                <input class="status-label-input"
+                       type="text"
+                       maxlength="255"
+                       placeholder="Add status note…"
+                       value="${escapeHtml(displayLabel === defaultStageLabel ? '' : displayLabel)}">
             `;
 
-            // Add drag event listeners
-            card.addEventListener('dragstart', handleDragStart);
-            card.addEventListener('dragend', handleDragEnd);
             card.addEventListener('click', (e) => {
-                if (!card.classList.contains('dragging')) {
-                    window.location.href = `/submission/${submission.id}`;
-                }
+                window.location.href = `/submission/${submission.id}`;
             });
 
-            // Add assigned-to dropdown handler
-            const assignedSelect = card.querySelector('.assigned-to-select');
-            if (assignedSelect) {
-                assignedSelect.addEventListener('change', async function(e) {
+            const stopPropagationControls = card.querySelectorAll('input, select');
+            stopPropagationControls.forEach((el) => {
+                el.addEventListener('click', (e) => e.stopPropagation());
+            });
+
+            const docSelect = card.querySelector('.documents-select');
+            if (docSelect) {
+                docSelect.addEventListener('change', async function(e) {
                     e.stopPropagation();
-                    const submissionId = this.dataset.submissionId;
-                    const userId = this.value ? parseInt(this.value) : null;
+                    const docId = this.value;
+                    if (!docId) return;
+                    window.open(`/api/documents/${docId}/download`, '_blank');
+                    this.value = '';
+                });
+            }
 
+            const statusLabelInput = card.querySelector('.status-label-input');
+            if (statusLabelInput) {
+                statusLabelInput.dataset.lastSaved = displayLabel;
+
+                const saveStatusLabel = async () => {
+                    const nextValue = statusLabelInput.value.trim();
+                    if (nextValue === statusLabelInput.dataset.lastSaved) {
+                        return;
+                    }
                     try {
-                        const response = await fetch(`/api/submission/${submissionId}/assign`, {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ user_id: userId })
-                        });
-
-                        const data = await response.json();
-                        if (data.success) {
-                            // Reload submissions to update the board
-                            loadSubmissions();
-                        } else {
-                            alert('Error assigning submission: ' + data.error);
+                        const savedValue = await updateSubmissionStatusLabel(submission.id, nextValue);
+                        const normalizedSaved = (savedValue || '').trim();
+                        statusLabelInput.dataset.lastSaved = normalizedSaved;
+                        const currentSubmission = submissions.find((s) => s.id === submission.id);
+                        if (currentSubmission) {
+                            currentSubmission.status_label = normalizedSaved;
                         }
                     } catch (error) {
-                        console.error('Error assigning submission:', error);
-                        alert('Error assigning submission');
+                        console.error('Error updating status label:', error);
+                        alert('Error updating status label');
+                        statusLabelInput.value = statusLabelInput.dataset.lastSaved || '';
+                    }
+                };
+
+                statusLabelInput.addEventListener('blur', saveStatusLabel);
+                statusLabelInput.addEventListener('keydown', async (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        statusLabelInput.blur();
                     }
                 });
             }

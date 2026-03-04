@@ -1019,6 +1019,32 @@
             background: #fee2e2;
             color: #b91c1c;
         }
+
+        .doc-list {
+            display: grid;
+            gap: 0.375rem;
+            padding: 0.75rem;
+        }
+
+        .doc-item {
+            border: 1px solid var(--color-neutral-200);
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.625rem;
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .doc-item a {
+            color: var(--color-primary);
+            text-decoration: none;
+        }
+
+        .doc-item a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -1092,7 +1118,7 @@
                 </div>
                 <div id="submissionStageInfo" class="stage-grid"></div>
             </div>
-            <div class="card">
+            <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
                     <h2 class="card-title">Submission Readiness</h2>
                 </div>
@@ -1101,6 +1127,22 @@
                     <div class="stage-check-item"><span class="stage-check-icon pending">!</span>Verify supporting documents</div>
                     <div class="stage-check-item"><span class="stage-check-icon pending">!</span>Add market routing notes</div>
                 </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Submission Documents</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                    <select id="stage1DocType">
+                        <option value="APPLICATION">Application</option>
+                        <option value="SOV">SOV</option>
+                        <option value="LOSS_RUN">Loss Run</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                    <input type="file" id="stage1DocFile" accept=".pdf,.png,.jpg,.jpeg">
+                    <button id="uploadStage1DocBtn">Upload</button>
+                </div>
+                <div id="stage1DocsList" class="doc-list"></div>
             </div>
         </div>
 
@@ -1183,16 +1225,57 @@
                 <div class="card-header">
                     <h2 class="card-title">Selected Quote</h2>
                 </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Coverage</th>
+                                <th>Carrier</th>
+                                <th>Policy #</th>
+                                <th>Effective</th>
+                                <th>Expiration</th>
+                                <th>Premium</th>
+                                <th>Tax</th>
+                                <th>Fee</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bindSelectedQuoteBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Bind Summary</h2>
+                </div>
                 <div id="bindStageInfo" class="stage-grid"></div>
             </div>
-            <div class="card">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Premium Finance Decision</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items:center;">
+                    <label><input type="radio" name="pfDecision" value="yes"> Yes - generate finance agreement</label>
+                    <label><input type="radio" name="pfDecision" value="no"> No - client paying in full</label>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
                     <h2 class="card-title">Bind Actions</h2>
                 </div>
                 <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button id="markBoundBtn">Mark as Bound</button>
                     <button id="moveBackToQuotingBtn">Back to Quoting</button>
+                    <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg">
+                    <button id="uploadBinderBtn">Upload Binder Doc</button>
+                    <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg">
+                    <button id="uploadFinanceBtn">Upload Finance Agreement</button>
                 </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Binder / Finance Documents</h2>
+                </div>
+                <div id="bindDocsList" class="doc-list"></div>
             </div>
         </div>
     </div>
@@ -1269,6 +1352,7 @@
         const initialStageKey = '{{ stage_key|default("quoting") }}';
         let submissionData = null;
         let quotes = [];
+        let submissionDocuments = [];
         let quoteVisibilityById = {};
         let displayedPolicyRows = [];
         const bugState = {
@@ -1402,6 +1486,67 @@
                 row.classList.toggle('row-muted', !isVisible);
             });
             updateMoveToBindButtonState();
+        }
+
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/documents`);
+                const data = await response.json();
+                if (data.success) {
+                    submissionDocuments = data.documents || [];
+                    renderStageDocumentLists();
+                }
+            } catch (error) {
+                console.error('Error loading documents:', error);
+            }
+        }
+
+        function renderDocList(containerId, docs) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (!docs.length) {
+                container.innerHTML = '<div class="doc-item"><span>No documents</span></div>';
+                return;
+            }
+            container.innerHTML = docs.map((doc) => `
+                <div class="doc-item">
+                    <div>
+                        <div><strong>${doc.document_type}</strong> - ${doc.name || doc.original_filename || 'file'}</div>
+                        <div style="color:#64748b;">v${doc.version}${doc.carrier ? ` • ${doc.carrier}` : ''}${doc.term_key ? ` • ${doc.term_key}` : ''}</div>
+                    </div>
+                    <a href="${doc.download_url}" target="_blank" rel="noopener">Open</a>
+                </div>
+            `).join('');
+        }
+
+        function renderStageDocumentLists() {
+            const stage1Docs = submissionDocuments.filter((d) =>
+                ['Application', 'SOV', 'Loss Run', 'Other'].includes(d.document_type)
+            );
+            const bindDocs = submissionDocuments.filter((d) =>
+                ['Binder', 'Finance Agreement'].includes(d.document_type)
+            );
+            renderDocList('stage1DocsList', stage1Docs);
+            renderDocList('bindDocsList', bindDocs);
+        }
+
+        async function uploadSubmissionDocument(file, documentType, extra = {}) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('document_type', documentType);
+            Object.entries(extra).forEach(([k, v]) => {
+                if (v !== null && v !== undefined && v !== '') formData.append(k, v);
+            });
+
+            const response = await fetch(`/api/submission/${submissionId}/documents`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Upload failed');
+            }
+            return data.document;
         }
 
         function getQuoteLabel(quote) {
@@ -1633,6 +1778,7 @@
 
                     // Display existing quotes
                     displayQuotes();
+                    await loadDocuments();
                 }
             } catch (error) {
                 console.error('Error loading submission:', error);
@@ -1691,6 +1837,10 @@
                     </svg>
                     <span class="file-name" title="${originalFilename}">${originalFilename}</span>
                 `;
+                fileItem.style.cursor = 'pointer';
+                fileItem.onclick = () => {
+                    window.open(`/api/quote/${quote.id}/file`, '_blank');
+                };
                 filesList.appendChild(fileItem);
             });
         }
@@ -2163,10 +2313,14 @@
 
         function populateBindStage(allQuotes) {
             const container = document.getElementById('bindStageInfo');
+            const selectedQuoteBody = document.getElementById('bindSelectedQuoteBody');
             if (!container) return;
 
             if (!allQuotes.length) {
                 container.innerHTML = stageField('Selected Quote', 'No quote available');
+                if (selectedQuoteBody) {
+                    selectedQuoteBody.innerHTML = '<tr><td colspan="8">No quote available</td></tr>';
+                }
                 return;
             }
 
@@ -2188,15 +2342,22 @@
             const selected = sortedByPremium[0];
             const total = [selected.premium, selected.tax, selected.fee].map(toNumber).filter(v => v !== null).reduce((a, b) => a + b, 0);
 
+            if (selectedQuoteBody) {
+                selectedQuoteBody.innerHTML = `
+                    <tr>
+                        <td>${selected.coverage || 'null'}</td>
+                        <td>${selected.carrier || 'null'}</td>
+                        <td>${selected.policyNumber || 'pending'}</td>
+                        <td>${selected.effective || 'null'}</td>
+                        <td>${selected.expiration || 'null'}</td>
+                        <td>${formatMoney(selected.premium)}</td>
+                        <td>${formatMoney(selected.tax)}</td>
+                        <td>${formatMoney(selected.fee)}</td>
+                    </tr>
+                `;
+            }
+
             container.innerHTML = [
-                stageField('Coverage', selected.coverage),
-                stageField('Carrier', selected.carrier),
-                stageField('Policy #', selected.policyNumber),
-                stageField('Effective', selected.effective),
-                stageField('Expiration', selected.expiration),
-                stageField('Base Premium', formatMoney(selected.premium)),
-                stageField('Tax', formatMoney(selected.tax)),
-                stageField('Fee', formatMoney(selected.fee)),
                 stageField('Grand Total', total ? formatMoney(total) : 'null')
             ].join('');
         }
@@ -2455,6 +2616,55 @@
         document.getElementById('moveBackToQuotingBtn').addEventListener('click', function() {
             document.getElementById('statusDropdown').value = 'IN_PROGRESS';
             document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+        });
+
+        document.getElementById('uploadStage1DocBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('stage1DocFile');
+            const docType = document.getElementById('stage1DocType').value;
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Select a document file.');
+                return;
+            }
+            try {
+                await uploadSubmissionDocument(file, docType, { term_key: submissionData?.effective_date });
+                fileInput.value = '';
+                await loadDocuments();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        document.getElementById('uploadBinderBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('binderDocFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Select binder document first.');
+                return;
+            }
+            try {
+                await uploadSubmissionDocument(file, 'BINDER', { term_key: submissionData?.effective_date });
+                fileInput.value = '';
+                await loadSubmission();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        document.getElementById('uploadFinanceBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('financeDocFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Select finance agreement file first.');
+                return;
+            }
+            try {
+                await uploadSubmissionDocument(file, 'FINANCE_AGREEMENT', { term_key: submissionData?.effective_date });
+                fileInput.value = '';
+                await loadDocuments();
+            } catch (error) {
+                alert(error.message);
+            }
         });
 
         document.getElementById('moveToBindBtn').addEventListener('click', async function() {

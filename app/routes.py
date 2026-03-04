@@ -1,9 +1,11 @@
 # app/routes.py
-from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for, send_file
 import os
 import json
 import requests
 import base64
+import uuid
+import shutil
 from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -17,9 +19,49 @@ from app.database import (
     log_action,
     get_session
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType
 
 bp = Blueprint('main', __name__)
+
+
+def _storage_upload(local_path, object_key, content_type=None):
+    """
+    Upload file to configured object storage.
+    Falls back to local file storage if S3 is unavailable or not configured.
+    """
+    provider = (current_app.config.get('STORAGE_PROVIDER') or 'local').lower()
+    if provider == 's3':
+        bucket = current_app.config.get('S3_BUCKET')
+        if bucket:
+            try:
+                import boto3
+                extra_args = {}
+                if content_type:
+                    extra_args['ContentType'] = content_type
+                client = boto3.client(
+                    's3',
+                    region_name=current_app.config.get('S3_REGION') or None,
+                    endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                )
+                client.upload_file(local_path, bucket, object_key, ExtraArgs=extra_args or None)
+                return 's3', object_key
+            except Exception as err:
+                print(f"[DOC STORAGE] S3 upload failed, falling back to local: {err}")
+
+    local_root = current_app.config.get('DOCUMENTS_LOCAL_FOLDER')
+    final_path = os.path.join(local_root, object_key)
+    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+    shutil.copy2(local_path, final_path)
+    return 'local', object_key
+
+
+def _build_storage_key(submission_id, document_type, filename):
+    safe_name = secure_filename(filename) or 'document.bin'
+    return f"submission_{submission_id}/{document_type.lower()}/{uuid.uuid4().hex}_{safe_name}"
+
+
+def _document_download_url(document_id):
+    return url_for('main.download_document', document_id=document_id)
 
 
 def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_filename, screenshot_subtype='png'):
@@ -266,6 +308,32 @@ def get_submissions():
         if filter_assigned and 'user_id' in session:
             submissions = [s for s in submissions if s.get('assigned_to') == session['user_id']]
 
+        # Attach document summaries for kanban dropdown and bound indicator.
+        submission_ids = [s['id'] for s in submissions]
+        docs_by_submission = {sid: [] for sid in submission_ids}
+        active_binder_submission_ids = set()
+        if submission_ids:
+            db_session = get_session()
+            try:
+                docs = db_session.query(Document).filter(Document.submission_id.in_(submission_ids)).order_by(Document.created_at.desc()).all()
+                for doc in docs:
+                    docs_by_submission.setdefault(doc.submission_id, []).append({
+                        'id': doc.id,
+                        'document_type': doc.document_type.value if doc.document_type else None,
+                        'name': doc.original_filename,
+                        'carrier': doc.carrier,
+                        'term_key': doc.term_key,
+                        'is_active': doc.is_active
+                    })
+                    if doc.document_type == DocumentType.BINDER and doc.is_active:
+                        active_binder_submission_ids.add(doc.submission_id)
+            finally:
+                db_session.close()
+
+        for sub in submissions:
+            sub['documents'] = docs_by_submission.get(sub['id'], [])
+            sub['is_bound'] = sub['id'] in active_binder_submission_ids
+
         return jsonify({'success': True, 'submissions': submissions})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -350,6 +418,16 @@ def get_submission_detail(submission_id):
                     submission['submission_intake'] = None
             else:
                 submission['submission_intake'] = None
+
+            docs = db_session.query(Document).filter(Document.submission_id == submission_id).order_by(Document.created_at.desc()).all()
+            submission['documents'] = []
+            submission['is_bound'] = False
+            for doc in docs:
+                item = doc.to_dict()
+                item['download_url'] = _document_download_url(doc.id)
+                submission['documents'].append(item)
+                if doc.document_type == DocumentType.BINDER and doc.is_active:
+                    submission['is_bound'] = True
         finally:
             db_session.close()
 
@@ -548,8 +626,34 @@ def create_submission_entry():
             insured_name=insured_name,
             effective_date=effective_date,
             state=state,
-            user=session.get('username')
+            user=session.get('username'),
+            assigned_to=session.get('user_id')
         )
+
+        if has_file:
+            object_key = _build_storage_key(submission_id, DocumentType.APPLICATION.name, filename)
+            storage_provider, storage_key = _storage_upload(filepath, object_key, file.content_type)
+            db_session = get_session()
+            try:
+                app_doc = Document(
+                    submission_id=submission_id,
+                    quote_id=None,
+                    document_type=DocumentType.APPLICATION,
+                    carrier=None,
+                    term_key=effective_date,
+                    version=1,
+                    is_active=True,
+                    storage_provider=storage_provider,
+                    storage_key=storage_key,
+                    original_filename=filename,
+                    content_type=file.content_type,
+                    size_bytes=os.path.getsize(filepath) if os.path.exists(filepath) else None,
+                    uploaded_by=session.get('username')
+                )
+                db_session.add(app_doc)
+                db_session.commit()
+            finally:
+                db_session.close()
 
         log_action(
             entity_type='submission',
@@ -567,6 +671,216 @@ def create_submission_entry():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# DOCUMENT MANAGEMENT
+# ============================================================================
+
+@bp.route('/api/submission/<int:submission_id>/documents', methods=['GET'])
+@login_required
+def list_submission_documents(submission_id):
+    """List submission documents, optionally filtered by document_type."""
+    try:
+        document_type = (request.args.get('document_type') or '').strip()
+
+        db_session = get_session()
+        try:
+            query = db_session.query(Document).filter(Document.submission_id == submission_id)
+            if document_type:
+                try:
+                    enum_type = DocumentType[document_type.upper()]
+                    query = query.filter(Document.document_type == enum_type)
+                except KeyError:
+                    return jsonify({'success': False, 'error': 'Invalid document_type'}), 400
+
+            documents = query.order_by(Document.created_at.desc()).all()
+            payload = []
+            for doc in documents:
+                item = doc.to_dict()
+                item['download_url'] = _document_download_url(doc.id)
+                payload.append(item)
+            return jsonify({'success': True, 'documents': payload})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/submission/<int:submission_id>/documents', methods=['POST'])
+@login_required
+def upload_submission_document(submission_id):
+    """Upload a document linked to a submission and persist metadata."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file part'}), 400
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({'success': False, 'error': 'No selected file'}), 400
+        if not allowed_file(file.filename):
+            return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+
+        document_type_raw = (request.form.get('document_type') or '').strip()
+        if not document_type_raw:
+            return jsonify({'success': False, 'error': 'document_type is required'}), 400
+        try:
+            document_type = DocumentType[document_type_raw.upper()]
+        except KeyError:
+            return jsonify({'success': False, 'error': 'Invalid document_type'}), 400
+
+        carrier = (request.form.get('carrier') or '').strip() or None
+        quote_id = request.form.get('quote_id', type=int)
+        term_key = (request.form.get('term_key') or '').strip() or None
+
+        # Save temp file locally first
+        filename = secure_filename(file.filename)
+        temp_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}_{filename}"
+        temp_path = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_name)
+        file.save(temp_path)
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            if quote_id:
+                quote = db_session.query(Quote).filter_by(id=quote_id, submission_id=submission_id).first()
+                if not quote:
+                    return jsonify({'success': False, 'error': 'Quote not found for this submission'}), 404
+
+            if not term_key:
+                term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
+
+            # Versioning support: increment within same submission/type/carrier/term.
+            latest = db_session.query(Document).filter(
+                Document.submission_id == submission_id,
+                Document.document_type == document_type,
+                Document.carrier == carrier,
+                Document.term_key == term_key
+            ).order_by(Document.version.desc()).first()
+            next_version = (latest.version + 1) if latest else 1
+
+            # Single active binder per term.
+            if document_type == DocumentType.BINDER:
+                db_session.query(Document).filter(
+                    Document.submission_id == submission_id,
+                    Document.document_type == DocumentType.BINDER,
+                    Document.term_key == term_key,
+                    Document.is_active == True
+                ).update({'is_active': False}, synchronize_session=False)
+
+            object_key = _build_storage_key(submission_id, document_type.name, filename)
+            storage_provider, storage_key = _storage_upload(temp_path, object_key, file.content_type)
+
+            doc = Document(
+                submission_id=submission_id,
+                quote_id=quote_id,
+                document_type=document_type,
+                carrier=carrier,
+                term_key=term_key,
+                version=next_version,
+                is_active=True,
+                storage_provider=storage_provider,
+                storage_key=storage_key,
+                original_filename=filename,
+                content_type=file.content_type,
+                size_bytes=os.path.getsize(temp_path) if os.path.exists(temp_path) else None,
+                uploaded_by=session.get('username')
+            )
+            db_session.add(doc)
+
+            # Binder upload marks submission as bound-facing card status.
+            if document_type == DocumentType.BINDER:
+                submission.status = SubmissionStatus.SENT_TO_FINANCE
+
+            db_session.commit()
+
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='document_uploaded',
+                user=session.get('username'),
+                submission_id=submission_id,
+                quote_id=quote_id,
+                details=json.dumps({
+                    'document_id': doc.id,
+                    'document_type': document_type.name,
+                    'carrier': carrier,
+                    'term_key': term_key,
+                    'version': next_version
+                })
+            )
+
+            item = doc.to_dict()
+            item['download_url'] = _document_download_url(doc.id)
+            return jsonify({'success': True, 'document': item})
+        finally:
+            db_session.close()
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/documents/<int:document_id>/download', methods=['GET'])
+@login_required
+def download_document(document_id):
+    """Download or redirect to document object storage."""
+    db_session = get_session()
+    try:
+        doc = db_session.query(Document).filter_by(id=document_id).first()
+        if not doc:
+            return "Document not found", 404
+
+        if doc.storage_provider == 's3':
+            try:
+                import boto3
+                bucket = current_app.config.get('S3_BUCKET')
+                client = boto3.client(
+                    's3',
+                    region_name=current_app.config.get('S3_REGION') or None,
+                    endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                )
+                signed_url = client.generate_presigned_url(
+                    ClientMethod='get_object',
+                    Params={'Bucket': bucket, 'Key': doc.storage_key},
+                    ExpiresIn=300
+                )
+                return redirect(signed_url)
+            except Exception as err:
+                return f"S3 download failed: {err}", 500
+
+        # local storage provider
+        if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
+            local_path = doc.storage_key
+        else:
+            local_path = os.path.join(current_app.config['DOCUMENTS_LOCAL_FOLDER'], doc.storage_key)
+        if not os.path.exists(local_path):
+            return "Document file missing", 404
+
+        return send_file(local_path, as_attachment=False, download_name=doc.original_filename, mimetype=doc.content_type)
+    finally:
+        db_session.close()
+
+
+@bp.route('/api/quote/<int:quote_id>/file', methods=['GET'])
+@login_required
+def view_quote_file(quote_id):
+    """Open the original uploaded quote file."""
+    db_session = get_session()
+    try:
+        quote = db_session.query(Quote).filter_by(id=quote_id).first()
+        if not quote:
+            return "Quote not found", 404
+        if not quote.raw_document_path or not os.path.exists(quote.raw_document_path):
+            return "Quote file missing", 404
+        return send_file(quote.raw_document_path, as_attachment=False, download_name=os.path.basename(quote.raw_document_path))
+    finally:
+        db_session.close()
 
 
 # ============================================================================
@@ -659,7 +973,8 @@ def upload_quote():
                     insured_name=insured_name,
                     effective_date=effective_date,
                     state=state,
-                    user=None  # TODO: Add user authentication
+                    user=session.get('username'),
+                    assigned_to=session.get('user_id')
                 )
                 print(f"Created new submission {submission_id}")
 
@@ -676,6 +991,31 @@ def upload_quote():
                 user=None  # TODO: Add user authentication
             )
             print(f"Created quote {quote_id} for submission {submission_id}")
+
+            # Mirror uploaded quote into generic documents table for stage-based access.
+            db_session = get_session()
+            try:
+                quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename)
+                storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, file.content_type)
+                doc = Document(
+                    submission_id=submission_id,
+                    quote_id=quote_id,
+                    document_type=DocumentType.QUOTE,
+                    carrier=carrier_name,
+                    term_key=effective_date,
+                    version=1,
+                    is_active=True,
+                    storage_provider=storage_provider,
+                    storage_key=storage_key,
+                    original_filename=filename,
+                    content_type=file.content_type,
+                    size_bytes=os.path.getsize(filepath) if os.path.exists(filepath) else None,
+                    uploaded_by=session.get('username')
+                )
+                db_session.add(doc)
+                db_session.commit()
+            finally:
+                db_session.close()
             # Log parsing action
             log_action(
                 entity_type='quote',
@@ -1034,6 +1374,31 @@ def update_submission_status(submission_id):
         )
 
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/submission/<int:submission_id>/status_label', methods=['PUT'])
+@login_required
+def update_submission_status_label(submission_id):
+    """Update editable status label on a submission card."""
+    try:
+        data = request.get_json() or {}
+        raw_label = (data.get('status_label') or '').strip()
+        status_label = raw_label[:255] if raw_label else None
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            submission.status_label = status_label
+            db_session.commit()
+        finally:
+            db_session.close()
+
+        return jsonify({'success': True, 'status_label': status_label})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -28,6 +28,16 @@ class QuoteStatus(enum.Enum):
     CHOSEN = "Chosen"
 
 
+class DocumentType(enum.Enum):
+    APPLICATION = "Application"
+    SOV = "SOV"
+    LOSS_RUN = "Loss Run"
+    QUOTE = "Quote"
+    BINDER = "Binder"
+    FINANCE_AGREEMENT = "Finance Agreement"
+    OTHER = "Other"
+
+
 class User(Base):
     """
     Represents a user with authentication and role-based access.
@@ -81,11 +91,13 @@ class Submission(Base):
     state = Column(String(2), nullable=True)  # Two-letter state code
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(Enum(SubmissionStatus), default=SubmissionStatus.RECEIVED, nullable=False)
+    status_label = Column(String(255), nullable=True)
     appetite_score = Column(Integer, nullable=True)  # PF appetite score 0-100
     assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)  # User assignment
 
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="submission", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="submission", cascade="all, delete-orphan")
     assigned_user = relationship("User", back_populates="assigned_submissions")
 
@@ -101,6 +113,7 @@ class Submission(Base):
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'status': self.status.value if self.status else None,
+            'status_label': self.status_label,
             'quote_count': len(self.quotes) if self.quotes else 0,
             'appetite_score': self.appetite_score,
             'assigned_to': self.assigned_to,
@@ -133,6 +146,7 @@ class Quote(Base):
 
     # Relationships
     submission = relationship("Submission", back_populates="quotes")
+    documents = relationship("Document", back_populates="quote")
     audit_logs = relationship("AuditLog", back_populates="quote", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -194,6 +208,53 @@ class AuditLog(Base):
             'details': self.details
         }
 
+
+class Document(Base):
+    """
+    Generic document metadata linked to a submission (and optionally a quote).
+    Supports versioning and active/inactive binder state by term.
+    """
+    __tablename__ = 'documents'
+
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False, index=True)
+    quote_id = Column(Integer, ForeignKey('quotes.id'), nullable=True, index=True)
+    document_type = Column(Enum(DocumentType), nullable=False, index=True)
+    carrier = Column(String(255), nullable=True, index=True)
+    term_key = Column(String(50), nullable=True, index=True)  # e.g. 2026-02-10_2027-02-10
+    version = Column(Integer, nullable=False, default=1)
+    is_active = Column(Boolean, nullable=False, default=True)
+    storage_provider = Column(String(20), nullable=False, default='local')  # local|s3
+    storage_key = Column(String(1024), nullable=False)  # object key/path
+    original_filename = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    uploaded_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    submission = relationship("Submission", back_populates="documents")
+    quote = relationship("Quote", back_populates="documents")
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'submission_id': self.submission_id,
+            'quote_id': self.quote_id,
+            'document_type': self.document_type.value if self.document_type else None,
+            'carrier': self.carrier,
+            'term_key': self.term_key,
+            'version': self.version,
+            'is_active': self.is_active,
+            'storage_provider': self.storage_provider,
+            'storage_key': self.storage_key,
+            'original_filename': self.original_filename,
+            'content_type': self.content_type,
+            'size_bytes': self.size_bytes,
+            'uploaded_by': self.uploaded_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
 class AppetiteRule(Base):
     """
     Stores configurable PF appetite scoring rules.
@@ -221,4 +282,3 @@ class AppetiteRule(Base):
             'enabled': self.enabled,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
-
