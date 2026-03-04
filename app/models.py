@@ -128,6 +128,7 @@ class Quote(Base):
     # comparison_group = Column(String(100), nullable=True)  # Quick access: GL, WC, Auto, etc.
 
     status = Column(Enum(QuoteStatus), default=QuoteStatus.RECEIVED, nullable=False)
+    quote_outcome = Column(String(20), nullable=True)  # WON or LOST (set when moving to bind)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
@@ -150,6 +151,7 @@ class Quote(Base):
             # 'quote_intent': self.quote_intent,
             # 'comparison_group': self.comparison_group,
             'status': self.status.value if self.status else None,
+            'quote_outcome': self.quote_outcome,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -219,5 +221,4 @@ class AppetiteRule(Base):
             'enabled': self.enabled,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
-
 

@@ -102,10 +102,9 @@
             border-radius: var(--button-border-radius);
             font-weight: var(--font-weight-medium);
         }
-        .status-received { background-color: #e0e7ff; color: #4338ca; }
-        .status-in-progress { background-color: #fef3c7; color: #92400e; }
-        .status-chosen { background-color: #d1fae5; color: #065f46; }
-        .status-sent-to-finance { background-color: #dbeafe; color: #1e40af; }
+        .status-submission { background-color: #e0e7ff; color: #4338ca; }
+        .status-quoting { background-color: #fef3c7; color: #92400e; }
+        .status-bind { background-color: #d1fae5; color: #065f46; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -152,47 +151,36 @@
         </div>
 
         <!-- Kanban Board -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <!-- Received Column -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Submission Column -->
             <div class="bg-white rounded-lg shadow p-4">
                 <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Received</span>
-                    <span id="count-received" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                    <span>Submission</span>
+                    <span id="count-submission" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
                 </h2>
-                <div id="column-received" class="kanban-column space-y-3 min-h-[200px]" data-status="RECEIVED">
+                <div id="column-submission" class="kanban-column space-y-3 min-h-[200px]" data-status="RECEIVED">
                     <!-- Cards will be inserted here -->
                 </div>
             </div>
 
-            <!-- In Progress Column -->
+            <!-- Quoting Column -->
             <div class="bg-white rounded-lg shadow p-4">
                 <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>In Progress</span>
-                    <span id="count-in-progress" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                    <span>Quoting</span>
+                    <span id="count-quoting" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
                 </h2>
-                <div id="column-in-progress" class="kanban-column space-y-3 min-h-[200px]" data-status="IN_PROGRESS">
+                <div id="column-quoting" class="kanban-column space-y-3 min-h-[200px]" data-status="IN_PROGRESS">
                     <!-- Cards will be inserted here -->
                 </div>
             </div>
 
-            <!-- Chosen Column -->
+            <!-- Selection & Bind Column -->
             <div class="bg-white rounded-lg shadow p-4">
                 <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Chosen</span>
-                    <span id="count-chosen" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
+                    <span>Selection &amp; Bind</span>
+                    <span id="count-bind" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
                 </h2>
-                <div id="column-chosen" class="kanban-column space-y-3 min-h-[200px]" data-status="CHOSEN">
-                    <!-- Cards will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Sent to Finance Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Sent to Finance</span>
-                    <span id="count-sent-to-finance" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-sent-to-finance" class="kanban-column space-y-3 min-h-[200px]" data-status="SENT_TO_FINANCE">
+                <div id="column-bind" class="kanban-column space-y-3 min-h-[200px]" data-status="CHOSEN">
                     <!-- Cards will be inserted here -->
                 </div>
             </div>
@@ -227,19 +215,30 @@
     <!-- New Submission Modal -->
     <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
-            <h2 class="text-2xl font-bold mb-4">Upload First Quote</h2>
-            <p class="text-gray-600 mb-4">Drop a quote PDF to create a new submission</p>
-            
-            <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-8 text-center min-h-[200px]">
+            <h2 class="text-2xl font-bold mb-3">Create Submission</h2>
+            <p class="text-gray-600 mb-4">Enter insured name, or drop an application to prefill client/submission info.</p>
+
+            <div class="mb-4">
+                <label for="insuredNameInput" class="block text-sm font-semibold text-gray-700 mb-1">Insured Name</label>
+                <input id="insuredNameInput"
+                       type="text"
+                       class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                       placeholder="Type insured name (optional if uploading application)">
+            </div>
+
+            <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-6 text-center min-h-[160px]">
                 <div class="dz-message" data-dz-message>
-                    <p class="text-gray-600">Drag & drop a quote PDF here or click to browse</p>
-                    <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG</p>
+                    <p class="text-gray-600">Drag & drop application here or click to browse</p>
+                    <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG (optional)</p>
                 </div>
             </form>
 
             <div class="flex justify-end gap-2 mt-4">
                 <button id="cancelNewSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
                     Cancel
+                </button>
+                <button id="createSubmissionBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Create Submission
                 </button>
             </div>
         </div>
@@ -281,6 +280,11 @@
         let allUsers = [];
         let currentUser = null;
         let filterMyCards = false;
+        const STAGE_COLUMNS = [
+            { key: 'submission', statuses: ['Received'], columnId: 'column-submission', countId: 'count-submission' },
+            { key: 'quoting', statuses: ['In Progress'], columnId: 'column-quoting', countId: 'count-quoting' },
+            { key: 'bind', statuses: ['Chosen', 'Sent to Finance'], columnId: 'column-bind', countId: 'count-bind' }
+        ];
 
         // Load current user info
         async function loadCurrentUser() {
@@ -337,35 +341,29 @@
 
         function renderKanban() {
             // Clear all columns
-            const statuses = ['received', 'in-progress', 'chosen', 'sent-to-finance'];
-            statuses.forEach(status => {
-                document.getElementById(`column-${status}`).innerHTML = '';
-                document.getElementById(`count-${status}`).textContent = '0';
+            STAGE_COLUMNS.forEach(stage => {
+                document.getElementById(stage.columnId).innerHTML = '';
+                document.getElementById(stage.countId).textContent = '0';
             });
 
-            // Group submissions by status
-            const grouped = {
-                'Received': [],
-                'In Progress': [],
-                'Chosen': [],
-                'Sent to Finance': []
-            };
+            // Group submissions by stage
+            const grouped = { submission: [], quoting: [], bind: [] };
 
             submissions.forEach(sub => {
-                if (grouped[sub.status]) {
-                    grouped[sub.status].push(sub);
+                const stage = STAGE_COLUMNS.find(col => col.statuses.includes(sub.status));
+                if (stage) {
+                    grouped[stage.key].push(sub);
                 }
             });
 
             // Render cards in each column
-            Object.keys(grouped).forEach(status => {
-                const columnId = status.toLowerCase().replace(/ /g, '-');
-                const column = document.getElementById(`column-${columnId}`);
-                const count = document.getElementById(`count-${columnId}`);
+            STAGE_COLUMNS.forEach(stage => {
+                const column = document.getElementById(stage.columnId);
+                const count = document.getElementById(stage.countId);
+                const cards = grouped[stage.key];
 
-                count.textContent = grouped[status].length;
-
-                grouped[status].forEach(sub => {
+                count.textContent = cards.length;
+                cards.forEach(sub => {
                     const card = createSubmissionCard(sub);
                     column.appendChild(card);
                 });
@@ -454,7 +452,17 @@
             card.draggable = true;
             card.dataset.submissionId = submission.id;
 
-            const statusClass = `status-${submission.status.toLowerCase().replace(/ /g, '-')}`;
+            const stageKey = submission.status === 'Received'
+                ? 'submission'
+                : submission.status === 'In Progress'
+                    ? 'quoting'
+                    : 'bind';
+            const statusClass = `status-${stageKey}`;
+            const stageLabel = stageKey === 'submission'
+                ? 'Submission'
+                : stageKey === 'quoting'
+                    ? 'Quoting'
+                    : 'Selection & Bind';
 
             // Determine appetite score badge color
             let appetiteClass = 'bg-gray-400';
@@ -483,8 +491,9 @@
             card.innerHTML = `
                 <div class="flex items-start justify-between mb-2">
                     <h3 class="font-semibold text-gray-800 text-sm">${submission.insured_name}</h3>
-                    <span class="status-badge ${statusClass}">${submission.quote_count} quote${submission.quote_count !== 1 ? 's' : ''}</span>
+                    <span class="status-badge ${statusClass}">${stageLabel}</span>
                 </div>
+                <p class="text-xs text-gray-600 mb-1">${submission.quote_count} quote${submission.quote_count !== 1 ? 's' : ''}</p>
                 <p class="text-xs text-gray-600 mb-1">Effective: ${submission.effective_date}</p>
                 ${submission.state ? `<p class="text-xs text-gray-500 mb-1">State: ${submission.state}</p>` : ''}
 
@@ -555,61 +564,64 @@
 
         document.getElementById('cancelNewSubmission').addEventListener('click', () => {
             document.getElementById('newSubmissionModal').classList.add('hidden');
+            document.getElementById('insuredNameInput').value = '';
+            newSubmissionDropzone.removeAllFiles(true);
         });
 
         // Dropzone for new submission
         const newSubmissionDropzone = new Dropzone("#newSubmissionForm", {
-            url: "/api/upload_quote",
+            url: "/api/submission/create",
             autoProcessQueue: false,
             acceptedFiles: ".pdf,.png,.jpg,.jpeg",
             maxFiles: 1,
             addRemoveLinks: true
         });
 
-        newSubmissionDropzone.on("addedfile", function(file) {
-            // Start timer
-            const uploadStartTime = performance.now();
-            console.log(`⏱️  Upload started: ${file.name}`);
+        newSubmissionDropzone.on("maxfilesexceeded", function(file) {
+            this.removeAllFiles();
+            this.addFile(file);
+        });
 
-            // Auto-upload when file is added
+        document.getElementById('createSubmissionBtn').addEventListener('click', async function() {
+            const insuredName = document.getElementById('insuredNameInput').value.trim();
+            const file = newSubmissionDropzone.files[0];
+
+            if (!insuredName && !file) {
+                alert('Enter insured name or upload an application.');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
             const formData = new FormData();
-            formData.append('file', file);
+            if (insuredName) {
+                formData.append('insured_name', insuredName);
+            }
+            if (file) {
+                formData.append('file', file);
+            }
 
-            document.getElementById('newSubmissionForm').innerHTML = '<div class="text-center text-gray-500 py-8">Processing...</div>';
+            try {
+                const response = await fetch('/api/submission/create', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
 
-            fetch('/api/upload_quote', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                const uploadEndTime = performance.now();
-                const uploadDuration = ((uploadEndTime - uploadStartTime) / 1000).toFixed(2);
-                console.log(`⏱️  Server processing complete: ${uploadDuration}s`);
-                return response.json();
-            })
-            .then(data => {
                 if (data.success) {
-                    const totalEndTime = performance.now();
-                    const totalDuration = ((totalEndTime - uploadStartTime) / 1000).toFixed(2);
-                    console.log(`⏱️  Total time (upload → redirect): ${totalDuration}s`);
-                    console.log(`✅ Redirecting to submission page...`);
-
-                    // Redirect to the new submission
                     window.location.href = `/submission/${data.submission_id}`;
                 } else {
                     alert('Error: ' + data.error);
-                    document.getElementById('newSubmissionModal').classList.add('hidden');
-                    newSubmissionDropzone.removeAllFiles();
                 }
-            })
-            .catch(error => {
-                const errorTime = performance.now();
-                const errorDuration = ((errorTime - uploadStartTime) / 1000).toFixed(2);
-                console.error(`❌ Upload failed after ${errorDuration}s:`, error);
-                alert('Upload failed');
-                document.getElementById('newSubmissionModal').classList.add('hidden');
-                newSubmissionDropzone.removeAllFiles();
-            });
+            } catch (error) {
+                console.error('Submission create failed:', error);
+                alert('Failed to create submission.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Create Submission';
+            }
         });
 
         // ============================================================================
@@ -961,4 +973,3 @@
     </script>
 </body>
 </html>
-

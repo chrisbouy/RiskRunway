@@ -298,6 +298,36 @@
             color: var(--color-primary);
         }
 
+        .row-muted {
+            opacity: 0.45;
+            filter: grayscale(0.65);
+        }
+
+        .eye-toggle-btn {
+            border: 1px solid var(--color-neutral-300);
+            background: white;
+            border-radius: 0.375rem;
+            width: 1.75rem;
+            height: 1.75rem;
+            padding: 0;
+            justify-content: center;
+        }
+
+        .eye-toggle-btn:hover {
+            border-color: var(--color-primary);
+            transform: none;
+            box-shadow: none;
+        }
+
+        #moveToBindBtn {
+            background: #94a3b8;
+            color: white;
+        }
+
+        #moveToBindBtn.ready {
+            background: #d97706;
+        }
+
         /* Monospace for data fields */
         .field-value {
             font-family: 'IBM Plex Mono', 'Courier New', monospace;
@@ -566,7 +596,16 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
+        #deleteSubmissionBtn {
+            background: var(--color-danger);
+            color: white;
+        }
 
+        #deleteSubmissionBtn:hover {
+            background: #b91c1c;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
 
         #reportBugBtn {
             background: var(--color-danger);
@@ -830,6 +869,156 @@
             background: var(--color-neutral-500);
             color: white;
         }
+
+        /* Stage-based layout */
+        .stage-progress {
+            display: flex;
+            background: #f0f2f7;
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .stage-step {
+            flex: 1;
+            padding: 0.625rem 0.875rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-right: 1px solid var(--border-color);
+            background: #f8fafc;
+        }
+
+        .stage-step:last-child {
+            border-right: none;
+        }
+
+        .stage-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.688rem;
+            font-weight: 700;
+            background: #dbe3ef;
+            color: #64748b;
+        }
+
+        .stage-step.done {
+            color: #166534;
+            background: #ecfdf5;
+        }
+
+        .stage-step.done .stage-dot {
+            background: #166534;
+            color: #fff;
+        }
+
+        .stage-step.current-submission {
+            color: #1e3a8a;
+            background: #eef2ff;
+        }
+
+        .stage-step.current-submission .stage-dot {
+            background: #1e3a8a;
+            color: #fff;
+        }
+
+        .stage-step.current-quoting {
+            color: #9a3412;
+            background: #fff7ed;
+        }
+
+        .stage-step.current-quoting .stage-dot {
+            background: #c2410c;
+            color: #fff;
+        }
+
+        .stage-step.current-bind {
+            color: #14532d;
+            background: #f0fdf4;
+        }
+
+        .stage-step.current-bind .stage-dot {
+            background: #166534;
+            color: #fff;
+        }
+
+        .stage-section {
+            display: none;
+        }
+
+        .stage-section.active {
+            display: block;
+        }
+
+        .stage-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+            padding: 0.75rem;
+        }
+
+        .stage-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .stage-field-label {
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-neutral-500);
+        }
+
+        .stage-field-value {
+            font-size: 0.875rem;
+            color: var(--color-neutral-700);
+            font-weight: 600;
+        }
+
+        .stage-checklist {
+            padding: 0.75rem;
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        .stage-check-item {
+            font-size: 0.813rem;
+            color: var(--color-neutral-700);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stage-check-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.625rem;
+            font-weight: 700;
+        }
+
+        .stage-check-icon.ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .stage-check-icon.pending {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
     </style>
 </head>
 <body>
@@ -873,6 +1062,7 @@
                         Save
                     </button>
                     <button id="cancelBtn">Cancel</button>
+                    <button id="deleteSubmissionBtn">Delete Submission</button>
                     <button id="reportBugBtn">Report Bug</button>
                 </div>
             </div>
@@ -880,6 +1070,41 @@
     </div>
 
     <div id="bugCaptureRoot" class="main-container">
+        <div class="stage-progress" id="stageProgress">
+            <div class="stage-step" data-stage="submission">
+                <span class="stage-dot">1</span>
+                <span>Submission</span>
+            </div>
+            <div class="stage-step" data-stage="quoting">
+                <span class="stage-dot">2</span>
+                <span>Quoting</span>
+            </div>
+            <div class="stage-step" data-stage="bind">
+                <span class="stage-dot">3</span>
+                <span>Selection &amp; Bind</span>
+            </div>
+        </div>
+
+        <div id="submissionStageSection" class="stage-section">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Client &amp; Submission Info</h2>
+                </div>
+                <div id="submissionStageInfo" class="stage-grid"></div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Submission Readiness</h2>
+                </div>
+                <div class="stage-checklist">
+                    <div class="stage-check-item"><span class="stage-check-icon ok">✓</span>Initial quote uploaded</div>
+                    <div class="stage-check-item"><span class="stage-check-icon pending">!</span>Verify supporting documents</div>
+                    <div class="stage-check-item"><span class="stage-check-icon pending">!</span>Add market routing notes</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="quotingStageSection" class="stage-section active">
         <!-- Upload section -->
         <div class="card" style="margin-bottom: 1rem;">
             <div class="card-header">
@@ -945,6 +1170,28 @@
                             <!-- Policy details data will be populated here -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; justify-content:flex-end; margin-top: 0.75rem;">
+            <button id="moveToBindBtn">Move to Selection &amp; Bind</button>
+        </div>
+        </div>
+
+        <div id="bindStageSection" class="stage-section">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Selected Quote</h2>
+                </div>
+                <div id="bindStageInfo" class="stage-grid"></div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Bind Actions</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="markBoundBtn">Mark as Bound</button>
+                    <button id="moveBackToQuotingBtn">Back to Quoting</button>
                 </div>
             </div>
         </div>
@@ -1019,8 +1266,11 @@
 
         // Get submission ID from URL
         const submissionId = parseInt('{{ submission_id }}');
+        const initialStageKey = '{{ stage_key|default("quoting") }}';
         let submissionData = null;
         let quotes = [];
+        let quoteVisibilityById = {};
+        let displayedPolicyRows = [];
         const bugState = {
             activeTool: 'pen',
             annotations: [],
@@ -1039,6 +1289,120 @@
         const bugDescription = document.getElementById('bugDescription');
         const bugCaptureRoot = document.getElementById('bugCaptureRoot');
         const MAX_SCREENSHOT_DATA_URL_CHARS = 5_500_000;
+
+        function statusToStage(statusValue) {
+            const normalized = (statusValue || '').toUpperCase();
+            if (normalized === 'RECEIVED') return 'submission';
+            if (normalized === 'IN_PROGRESS') return 'quoting';
+            return 'bind';
+        }
+
+        function setStageProgress(statusValue) {
+            const currentStage = statusToStage(statusValue);
+            const stageOrder = ['submission', 'quoting', 'bind'];
+            const currentIndex = stageOrder.indexOf(currentStage);
+            const steps = document.querySelectorAll('#stageProgress .stage-step');
+
+            steps.forEach((step) => {
+                const stage = step.dataset.stage;
+                const index = stageOrder.indexOf(stage);
+                const dot = step.querySelector('.stage-dot');
+                step.classList.remove('done', 'current-submission', 'current-quoting', 'current-bind');
+
+                if (index < currentIndex) {
+                    step.classList.add('done');
+                    if (dot) dot.textContent = '✓';
+                    return;
+                }
+
+                if (index === currentIndex) {
+                    step.classList.add(`current-${currentStage}`);
+                    if (dot) dot.textContent = String(index + 1);
+                    return;
+                }
+
+                if (dot) dot.textContent = String(index + 1);
+            });
+        }
+
+        function applyStageView(statusValue) {
+            const stage = statusToStage(statusValue);
+            const stageProgress = document.getElementById('stageProgress');
+            if (stageProgress) {
+                stageProgress.style.display = stage === 'quoting' ? 'none' : 'flex';
+            }
+            document.getElementById('submissionStageSection').classList.toggle('active', stage === 'submission');
+            document.getElementById('quotingStageSection').classList.toggle('active', stage === 'quoting');
+            document.getElementById('bindStageSection').classList.toggle('active', stage === 'bind');
+            setStageProgress(statusValue);
+        }
+
+        function stageField(label, value) {
+            return `
+                <div class="stage-field">
+                    <div class="stage-field-label">${label}</div>
+                    <div class="stage-field-value">${value || 'null'}</div>
+                </div>
+            `;
+        }
+
+        function renderEyeIcon(isVisible) {
+            return isVisible
+                ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`
+                : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 20C5 20 1 12 1 12a21.77 21.77 0 0 1 5.06-6.94"></path><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a22.22 22.22 0 0 1-3.17 4.66"></path><path d="M1 1l22 22"></path></svg>`;
+        }
+
+        function getQuoteOutcomePayload() {
+            return quotes.map((quote) => {
+                const isVisible = quoteVisibilityById[quote.id] !== false;
+                return {
+                    quote_id: quote.id,
+                    outcome: isVisible ? 'WON' : 'LOST'
+                };
+            });
+        }
+
+        function areVisibleCoveragesUnique() {
+            const seen = new Set();
+            for (const row of displayedPolicyRows) {
+                const quoteId = row.quote_id;
+                const isVisible = quoteId ? quoteVisibilityById[quoteId] !== false : true;
+                if (!isVisible) continue;
+                const coverage = (row.coverage || '').trim().toLowerCase();
+                if (!coverage || coverage === 'null' || coverage === 'n/a') continue;
+                if (seen.has(coverage)) return false;
+                seen.add(coverage);
+            }
+            return true;
+        }
+
+        function updateMoveToBindButtonState() {
+            const btn = document.getElementById('moveToBindBtn');
+            if (!btn) return;
+            if (!quotes.length) {
+                btn.disabled = true;
+                btn.classList.remove('ready');
+                btn.title = 'No quotes to move';
+                return;
+            }
+
+            const unique = areVisibleCoveragesUnique();
+            btn.disabled = false;
+            btn.classList.toggle('ready', unique);
+            btn.title = unique
+                ? 'Ready: visible coverage types are unique'
+                : 'Not ready: duplicate visible coverage types remain';
+        }
+
+        function syncQuoteMutedRows() {
+            document.querySelectorAll('#quotesByBrokerBody tr[data-quote-id], #policyDetailsBody tr[data-quote-id]').forEach((row) => {
+                const quoteId = parseInt(row.dataset.quoteId, 10);
+                if (!quoteId) return;
+                const isVisible = quoteVisibilityById[quoteId] !== false;
+                row.classList.toggle('row-muted', !isVisible);
+            });
+            updateMoveToBindButtonState();
+        }
 
         function getQuoteLabel(quote) {
             const filename = quote.raw_document_path ? quote.raw_document_path.split('/').pop() : `Quote ${quote.id}`;
@@ -1246,6 +1610,10 @@
                 if (data.success) {
                     submissionData = data.submission;
                     quotes = data.quotes;
+                    quoteVisibilityById = {};
+                    quotes.forEach((quote) => {
+                        quoteVisibilityById[quote.id] = quote.quote_outcome !== 'LOST';
+                    });
 
                     // Update title
                     document.getElementById('submissionTitle').textContent =
@@ -1255,6 +1623,7 @@
                     const statusDropdown = document.getElementById('statusDropdown');
                     statusDropdown.value = submissionData.status.toUpperCase().replace(/ /g, '_');
                     originalStatus = statusDropdown.value;
+                    applyStageView(statusDropdown.value);
 
                     // Display appetite score
                     displayAppetiteScore();
@@ -1360,6 +1729,9 @@
             if (quotes.length === 0) {
                 document.getElementById('result').innerHTML =
                     '<div class="processing-msg">No quotes yet. Upload a quote to get started.</div>';
+                populateSubmissionStage([], []);
+                populateBindStage([]);
+                updateMoveToBindButtonState();
                 return;
             }
 
@@ -1477,7 +1849,8 @@
                     const data = JSON.parse(jsonString);
                     allPDFInfo.push({
                         data: data,
-                        quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex
+                        quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex,
+                        quoteId: result.quote_id || null
                     });
 
                     // Process policies
@@ -1537,6 +1910,9 @@
             populateBasicInfoLabels(allPDFInfo);
             populateQuotesByBrokerTable(allPDFInfo);
             populatePolicyDetailsTable(allQuotes);
+            populateSubmissionStage(allPDFInfo, allQuotes);
+            populateBindStage(allQuotes);
+            syncQuoteMutedRows();
         }
 
         function populateBasicInfoLabels(allPDFInfo) {
@@ -1600,7 +1976,7 @@
             if (allPDFInfo.length === 0) return;
 
             // Create headers
-            const headers = ['MGA / Wholesale Broker', 'Quote #', 'Grand Total', '% Min Earned', 'Deposit', 'Amount Financed'];
+            const headers = ['View', 'MGA / Wholesale Broker', 'Quote #', 'Grand Total', '% Min Earned', 'Deposit', 'Amount Financed'];
             headers.forEach(headerText => {
                 const th = document.createElement('th');
                 th.textContent = headerText;
@@ -1611,11 +1987,40 @@
             allPDFInfo.forEach((PDFInfo) => {
                 const data = PDFInfo.data;
                 const quoteIndex = PDFInfo.quoteIndex;
+                const quoteId = PDFInfo.quoteId;
                 const totals = data.totals;
 
                 const row = document.createElement('tr');
                 const colorClass = `quote-color-${quoteIndex % 8}`;
                 row.className = colorClass;
+                if (quoteId) {
+                    row.dataset.quoteId = String(quoteId);
+                }
+                const isVisible = quoteId ? quoteVisibilityById[quoteId] !== false : true;
+                if (!isVisible) {
+                    row.classList.add('row-muted');
+                }
+
+                const eyeCell = document.createElement('td');
+                eyeCell.style.width = '52px';
+                if (quoteId) {
+                    const eyeBtn = document.createElement('button');
+                    eyeBtn.className = 'eye-toggle-btn';
+                    eyeBtn.innerHTML = renderEyeIcon(isVisible);
+                    eyeBtn.title = isVisible ? 'Mark as lost' : 'Restore quote';
+                    eyeBtn.onclick = (event) => {
+                        event.stopPropagation();
+                        const currentlyVisible = quoteVisibilityById[quoteId] !== false;
+                        quoteVisibilityById[quoteId] = !currentlyVisible;
+                        eyeBtn.innerHTML = renderEyeIcon(!currentlyVisible);
+                        eyeBtn.title = !currentlyVisible ? 'Mark as lost' : 'Restore quote';
+                        syncQuoteMutedRows();
+                    };
+                    eyeCell.appendChild(eyeBtn);
+                } else {
+                    eyeCell.innerHTML = '<span class="text-gray-400">-</span>';
+                }
+                row.appendChild(eyeCell);
 
                 // Calculate min earned percentage (average across all policies if multiple)
                 let minEarnedPercent = null;
@@ -1653,6 +2058,7 @@
         function populatePolicyDetailsTable(quotes) {
             const header = document.getElementById('policyDetailsHeader');
             const tbody = document.getElementById('policyDetailsBody');
+            displayedPolicyRows = quotes.map((q) => ({ quote_id: q.quote_id, coverage: q.coverage }));
 
             // Create headers
             const headers = ['Coverage', 'Carrier', 'Policy #', 'Effective', 'Expiration', 'Term', 'Base Premium', 'Tax', 'Fee', 'Broker Fee'];
@@ -1667,6 +2073,13 @@
                 const row = document.createElement('tr');
                 const colorClass = `quote-color-${quote.quoteIndex % 8}`;
                 row.className = colorClass;
+                if (quote.quote_id) {
+                    row.dataset.quoteId = String(quote.quote_id);
+                    const isVisible = quoteVisibilityById[quote.quote_id] !== false;
+                    if (!isVisible) {
+                        row.classList.add('row-muted');
+                    }
+                }
 
                 const values = [
                     quote.coverage,
@@ -1693,6 +2106,101 @@
             });
         }
 
+        function toNumber(value) {
+            if (value === null || value === undefined) return null;
+            const raw = String(value).replace(/[^0-9.-]/g, '');
+            if (!raw) return null;
+            const parsed = parseFloat(raw);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function formatMoney(value) {
+            const num = toNumber(value);
+            if (num === null) return 'null';
+            return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function populateSubmissionStage(allPDFInfo, allQuotes) {
+            const container = document.getElementById('submissionStageInfo');
+            if (!container) return;
+
+            let data = null;
+            if (allPDFInfo.length) {
+                data = allPDFInfo[0].data;
+            } else if (submissionData && submissionData.submission_intake) {
+                data = submissionData.submission_intake;
+            } else {
+                container.innerHTML = stageField('Status', 'No submission info yet');
+                return;
+            }
+
+            const address = data.insured?.address
+                ? [data.insured.address.street, data.insured.address.city, data.insured.address.state, data.insured.address.zip].filter(Boolean).join(', ')
+                : null;
+            let coverages = [...new Set(allQuotes.map(q => q.coverage).filter(Boolean))].join(', ') || null;
+            if (!coverages && Array.isArray(data.coverage_types)) {
+                coverages = data.coverage_types.join(', ') || null;
+            }
+
+            container.innerHTML = [
+                stageField('Insured Name', data.insured?.name),
+                stageField('Submission Date', submissionData?.created_at ? new Date(submissionData.created_at).toLocaleDateString() : null),
+                stageField('Address', address),
+                stageField('Agency', data.retail_agent?.name),
+                stageField('Agency Phone', data.retail_agent?.phone),
+                stageField('Coverage Type(s) Needed', coverages),
+                stageField('Effective Date', submissionData?.effective_date || data.effective_date)
+            ].join('');
+
+            const checkItems = document.querySelectorAll('#submissionStageSection .stage-check-item');
+            if (checkItems.length > 0) {
+                const source = data.source || (allPDFInfo.length ? 'quote' : 'manual');
+                checkItems[0].innerHTML = source === 'application'
+                    ? '<span class="stage-check-icon ok">✓</span>Application uploaded'
+                    : '<span class="stage-check-icon ok">✓</span>Insured captured';
+            }
+        }
+
+        function populateBindStage(allQuotes) {
+            const container = document.getElementById('bindStageInfo');
+            if (!container) return;
+
+            if (!allQuotes.length) {
+                container.innerHTML = stageField('Selected Quote', 'No quote available');
+                return;
+            }
+
+            const wonQuoteIds = new Set(
+                quotes.filter(q => q.quote_outcome === 'WON').map(q => q.id)
+            );
+            const candidateQuotes = wonQuoteIds.size
+                ? allQuotes.filter(q => wonQuoteIds.has(q.quote_id))
+                : allQuotes;
+
+            const sortedByPremium = [...candidateQuotes].sort((a, b) => {
+                const pa = toNumber(a.premium);
+                const pb = toNumber(b.premium);
+                if (pa === null && pb === null) return 0;
+                if (pa === null) return 1;
+                if (pb === null) return -1;
+                return pa - pb;
+            });
+            const selected = sortedByPremium[0];
+            const total = [selected.premium, selected.tax, selected.fee].map(toNumber).filter(v => v !== null).reduce((a, b) => a + b, 0);
+
+            container.innerHTML = [
+                stageField('Coverage', selected.coverage),
+                stageField('Carrier', selected.carrier),
+                stageField('Policy #', selected.policyNumber),
+                stageField('Effective', selected.effective),
+                stageField('Expiration', selected.expiration),
+                stageField('Base Premium', formatMoney(selected.premium)),
+                stageField('Tax', formatMoney(selected.tax)),
+                stageField('Fee', formatMoney(selected.fee)),
+                stageField('Grand Total', total ? formatMoney(total) : 'null')
+            ].join('');
+        }
+
 
 
         // Track original status
@@ -1706,6 +2214,7 @@
             } else {
                 saveBtn.disabled = true;
             }
+            applyStageView(e.target.value);
         });
 
         // Save button handler
@@ -1750,6 +2259,38 @@
         });
 
 
+
+        // Delete submission handler
+        document.getElementById('deleteSubmissionBtn').addEventListener('click', async function() {
+            const confirmDelete = confirm(
+                `Are you sure you want to delete this submission?\n\n` +
+                `Submission ID: ${submissionId}\n` +
+                `Insured: ${submissionData?.insured_name || 'Unknown'}\n\n` +
+                `This will permanently delete the submission and all associated quotes. This action cannot be undone.`
+            );
+
+            if (!confirmDelete) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/submission/${submissionId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Submission deleted successfully.');
+                    window.location.href = '/';
+                } else {
+                    alert('Error deleting submission: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting submission:', error);
+                alert('Error deleting submission.');
+            }
+        });
 
         // Report bug handlers
         document.getElementById('reportBugBtn').addEventListener('click', function() {
@@ -1906,7 +2447,60 @@
             }
         });
 
+        document.getElementById('markBoundBtn').addEventListener('click', function() {
+            document.getElementById('statusDropdown').value = 'SENT_TO_FINANCE';
+            document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+        });
+
+        document.getElementById('moveBackToQuotingBtn').addEventListener('click', function() {
+            document.getElementById('statusDropdown').value = 'IN_PROGRESS';
+            document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+        });
+
+        document.getElementById('moveToBindBtn').addEventListener('click', async function() {
+            if (!quotes.length) {
+                alert('No quotes to move.');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            const previousText = btn.textContent;
+            btn.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/move_to_bind`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        quote_outcomes: getQuoteOutcomePayload()
+                    })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to move submission to bind');
+                }
+
+                await loadSubmission();
+            } catch (error) {
+                console.error('Error moving to bind:', error);
+                alert(error.message || 'Error moving to Selection & Bind');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = previousText;
+            }
+        });
+
         applyBugToolButtonState();
+        applyStageView(
+            initialStageKey === 'submission'
+                ? 'RECEIVED'
+                : initialStageKey === 'bind'
+                    ? 'CHOSEN'
+                    : 'IN_PROGRESS'
+        );
 
         // Load submission data on page load
         loadSubmission();

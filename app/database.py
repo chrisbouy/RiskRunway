@@ -65,6 +65,16 @@ def init_db():
     """Initialize the database (create tables)"""
     db = get_db()
     db.init_db()
+    _ensure_schema_updates(db.engine)
+
+
+def _ensure_schema_updates(engine):
+    """Apply lightweight schema updates for existing SQLite DBs."""
+    with engine.begin() as conn:
+        quote_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(quotes)").fetchall()]
+        if 'quote_outcome' not in quote_columns:
+            conn.exec_driver_sql("ALTER TABLE quotes ADD COLUMN quote_outcome VARCHAR(20)")
+            print("Applied schema update: added quotes.quote_outcome")
 
 
 def get_session():
@@ -210,7 +220,7 @@ def log_action(entity_type, entity_id, action, user=None, details=None, submissi
 
 
 def get_all_submissions():
-    """Get all submissions with quote counts (only returns submissions with at least 1 quote)"""
+    """Get all submissions with quote counts."""
     from sqlalchemy.orm import joinedload
 
     session = get_session()
@@ -219,14 +229,7 @@ def get_all_submissions():
             joinedload(Submission.quotes)
         ).order_by(Submission.created_at.desc()).all()
 
-        # Only return submissions that have at least one quote
-        result = []
-        for s in submissions:
-            s_dict = s.to_dict()
-            if s_dict['quote_count'] > 0:
-                result.append(s_dict)
-
-        return result
+        return [s.to_dict() for s in submissions]
     finally:
         session.close()
 
@@ -294,4 +297,3 @@ def update_submission_appetite_score(submission_id):
         print(f"Error updating appetite score: {e}")
     finally:
         session.close()
-

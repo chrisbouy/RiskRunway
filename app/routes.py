@@ -8,6 +8,7 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from app.parsers.three_pass_parser import process_quote_three_pass
+from app.parsers.application_parser import process_application_two_pass
 from app.database import (
     get_all_submissions,
     get_submission_by_id,
@@ -16,7 +17,7 @@ from app.database import (
     log_action,
     get_session
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog
 
 bp = Blueprint('main', __name__)
 
@@ -306,7 +307,14 @@ def submission_detail(submission_id):
     submission = get_submission_by_id(submission_id)
     if not submission:
         return "Submission not found", 404
-    return render_template('submission.html', submission_id=submission_id)
+    status = (submission.get('status') or '').lower()
+    if status == 'received':
+        stage_key = 'submission'
+    elif status == 'in progress':
+        stage_key = 'quoting'
+    else:
+        stage_key = 'bind'
+    return render_template('submission.html', submission_id=submission_id, stage_key=stage_key)
 
 
 @bp.route('/api/submission/<int:submission_id>', methods=['GET'])
@@ -328,6 +336,22 @@ def get_submission_detail(submission_id):
                     quote['parsed_data'] = json.loads(quote['extracted_json'])
                 except:
                     quote['parsed_data'] = None
+
+        db_session = get_session()
+        try:
+            intake_log = db_session.query(AuditLog).filter(
+                AuditLog.submission_id == submission_id,
+                AuditLog.action.in_(['submission_intake_parsed', 'submission_created_manual'])
+            ).order_by(AuditLog.timestamp.desc()).first()
+            if intake_log and intake_log.details:
+                try:
+                    submission['submission_intake'] = json.loads(intake_log.details)
+                except Exception:
+                    submission['submission_intake'] = None
+            else:
+                submission['submission_intake'] = None
+        finally:
+            db_session.close()
 
         return jsonify({
             'success': True,
@@ -444,6 +468,103 @@ def report_submission_bug(submission_id):
         finally:
             db_session.close()
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# SUBMISSION CREATION
+# ============================================================================
+
+@bp.route('/api/submission/create', methods=['POST'])
+@login_required
+def create_submission_entry():
+    """
+    Create a new submission from either:
+    1) Manually-entered insured name, or
+    2) Uploaded application document (parsed for stage-1 info).
+    """
+    try:
+        insured_name = (request.form.get('insured_name') or '').strip()
+        file = request.files.get('file')
+        has_file = bool(file and file.filename)
+
+        if not insured_name and not has_file:
+            return jsonify({'success': False, 'error': 'Provide insured name or upload an application'}), 400
+
+        intake_data = None
+        effective_date = datetime.now().strftime('%Y-%m-%d')
+        state = None
+
+        if has_file:
+            if not allowed_file(file.filename):
+                return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_filename = f"{timestamp}_{filename}"
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(filepath)
+
+            application_result = process_application_two_pass(filepath)
+            parsed_data = application_result['pass2_normalized']
+
+            parsed_insured_name = (parsed_data.get('insured') or {}).get('name')
+            if not insured_name and parsed_insured_name:
+                insured_name = parsed_insured_name.strip()
+
+            state = (parsed_data.get('insured') or {}).get('address', {}).get('state')
+            submission_fields = parsed_data.get('submission') or {}
+            effective_date = submission_fields.get('effective_date') or effective_date
+            coverage_types = submission_fields.get('coverage_types_needed') or []
+
+            # Stage-1 intake intentionally excludes wholesale broker.
+            intake_data = {
+                'source': 'application',
+                'application_filename': filename,
+                'insured': parsed_data.get('insured'),
+                'retail_agent': parsed_data.get('retail_agent'),
+                'quote_number': parsed_data.get('quote_number'),
+                'account_number': parsed_data.get('account_number'),
+                'coverage_types': coverage_types,
+                'effective_date': effective_date,
+                'processing_metadata': application_result.get('processing_metadata', {})
+            }
+        else:
+            intake_data = {
+                'source': 'manual',
+                'insured': {'name': insured_name, 'address': None},
+                'retail_agent': None,
+                'quote_number': None,
+                'account_number': None,
+                'coverage_types': [],
+                'effective_date': effective_date
+            }
+
+        if not insured_name:
+            return jsonify({'success': False, 'error': 'Could not determine insured name from application'}), 400
+
+        submission_id = create_submission(
+            insured_name=insured_name,
+            effective_date=effective_date,
+            state=state,
+            user=session.get('username')
+        )
+
+        log_action(
+            entity_type='submission',
+            entity_id=submission_id,
+            action='submission_intake_parsed' if has_file else 'submission_created_manual',
+            user=session.get('username'),
+            submission_id=submission_id,
+            details=json.dumps(intake_data)
+        )
+
+        return jsonify({
+            'success': True,
+            'submission_id': submission_id,
+            'submission_intake': intake_data
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -584,6 +705,59 @@ def upload_quote():
 # ============================================================================
 # DELETE ROUTES
 # ============================================================================
+
+@bp.route('/api/submission/<int:submission_id>', methods=['DELETE'])
+@login_required
+def delete_submission(submission_id):
+    """
+    Delete a submission and all its associated quotes.
+    """
+    try:
+        db_session = get_session()
+
+        # Get the submission
+        submission = db_session.query(Submission).filter_by(id=submission_id).first()
+        if not submission:
+            db_session.close()
+            return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+        # Get all quotes for this submission to delete their files
+        quotes = db_session.query(Quote).filter_by(submission_id=submission_id).all()
+
+        # Delete associated quote files
+        for quote in quotes:
+            if quote.raw_document_path and os.path.exists(quote.raw_document_path):
+                try:
+                    os.remove(quote.raw_document_path)
+                except Exception as e:
+                    print(f"Warning: Could not delete file {quote.raw_document_path}: {e}")
+
+        # Store submission info for logging
+        insured_name = submission.insured_name
+
+        # Delete the submission (cascade will delete quotes due to relationship)
+        db_session.delete(submission)
+
+        # Log the deletion
+        log_action(
+            entity_type='submission',
+            entity_id=submission_id,
+            action='deleted',
+            submission_id=submission_id,
+            details=f"Deleted submission for {insured_name}"
+        )
+
+        db_session.commit()
+        db_session.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Submission {submission_id} deleted successfully'
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @bp.route('/api/quote/<int:quote_id>', methods=['DELETE'])
 @login_required
@@ -857,6 +1031,54 @@ def update_submission_status(submission_id):
             action='status_changed',
             submission_id=submission_id,
             details=f"Status changed to {new_status}"
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/submission/<int:submission_id>/move_to_bind', methods=['POST'])
+@login_required
+def move_submission_to_bind(submission_id):
+    """Persist quote outcomes (WON/LOST) and move submission to Selection & Bind stage."""
+    try:
+        data = request.get_json() or {}
+        quote_outcomes = data.get('quote_outcomes') or []
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            quotes = db_session.query(Quote).filter_by(submission_id=submission_id).all()
+            quote_by_id = {q.id: q for q in quotes}
+
+            for row in quote_outcomes:
+                quote_id = row.get('quote_id')
+                outcome = (row.get('outcome') or '').upper()
+                if quote_id not in quote_by_id:
+                    continue
+                if outcome not in ('WON', 'LOST'):
+                    continue
+
+                quote = quote_by_id[quote_id]
+                quote.quote_outcome = outcome
+                quote.status = QuoteStatus.CHOSEN if outcome == 'WON' else QuoteStatus.REVIEWED
+
+            submission.status = SubmissionStatus.CHOSEN
+            db_session.commit()
+        finally:
+            db_session.close()
+
+        log_action(
+            entity_type='submission',
+            entity_id=submission_id,
+            action='moved_to_bind',
+            user=session.get('username'),
+            submission_id=submission_id,
+            details=json.dumps({'quote_outcomes': quote_outcomes})
         )
 
         return jsonify({'success': True})
