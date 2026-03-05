@@ -1876,14 +1876,37 @@
         }
 
         function displayQuotes() {
+            const resultContainer = document.getElementById('result');
+            const basicInfoContent = document.getElementById('basicInfoContent');
+            const quotesByBrokerHeader = document.getElementById('quotesByBrokerHeader');
+            const quotesByBrokerBody = document.getElementById('quotesByBrokerBody');
+            const policyDetailsHeader = document.getElementById('policyDetailsHeader');
+            const policyDetailsBody = document.getElementById('policyDetailsBody');
+
+            let emptyState = document.getElementById('resultEmptyState');
+            if (!emptyState && resultContainer) {
+                emptyState = document.createElement('div');
+                emptyState.id = 'resultEmptyState';
+                emptyState.className = 'processing-msg';
+                emptyState.style.display = 'none';
+                emptyState.textContent = 'No quotes yet. Upload a quote to get started.';
+                resultContainer.insertBefore(emptyState, resultContainer.firstChild);
+            }
+
             if (quotes.length === 0) {
-                document.getElementById('result').innerHTML =
-                    '<div class="processing-msg">No quotes yet. Upload a quote to get started.</div>';
+                if (basicInfoContent) basicInfoContent.innerHTML = '';
+                if (quotesByBrokerHeader) quotesByBrokerHeader.innerHTML = '';
+                if (quotesByBrokerBody) quotesByBrokerBody.innerHTML = '';
+                if (policyDetailsHeader) policyDetailsHeader.innerHTML = '';
+                if (policyDetailsBody) policyDetailsBody.innerHTML = '';
+                if (emptyState) emptyState.style.display = 'block';
                 populateSubmissionStage([], []);
                 populateBindStage([]);
                 updateMoveToBindButtonState();
                 return;
             }
+
+            if (emptyState) emptyState.style.display = 'none';
 
             // Convert quotes to the format expected by displayResults
             const results = quotes.map((quote, index) => {
@@ -1981,11 +2004,21 @@
 
         function displayResults(results) {
             // Clear all content areas
-            document.getElementById('basicInfoContent').innerHTML = '';
-            document.getElementById('quotesByBrokerHeader').innerHTML = '';
-            document.getElementById('quotesByBrokerBody').innerHTML = '';
-            document.getElementById('policyDetailsHeader').innerHTML = '';
-            document.getElementById('policyDetailsBody').innerHTML = '';
+            const basicInfoContent = document.getElementById('basicInfoContent');
+            const quotesByBrokerHeader = document.getElementById('quotesByBrokerHeader');
+            const quotesByBrokerBody = document.getElementById('quotesByBrokerBody');
+            const policyDetailsHeader = document.getElementById('policyDetailsHeader');
+            const policyDetailsBody = document.getElementById('policyDetailsBody');
+            if (!basicInfoContent || !quotesByBrokerHeader || !quotesByBrokerBody || !policyDetailsHeader || !policyDetailsBody) {
+                console.error('Quote result containers are missing from the DOM.');
+                return;
+            }
+
+            basicInfoContent.innerHTML = '';
+            quotesByBrokerHeader.innerHTML = '';
+            quotesByBrokerBody.innerHTML = '';
+            policyDetailsHeader.innerHTML = '';
+            policyDetailsBody.innerHTML = '';
 
             // Collect all data for tables
             let allPDFInfo = [];
