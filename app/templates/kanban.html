@@ -226,11 +226,16 @@
 
         /* ── SUBMISSION CARD ── */
         .submission-card {
-            width: 100%;
+            width: max-content;
+            max-width: 100%;
             cursor: pointer;
             display: flex;
             flex-direction: column;
             gap: 3px;
+            border: 1px solid var(--border-soft);
+            background: #fff;
+            border-radius: 4px;
+            padding: 3px;
         }
 
         .card-name {
@@ -242,21 +247,8 @@
             text-overflow: ellipsis;
             line-height: 1.2;
             padding: 0 1px;
+            text-align: center;
         }
-
-        .status-badge {
-            display: inline-block;
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.07em;
-            text-transform: uppercase;
-            padding: 1px 5px;
-            border-radius: 3px;
-            line-height: 1.4;
-        }
-        .status-submission { background: #dde5f5; color: var(--blue); }
-        .status-quoting    { background: #fdecd8; color: #a0540a; }
-        .status-bind       { background: #d5f0e2; color: #145c38; }
 
         .status-label-input {
             font-size: 10px;
@@ -279,6 +271,7 @@
         }
         .status-label-input::placeholder { color: var(--text-xmuted); }
 
+        .card-control {
             font-size: 10px;
             font-family: 'IBM Plex Sans', inherit;
             color: var(--text-muted);
@@ -293,6 +286,14 @@
         }
         .card-control:hover, .card-control:focus { border-color: var(--border); outline: none; }
         .card-control option { font-size: 11px; }
+
+        .runway-lane.drag-over {
+            outline: 2px dashed #7b9fd4;
+            outline-offset: -2px;
+        }
+        .submission-card.dragging {
+            opacity: 0.55;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -433,6 +434,8 @@
             acc[item.key] = item;
             return acc;
         }, {});
+        let draggedSubmissionId = null;
+        let suppressCardClick = false;
 
         // Load current user info
         async function loadCurrentUser() {
@@ -503,6 +506,18 @@
             document.getElementById('count-bind').textContent = `Selection & Bind: ${grouped.bind}`;
         }
 
+        async function updateSubmissionStage(submissionId, newStatus) {
+            const response = await fetch(`/api/submission/${submissionId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to update stage');
+            }
+        }
+
         async function updateSubmissionStatusLabel(submissionId, statusLabel) {
             const response = await fetch(`/api/submission/${submissionId}/status_label`, {
                 method: 'PUT',
@@ -543,9 +558,32 @@
                 const tint = laneKey === 'submission' ? 'active-sub' : laneKey === 'quoting' ? 'active-quot' : 'active-bind';
                 lane.className = 'runway-lane' + (laneKey === stageKey ? ' ' + tint : '');
                 lane.dataset.lane = laneKey;
+                lane.dataset.apiStatus = STAGE_BY_KEY[laneKey].apiStatus;
                 if (laneKey === stageKey) {
                     lane.appendChild(createSubmissionCard(submission, stageKey));
                 }
+
+                lane.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    lane.classList.add('drag-over');
+                });
+                lane.addEventListener('dragleave', () => {
+                    lane.classList.remove('drag-over');
+                });
+                lane.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    lane.classList.remove('drag-over');
+                    if (!draggedSubmissionId) return;
+                    if (laneKey === stageKey) return;
+
+                    try {
+                        await updateSubmissionStage(draggedSubmissionId, lane.dataset.apiStatus);
+                        await loadSubmissions();
+                    } catch (error) {
+                        console.error('Error updating status:', error);
+                        alert('Failed to move submission to new stage.');
+                    }
+                });
                 row.appendChild(lane);
             });
 
@@ -556,6 +594,10 @@
             const card = document.createElement('div');
             card.className = 'submission-card';
             card.dataset.submissionId = submission.id;
+            card.draggable = true;
+            const insuredNameLength = (submission.insured_name || '').length;
+            const cardWidth = Math.min(420, Math.max(138, Math.round(insuredNameLength * 7.2) + 24));
+            card.style.width = `${cardWidth}px`;
 
             const stageMeta = STAGE_BY_KEY[stageKey];
             const defaultStageLabel = stageMeta ? stageMeta.label : 'Selection & Bind';
@@ -566,14 +608,9 @@
                 return `<option value="${doc.id}">${escapeHtml(label)}</option>`;
             }).join('');
 
-            const stageBadgeClass = stageKey === 'submission' ? 'status-submission' : stageKey === 'quoting' ? 'status-quoting' : 'status-bind';
-            const stageBadgeLabel = stageKey === 'submission' ? 'Submission' : stageKey === 'quoting' ? 'Quoting' : 'Bind';
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
-                <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
-                    <span class="status-badge ${stageBadgeClass}">${stageBadgeLabel}</span>
-                    ${docOptions ? `<select class="documents-select card-control" style="flex:1;" data-submission-id="${submission.id}"><option value="">Docs</option>${docOptions}</select>` : ''}
-                </div>
+                ${docOptions ? `<select class="documents-select card-control" style="width:100%;" data-submission-id="${submission.id}"><option value="">Documents</option>${docOptions}</select>` : '<div style="height:20px;"></div>'}
                 <input class="status-label-input"
                        type="text"
                        maxlength="255"
@@ -582,7 +619,29 @@
             `;
 
             card.addEventListener('click', (e) => {
+                if (suppressCardClick) {
+                    suppressCardClick = false;
+                    return;
+                }
                 window.location.href = `/submission/${submission.id}`;
+            });
+
+            card.addEventListener('dragstart', (e) => {
+                draggedSubmissionId = submission.id;
+                suppressCardClick = true;
+                card.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(submission.id));
+                }
+            });
+            card.addEventListener('dragend', () => {
+                draggedSubmissionId = null;
+                setTimeout(() => {
+                    suppressCardClick = false;
+                }, 0);
+                card.classList.remove('dragging');
+                document.querySelectorAll('.runway-lane.drag-over').forEach((lane) => lane.classList.remove('drag-over'));
             });
 
             const stopPropagationControls = card.querySelectorAll('input, select');
