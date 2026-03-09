@@ -170,7 +170,7 @@
             grid-template-columns: repeat(3, minmax(0, 1fr));
             background: var(--surface);
             border-bottom: 2px solid var(--border);
-            height: 30px;
+            min-height: 38px;
             flex-shrink: 0;
         }
 
@@ -188,6 +188,19 @@
         .runway-header-cell:last-child { border-right: none; }
         .runway-header-cell .stage-dot {
             width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .header-text {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            line-height: 1.1;
+        }
+        .header-window {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: none;
+            color: var(--text-xmuted);
         }
         .dot-sub  { background: var(--blue); }
         .dot-quot { background: var(--orange); }
@@ -287,6 +300,15 @@
         .card-control:hover, .card-control:focus { border-color: var(--border); outline: none; }
         .card-control option { font-size: 11px; }
 
+        .renewal-meta {
+            font-size: 9px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-xmuted);
+            text-align: center;
+            line-height: 1.2;
+            padding: 0 2px;
+        }
+
         .runway-lane.drag-over {
             outline: 2px dashed #7b9fd4;
             outline-offset: -2px;
@@ -323,9 +345,27 @@
         <main class="board-panel">
             <div class="runway-board">
                 <div class="runway-header">
-                    <div class="runway-header-cell"><span class="stage-dot dot-sub"></span><span class="header-label-sub">Submission</span></div>
-                    <div class="runway-header-cell"><span class="stage-dot dot-quot"></span><span class="header-label-quot">Quoting</span></div>
-                    <div class="runway-header-cell"><span class="stage-dot dot-bind"></span><span class="header-label-bind">Selection &amp; Bind</span></div>
+                    <div class="runway-header-cell">
+                        <span class="stage-dot dot-sub"></span>
+                        <span class="header-text">
+                            <span class="header-label-sub">Submission</span>
+                            <span class="header-window">120-90d to renewal</span>
+                        </span>
+                    </div>
+                    <div class="runway-header-cell">
+                        <span class="stage-dot dot-quot"></span>
+                        <span class="header-text">
+                            <span class="header-label-quot">Quoting</span>
+                            <span class="header-window">90-30d to renewal</span>
+                        </span>
+                    </div>
+                    <div class="runway-header-cell">
+                        <span class="stage-dot dot-bind"></span>
+                        <span class="header-text">
+                            <span class="header-label-bind">Selection &amp; Bind</span>
+                            <span class="header-window">30d and under</span>
+                        </span>
+                    </div>
                 </div>
                 <div id="runwayRows"></div>
             </div>
@@ -434,6 +474,13 @@
             acc[item.key] = item;
             return acc;
         }, {});
+        const RENEWAL_WINDOWS = [
+            { minDays: 120, maxDays: Infinity, stageKey: 'submission', label: 'Renewal marketing started; request updated apps/SOV/changes' },
+            { minDays: 90, maxDays: 119, stageKey: 'submission', label: 'Submissions sent to markets' },
+            { minDays: 60, maxDays: 89, stageKey: 'quoting', label: 'Quotes arriving; negotiations underway' },
+            { minDays: 30, maxDays: 59, stageKey: 'bind', label: 'Final carrier selection' },
+            { minDays: 0, maxDays: 29, stageKey: 'bind', label: 'Renewal bound' }
+        ];
         let draggedSubmissionId = null;
         let suppressCardClick = false;
 
@@ -546,6 +593,24 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function getDaysUntilRenewal(effectiveDate) {
+            if (!effectiveDate) return null;
+            const datePart = String(effectiveDate).slice(0, 10);
+            const parsed = new Date(`${datePart}T00:00:00`);
+            if (Number.isNaN(parsed.getTime())) return null;
+
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        function getRenewalWindow(daysUntilRenewal) {
+            if (daysUntilRenewal === null) return null;
+            return RENEWAL_WINDOWS.find((window) => (
+                daysUntilRenewal >= window.minDays && daysUntilRenewal <= window.maxDays
+            )) || null;
+        }
+
         function createRunwayRow(submission) {
             const row = document.createElement('div');
             row.className = 'runway-row';
@@ -601,7 +666,15 @@
 
             const stageMeta = STAGE_BY_KEY[stageKey];
             const defaultStageLabel = stageMeta ? stageMeta.label : 'Selection & Bind';
-            const displayLabel = (submission.status_label || '').trim() || (submission.is_bound ? 'Bound' : defaultStageLabel);
+            const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
+            const renewalWindow = getRenewalWindow(daysUntilRenewal);
+            const calculatedLabel = submission.is_bound
+                ? 'Renewal bound'
+                : (renewalWindow ? renewalWindow.label : defaultStageLabel);
+            const displayLabel = (submission.status_label || '').trim() || calculatedLabel;
+            const renewalCountdown = daysUntilRenewal === null
+                ? 'No renewal date'
+                : (daysUntilRenewal >= 0 ? `T-${daysUntilRenewal}d` : `${Math.abs(daysUntilRenewal)}d past renewal`);
 
             const docOptions = (submission.documents || []).map((doc) => {
                 const label = `${doc.document_type}: ${doc.name}`;
@@ -616,6 +689,7 @@
                        maxlength="255"
                        placeholder="Add status note…"
                        value="${escapeHtml(displayLabel === defaultStageLabel ? '' : displayLabel)}">
+                <div class="renewal-meta">${escapeHtml(renewalCountdown)}</div>
             `;
 
             card.addEventListener('click', (e) => {
