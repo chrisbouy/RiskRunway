@@ -324,6 +324,11 @@
             color: white;
         }
 
+        #submitToMarketBtn {
+            background: #2d4a8a;
+            color: white;
+        }
+
         #moveToBindBtn.ready {
             background: #d97706;
         }
@@ -1107,7 +1112,7 @@
             </div>
             <div class="stage-step" data-stage="bind">
                 <span class="stage-dot">3</span>
-                <span>Selection &amp; Bind</span>
+                <span>Bound</span>
             </div>
         </div>
 
@@ -1143,6 +1148,9 @@
                     <button id="uploadStage1DocBtn">Upload</button>
                 </div>
                 <div id="stage1DocsList" class="doc-list"></div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-top: 0.75rem;">
+                <button id="submitToMarketBtn">Submit to Market</button>
             </div>
         </div>
 
@@ -1216,7 +1224,7 @@
             </div>
         </div>
         <div style="display:flex; justify-content:flex-end; margin-top: 0.75rem;">
-            <button id="moveToBindBtn">Move to Selection &amp; Bind</button>
+            <button id="moveToBindBtn">Bind</button>
         </div>
         </div>
 
@@ -1374,15 +1382,30 @@
         const bugCaptureRoot = document.getElementById('bugCaptureRoot');
         const MAX_SCREENSHOT_DATA_URL_CHARS = 5_500_000;
 
-        function statusToStage(statusValue) {
+        function getDaysUntilRenewal(effectiveDate) {
+            if (!effectiveDate) return null;
+            const datePart = String(effectiveDate).slice(0, 10);
+            const parsed = new Date(`${datePart}T00:00:00`);
+            if (Number.isNaN(parsed.getTime())) return null;
+
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        function statusToStage(statusValue, effectiveDate) {
             const normalized = (statusValue || '').toUpperCase();
+            const daysUntilRenewal = getDaysUntilRenewal(effectiveDate);
             if (normalized === 'RECEIVED') return 'submission';
             if (normalized === 'IN_PROGRESS') return 'quoting';
+            if ((normalized === 'CHOSEN' || normalized === 'SENT_TO_FINANCE') && daysUntilRenewal !== null && daysUntilRenewal <= 120) {
+                return 'quoting';
+            }
             return 'bind';
         }
 
-        function setStageProgress(statusValue) {
-            const currentStage = statusToStage(statusValue);
+        function setStageProgress(stageKey) {
+            const currentStage = stageKey;
             const stageOrder = ['submission', 'quoting', 'bind'];
             const currentIndex = stageOrder.indexOf(currentStage);
             const steps = document.querySelectorAll('#stageProgress .stage-step');
@@ -1409,8 +1432,8 @@
             });
         }
 
-        function applyStageView(statusValue) {
-            const stage = statusToStage(statusValue);
+        function applyStageView(statusValue, effectiveDate) {
+            const stage = statusToStage(statusValue, effectiveDate || submissionData?.effective_date);
             const stageProgress = document.getElementById('stageProgress');
             if (stageProgress) {
                 stageProgress.style.display = stage === 'quoting' ? 'none' : 'flex';
@@ -1418,7 +1441,7 @@
             document.getElementById('submissionStageSection').classList.toggle('active', stage === 'submission');
             document.getElementById('quotingStageSection').classList.toggle('active', stage === 'quoting');
             document.getElementById('bindStageSection').classList.toggle('active', stage === 'bind');
-            setStageProgress(statusValue);
+            setStageProgress(stage);
         }
 
         function stageField(label, value) {
@@ -1768,7 +1791,7 @@
                     const statusDropdown = document.getElementById('statusDropdown');
                     statusDropdown.value = submissionData.status.toUpperCase().replace(/ /g, '_');
                     originalStatus = statusDropdown.value;
-                    applyStageView(statusDropdown.value);
+                    applyStageView(statusDropdown.value, submissionData.effective_date);
 
                     // Display appetite score
                     displayAppetiteScore();
@@ -1831,7 +1854,7 @@
                 const fileItem = document.createElement('div');
                 fileItem.className = `file-item ${colorClass}`;
                 fileItem.innerHTML = `
-                    <div class="delete-btn" onclick="deleteQuote(${quote.id}, '${filename}')">×</div>
+                    <div class="delete-btn" onclick="event.stopPropagation(); deleteQuote(${quote.id}, '${filename}')">×</div>
                     <svg class="file-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10,19L12,15H9V10H15V15L13,19H10Z"/>
                     </svg>
@@ -1846,7 +1869,7 @@
         }
 
         async function deleteQuote(quoteId, filename) {
-            const confirmDelete = confirm(`Are you sure you want to delete "${filename}"?\n\n${quotes.length === 1 ? 'This is the only quote. The submission will also be deleted.' : ''}`);
+            const confirmDelete = confirm(`Are you sure you want to delete "${filename}"?`);
 
             if (!confirmDelete) {
                 return;
@@ -1859,13 +1882,8 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    if (data.submission_deleted) {
-                        alert('Quote and submission deleted successfully.');
-                        window.location.href = '/';
-                    } else {
-                        alert('Quote deleted successfully.');
-                        loadSubmission();
-                    }
+                    alert('Quote deleted successfully.');
+                    loadSubmission();
                 } else {
                     alert('Error deleting quote: ' + data.error);
                 }
@@ -2408,7 +2426,7 @@
             } else {
                 saveBtn.disabled = true;
             }
-            applyStageView(e.target.value);
+            applyStageView(e.target.value, submissionData?.effective_date);
         });
 
         // Save button handler
@@ -2450,6 +2468,35 @@
         // Cancel button handler
         document.getElementById('cancelBtn').addEventListener('click', function() {
             window.location.href = '/';
+        });
+
+        document.getElementById('submitToMarketBtn').addEventListener('click', async function() {
+            const btn = this;
+            btn.disabled = true;
+            const previousText = btn.textContent;
+            btn.textContent = 'Submitting...';
+
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ status: 'IN_PROGRESS' })
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to submit to market');
+                }
+
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error submitting to market:', error);
+                alert(error.message || 'Error submitting to market');
+                btn.disabled = false;
+                btn.textContent = previousText;
+            }
         });
 
 
@@ -2729,7 +2776,7 @@
                 await loadSubmission();
             } catch (error) {
                 console.error('Error moving to bind:', error);
-                alert(error.message || 'Error moving to Selection & Bind');
+                alert(error.message || 'Error moving to bind');
             } finally {
                 btn.disabled = false;
                 btn.textContent = previousText;

@@ -309,6 +309,15 @@
             padding: 0 2px;
         }
 
+        .quote-meta {
+            font-size: 9px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-muted);
+            text-align: center;
+            line-height: 1.2;
+            padding: 0 2px;
+        }
+
         .runway-lane.drag-over {
             outline: 2px dashed #7b9fd4;
             outline-offset: -2px;
@@ -330,7 +339,7 @@
             <div class="left-divider"></div>
             <span id="count-submission" class="stage-count">Submission: 0</span>
             <span id="count-quoting" class="stage-count">Quoting: 0</span>
-            <span id="count-bind" class="stage-count">Bind: 0</span>
+            <span id="count-bind" class="stage-count">Bound: 0</span>
             <div class="left-divider"></div>
             <button id="rulesBtn" class="left-btn btn-rules">Appetite Rules</button>
             <button id="newSubmissionBtn" class="left-btn btn-new">+ New Submission</button>
@@ -349,21 +358,18 @@
                         <span class="stage-dot dot-sub"></span>
                         <span class="header-text">
                             <span class="header-label-sub">Submission</span>
-                            <span class="header-window">120-90d to renewal</span>
                         </span>
                     </div>
                     <div class="runway-header-cell">
                         <span class="stage-dot dot-quot"></span>
                         <span class="header-text">
                             <span class="header-label-quot">Quoting</span>
-                            <span class="header-window">90-30d to renewal</span>
                         </span>
                     </div>
                     <div class="runway-header-cell">
                         <span class="stage-dot dot-bind"></span>
                         <span class="header-text">
-                            <span class="header-label-bind">Selection &amp; Bind</span>
-                            <span class="header-window">30d and under</span>
+                            <span class="header-label-bind">Bind</span>
                         </span>
                     </div>
                 </div>
@@ -468,19 +474,12 @@
         const STAGE_COLUMNS = [
             { key: 'submission', statuses: ['Received'], apiStatus: 'RECEIVED', label: 'Submission', countId: 'count-submission' },
             { key: 'quoting', statuses: ['In Progress'], apiStatus: 'IN_PROGRESS', label: 'Quoting', countId: 'count-quoting' },
-            { key: 'bind', statuses: ['Chosen', 'Sent to Finance'], apiStatus: 'CHOSEN', label: 'Selection & Bind', countId: 'count-bind' }
+            { key: 'bind', statuses: ['Chosen', 'Sent to Finance'], apiStatus: 'CHOSEN', label: 'Bound', countId: 'count-bind' }
         ];
         const STAGE_BY_KEY = STAGE_COLUMNS.reduce((acc, item) => {
             acc[item.key] = item;
             return acc;
         }, {});
-        const RENEWAL_WINDOWS = [
-            { minDays: 120, maxDays: Infinity, stageKey: 'submission', label: 'Renewal marketing started; request updated apps/SOV/changes' },
-            { minDays: 90, maxDays: 119, stageKey: 'submission', label: 'Submissions sent to markets' },
-            { minDays: 60, maxDays: 89, stageKey: 'quoting', label: 'Quotes arriving; negotiations underway' },
-            { minDays: 30, maxDays: 59, stageKey: 'bind', label: 'Final carrier selection' },
-            { minDays: 0, maxDays: 29, stageKey: 'bind', label: 'Renewal bound' }
-        ];
         let draggedSubmissionId = null;
         let suppressCardClick = false;
 
@@ -543,14 +542,14 @@
 
             const grouped = { submission: 0, quoting: 0, bind: 0 };
             submissions.forEach(sub => {
-                const stageKey = getStageKey(sub.status);
+                const stageKey = getStageKey(sub);
                 grouped[stageKey] += 1;
                 rows.appendChild(createRunwayRow(sub));
             });
 
             document.getElementById('count-submission').textContent = `Submission: ${grouped.submission}`;
             document.getElementById('count-quoting').textContent = `Quoting: ${grouped.quoting}`;
-            document.getElementById('count-bind').textContent = `Selection & Bind: ${grouped.bind}`;
+            document.getElementById('count-bind').textContent = `Bound: ${grouped.bind}`;
         }
 
         async function updateSubmissionStage(submissionId, newStatus) {
@@ -578,9 +577,25 @@
             return data.status_label;
         }
 
-        function getStageKey(status) {
-            if (status === 'Received') return 'submission';
-            if (status === 'In Progress') return 'quoting';
+        function normalizeStatus(status) {
+            return String(status || '').trim().toUpperCase().replace(/\s+/g, '_');
+        }
+
+        function isBoundStatus(status) {
+            const normalized = normalizeStatus(status);
+            return normalized === 'CHOSEN' || normalized === 'SENT_TO_FINANCE';
+        }
+
+        function getStageKey(submissionOrStatus, maybeEffectiveDate) {
+            const submission = typeof submissionOrStatus === 'object' && submissionOrStatus !== null
+                ? submissionOrStatus
+                : { status: submissionOrStatus, effective_date: maybeEffectiveDate };
+            const normalized = normalizeStatus(submission.status);
+            const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
+
+            if (normalized === 'RECEIVED') return 'submission';
+            if (normalized === 'IN_PROGRESS') return 'quoting';
+            if (isBoundStatus(normalized) && daysUntilRenewal !== null && daysUntilRenewal <= 120) return 'quoting';
             return 'bind';
         }
 
@@ -604,11 +619,21 @@
             return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
         }
 
-        function getRenewalWindow(daysUntilRenewal) {
-            if (daysUntilRenewal === null) return null;
-            return RENEWAL_WINDOWS.find((window) => (
-                daysUntilRenewal >= window.minDays && daysUntilRenewal <= window.maxDays
-            )) || null;
+        function getRenewalCountdown(submission, stageKey, daysUntilRenewal) {
+            if (daysUntilRenewal === null) return 'Countdown till renewal: no renewal date';
+
+            const returnedToQuotingForRenewal = stageKey === 'quoting' && isBoundStatus(submission.status);
+            if (returnedToQuotingForRenewal) {
+                if (daysUntilRenewal < 0) {
+                    return 'Countdown till renewal: lapsed';
+                }
+                return `Up for renewal: T-${daysUntilRenewal}d`;
+            }
+
+            if (daysUntilRenewal < 0) {
+                return 'Countdown till renewal: lapsed';
+            }
+            return `Countdown till renewal: T-${daysUntilRenewal}d`;
         }
 
         function createRunwayRow(submission) {
@@ -616,7 +641,7 @@
             row.className = 'runway-row';
             row.dataset.submissionId = submission.id;
 
-            const stageKey = getStageKey(submission.status);
+            const stageKey = getStageKey(submission);
 
             ['submission', 'quoting', 'bind'].forEach((laneKey) => {
                 const lane = document.createElement('div');
@@ -664,17 +689,11 @@
             const cardWidth = Math.min(420, Math.max(138, Math.round(insuredNameLength * 7.2) + 24));
             card.style.width = `${cardWidth}px`;
 
-            const stageMeta = STAGE_BY_KEY[stageKey];
-            const defaultStageLabel = stageMeta ? stageMeta.label : 'Selection & Bind';
             const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
-            const renewalWindow = getRenewalWindow(daysUntilRenewal);
-            const calculatedLabel = submission.is_bound
-                ? 'Renewal bound'
-                : (renewalWindow ? renewalWindow.label : defaultStageLabel);
-            const displayLabel = (submission.status_label || '').trim() || calculatedLabel;
-            const renewalCountdown = daysUntilRenewal === null
-                ? 'No renewal date'
-                : (daysUntilRenewal >= 0 ? `T-${daysUntilRenewal}d` : `${Math.abs(daysUntilRenewal)}d past renewal`);
+            const displayLabel = (submission.status_label || '').trim();
+            const renewalCountdown = getRenewalCountdown(submission, stageKey, daysUntilRenewal);
+            const quoteReceivedCount = Number(submission.quote_count || 0);
+            const quoteSentCount = Number(submission.quotes_sent_count || 0);
 
             const docOptions = (submission.documents || []).map((doc) => {
                 const label = `${doc.document_type}: ${doc.name}`;
@@ -688,7 +707,8 @@
                        type="text"
                        maxlength="255"
                        placeholder="Add status note…"
-                       value="${escapeHtml(displayLabel === defaultStageLabel ? '' : displayLabel)}">
+                       value="${escapeHtml(displayLabel)}">
+                <div class="quote-meta">Quotes received/sent: ${quoteReceivedCount}/${quoteSentCount}</div>
                 <div class="renewal-meta">${escapeHtml(renewalCountdown)}</div>
             `;
 

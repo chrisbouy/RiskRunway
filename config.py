@@ -15,7 +15,7 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 
     # Database settings
-    DATABASE_PATH = os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
+    DATABASE_PATH = os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
 
     # Bug report email settings (using SendGrid HTTP API)
     BUG_REPORT_RECIPIENT = os.environ.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')

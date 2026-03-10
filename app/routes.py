@@ -2,13 +2,13 @@
 from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for, send_file
 import os
 import json
+from datetime import datetime
 import requests
 import base64
 import uuid
 import shutil
 from functools import wraps
 from werkzeug.utils import secure_filename
-from datetime import datetime
 from app.parsers.three_pass_parser import process_quote_three_pass
 from app.parsers.application_parser import process_application_two_pass
 from app.database import (
@@ -294,6 +294,29 @@ def kanban():
     return render_template('kanban.html')
 
 
+def _days_until_renewal(effective_date):
+    if not effective_date:
+        return None
+    try:
+        renewal_date = datetime.strptime(str(effective_date)[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return None
+    return (renewal_date - datetime.now().date()).days
+
+
+def _board_stage_key(submission):
+    status = str(submission.get('status') or '').strip().lower()
+    days_until_renewal = _days_until_renewal(submission.get('effective_date'))
+
+    if status == 'received':
+        return 'submission'
+    if status == 'in progress':
+        return 'quoting'
+    if status in ('chosen', 'sent to finance') and days_until_renewal is not None and days_until_renewal <= 120:
+        return 'quoting'
+    return 'bind'
+
+
 @bp.route('/api/submissions', methods=['GET'])
 @login_required
 def get_submissions():
@@ -375,13 +398,7 @@ def submission_detail(submission_id):
     submission = get_submission_by_id(submission_id)
     if not submission:
         return "Submission not found", 404
-    status = (submission.get('status') or '').lower()
-    if status == 'received':
-        stage_key = 'submission'
-    elif status == 'in progress':
-        stage_key = 'quoting'
-    else:
-        stage_key = 'bind'
+    stage_key = _board_stage_key(submission)
     return render_template('submission.html', submission_id=submission_id, stage_key=stage_key)
 
 
@@ -1103,7 +1120,7 @@ def delete_submission(submission_id):
 @login_required
 def delete_quote(quote_id):
     """
-    Delete a quote. If it's the last quote in a submission, delete the submission too.
+    Delete a quote while preserving the parent submission.
     """
     try:
         session = get_session()
@@ -1116,42 +1133,22 @@ def delete_quote(quote_id):
 
         submission_id = quote.submission_id
 
-        # Count quotes in this submission
-        quote_count = session.query(Quote).filter_by(submission_id=submission_id).count()
-
-        submission_deleted = False
-
-        if quote_count == 1:
-            # This is the last quote, delete the submission too
-            submission = session.query(Submission).filter_by(id=submission_id).first()
-            if submission:
-                session.delete(submission)
-                submission_deleted = True
-                log_action(
-                    entity_type='submission',
-                    entity_id=submission_id,
-                    action='deleted',
-                    submission_id=submission_id,
-                    details=f"Deleted submission (last quote removed)"
-                )
-        else:
-            # Just delete the quote
-            session.delete(quote)
-            log_action(
-                entity_type='quote',
-                entity_id=quote_id,
-                action='deleted',
-                submission_id=submission_id,
-                quote_id=quote_id,
-                details=f"Deleted quote"
-            )
+        session.delete(quote)
+        log_action(
+            entity_type='quote',
+            entity_id=quote_id,
+            action='deleted',
+            submission_id=submission_id,
+            quote_id=quote_id,
+            details="Deleted quote"
+        )
 
         session.commit()
         session.close()
 
         return jsonify({
             'success': True,
-            'submission_deleted': submission_deleted
+            'submission_deleted': False
         })
 
     except Exception as e:
