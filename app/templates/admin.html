@@ -6,32 +6,32 @@
     <title>Database Admin - IPFS Mapper</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50">
+<body class="bg-black text-gray-100">
     <div class="container mx-auto px-4 py-6">
         <div class="flex items-center justify-between mb-6">
-            <h1 class="text-3xl font-bold text-gray-800">Database Admin</h1>
-            <a href="/" class="text-blue-600 hover:text-blue-800">← Back to Submissions</a>
+            <h1 class="text-3xl font-bold text-white">Database Admin</h1>
+            <a href="/" class="text-blue-400 hover:text-blue-300">← Back to Submissions</a>
         </div>
 
         <!-- Submissions Table -->
-        <div class="bg-white rounded-lg shadow mb-6">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-xl font-semibold text-gray-800">Submissions</h2>
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700">
+                <h2 class="text-xl font-semibold text-white">Submissions</h2>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-800">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Insured Name</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective Date</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">State</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created At</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quote Count</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Insured Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Effective Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">State</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Created At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Quote Count</th>
                         </tr>
                     </thead>
-                    <tbody id="submissionsTable" class="bg-white divide-y divide-gray-200">
+                    <tbody id="submissionsTable" class="bg-gray-900 divide-y divide-gray-700">
                         <!-- Rows will be inserted here -->
                     </tbody>
                 </table>
@@ -39,23 +39,23 @@
         </div>
 
         <!-- Quotes Table -->
-        <div class="bg-white rounded-lg shadow mb-6">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-xl font-semibold text-gray-800">Quotes</h2>
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700">
+                <h2 class="text-xl font-semibold text-white">Quotes</h2>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-800">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submission ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Carrier</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded At</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Path</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Submission ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Carrier</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Uploaded At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">File Path</th>
                         </tr>
                     </thead>
-                    <tbody id="quotesTable" class="bg-white divide-y divide-gray-200">
+                    <tbody id="quotesTable" class="bg-gray-900 divide-y divide-gray-700">
                         <!-- Rows will be inserted here -->
                     </tbody>
                 </table>
@@ -63,27 +63,53 @@
         </div>
 
         <!-- Users Table -->
-        <div class="bg-white rounded-lg shadow mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <h2 class="text-xl font-semibold text-gray-800">Users</h2>
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-white">Users</h2>
                 <button id="addUserBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                     + Add User
                 </button>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-800">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created At</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Username</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Full Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Role</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Created At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="usersTable" class="bg-white divide-y divide-gray-200">
+                    <tbody id="usersTable" class="bg-gray-900 divide-y divide-gray-700">
+                        <!-- Rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Brokers Table -->
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700">
+                <h2 class="text-xl font-semibold text-white">Brokers</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-800">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">User ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Email</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Portal Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Enabled</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Created At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="brokersTable" class="bg-gray-900 divide-y divide-gray-700">
                         <!-- Rows will be inserted here -->
                     </tbody>
                 </table>
@@ -91,23 +117,23 @@
         </div>
 
         <!-- Audit Log Table -->
-        <div class="bg-white rounded-lg shadow">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-xl font-semibold text-gray-800">Audit Log (Last 50)</h2>
+        <div class="bg-gray-900 rounded-lg shadow border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700">
+                <h2 class="text-xl font-semibold text-white">Audit Log (Last 50)</h2>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-800">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entity Type</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entity ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Entity Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Entity ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Action</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Details</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Timestamp</th>
                         </tr>
                     </thead>
-                    <tbody id="auditTable" class="bg-white divide-y divide-gray-200">
+                    <tbody id="auditTable" class="bg-gray-900 divide-y divide-gray-700">
                         <!-- Rows will be inserted here -->
                     </tbody>
                 </table>
@@ -116,52 +142,52 @@
     </div>
 
     <!-- User Modal -->
-    <div id="userModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 id="userModalTitle" class="text-xl font-bold mb-4">Add User</h3>
+    <div id="userModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+            <h3 id="userModalTitle" class="text-xl font-bold mb-4 text-white">Add User</h3>
 
             <form id="userForm" class="space-y-4">
                 <input type="hidden" id="userId" value="">
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Username</label>
                     <input type="text" id="username" required
-                           class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                           class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded focus:ring-2 focus:ring-blue-500">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
                     <input type="text" id="fullName" required
-                           class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                           class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded focus:ring-2 focus:ring-blue-500">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Role</label>
                     <select id="role" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded focus:ring-2 focus:ring-blue-500">
                         <option value="ADMIN">Admin</option>
                         <option value="VIEWER">Viewer</option>
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Password <span id="passwordOptional" class="text-gray-500 text-xs">(leave blank to keep current)</span>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">
+                        Password <span id="passwordOptional" class="text-gray-400 text-xs">(leave blank to keep current)</span>
                     </label>
                     <input type="password" id="password"
-                           class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                           class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded focus:ring-2 focus:ring-blue-500">
                 </div>
 
                 <div id="activeToggleDiv">
                     <label class="flex items-center gap-2">
                         <input type="checkbox" id="isActive" class="rounded">
-                        <span class="text-sm font-medium text-gray-700">Active</span>
+                        <span class="text-sm font-medium text-gray-300">Active</span>
                     </label>
                 </div>
 
                 <div class="flex justify-end gap-2 mt-6">
                     <button type="button" id="cancelUserBtn"
-                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                            class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600">
                         Cancel
                     </button>
                     <button type="submit"
@@ -183,6 +209,7 @@
                     renderSubmissions(data.submissions);
                     renderQuotes(data.quotes);
                     renderUsers(data.users);
+                    renderBrokers(data.brokers);
                     renderAuditLog(data.audit_log);
                 }
             } catch (error) {
@@ -190,25 +217,57 @@
             }
         }
 
+        function renderBrokers(brokers) {
+            const tbody = document.getElementById('brokersTable');
+            tbody.innerHTML = '';
+
+            if (brokers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-400">No brokers yet</td></tr>';
+                return;
+            }
+
+            brokers.forEach(broker => {
+                const row = document.createElement('tr');
+                const typeBadge = broker.is_portal
+                    ? '<span class="px-2 py-1 text-xs rounded bg-purple-900 text-purple-200">Portal</span>'
+                    : '<span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-200">Email</span>';
+                const enabledBadge = broker.is_enabled
+                    ? '<span class="px-2 py-1 text-xs rounded bg-green-900 text-green-200">Yes</span>'
+                    : '<span class="px-2 py-1 text-xs rounded bg-red-900 text-red-200">No</span>';
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${broker.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${broker.user_id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${broker.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${broker.email || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${broker.portal_name || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${typeBadge}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${enabledBadge}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${new Date(broker.created_at).toLocaleString()}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
         function renderSubmissions(submissions) {
             const tbody = document.getElementById('submissionsTable');
             tbody.innerHTML = '';
-            
+
             if (submissions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No submissions yet</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-400">No submissions yet</td></tr>';
                 return;
             }
-            
+
             submissions.forEach(sub => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.insured_name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.effective_date}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.state || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.status}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(sub.created_at).toLocaleString()}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sub.quote_count}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${sub.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${sub.insured_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${sub.effective_date}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${sub.state || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${sub.status}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${new Date(sub.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${sub.quote_count}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -217,21 +276,21 @@
         function renderQuotes(quotes) {
             const tbody = document.getElementById('quotesTable');
             tbody.innerHTML = '';
-            
+
             if (quotes.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No quotes yet</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-400">No quotes yet</td></tr>';
                 return;
             }
-            
+
             quotes.forEach(quote => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.submission_id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.carrier_name || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quote.status}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(quote.created_at).toLocaleString()}</td>
-                    <td class="px-6 py-4 text-sm text-gray-900 truncate max-w-xs">${quote.raw_document_path}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${quote.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${quote.submission_id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${quote.carrier_name || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${quote.status}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${new Date(quote.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 text-sm text-gray-100 truncate max-w-xs">${quote.raw_document_path}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -242,30 +301,30 @@
             tbody.innerHTML = '';
 
             if (users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No users yet</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-400">No users yet</td></tr>';
                 return;
             }
 
             users.forEach(user => {
                 const row = document.createElement('tr');
                 const statusBadge = user.is_active
-                    ? '<span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Active</span>'
-                    : '<span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Inactive</span>';
+                    ? '<span class="px-2 py-1 text-xs rounded bg-green-900 text-green-200">Active</span>'
+                    : '<span class="px-2 py-1 text-xs rounded bg-red-900 text-red-200">Inactive</span>';
 
                 const roleBadge = user.role === 'Admin'
-                    ? '<span class="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">Admin</span>'
-                    : '<span class="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">Viewer</span>';
+                    ? '<span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-200">Admin</span>'
+                    : '<span class="px-2 py-1 text-xs rounded bg-gray-700 text-gray-200">Viewer</span>';
 
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">${user.username}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.full_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${user.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100 font-medium">${user.username}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${user.full_name}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">${roleBadge}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">${statusBadge}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(user.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${new Date(user.created_at).toLocaleString()}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                        <button onclick="editUser(${user.id})" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
-                        ${user.is_active ? `<button onclick="deactivateUser(${user.id})" class="text-red-600 hover:text-red-800">Deactivate</button>` : ''}
+                        <button onclick="editUser(${user.id})" class="text-blue-400 hover:text-blue-300 mr-3">Edit</button>
+                        ${user.is_active ? `<button onclick="deactivateUser(${user.id})" class="text-red-400 hover:text-red-300">Deactivate</button>` : ''}
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -277,19 +336,19 @@
             tbody.innerHTML = '';
 
             if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No audit logs yet</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-400">No audit logs yet</td></tr>';
                 return;
             }
 
             logs.forEach(log => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.entity_type}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.entity_id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.action}</td>
-                    <td class="px-6 py-4 text-sm text-gray-900">${log.details || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(log.timestamp).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${log.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${log.entity_type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${log.entity_id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${log.action}</td>
+                    <td class="px-6 py-4 text-sm text-gray-100">${log.details || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-100">${new Date(log.timestamp).toLocaleString()}</td>
                 `;
                 tbody.appendChild(row);
             });

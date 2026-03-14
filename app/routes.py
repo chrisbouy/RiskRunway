@@ -19,7 +19,7 @@ from app.database import (
     log_action,
     get_session
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker
 
 bp = Blueprint('main', __name__)
 
@@ -1121,30 +1121,48 @@ def delete_submission(submission_id):
 def delete_quote(quote_id):
     """
     Delete a quote while preserving the parent submission.
+    Also deletes associated documents (quotes, SOVs, etc. linked to this quote).
     """
     try:
-        session = get_session()
+        db_session = get_session()
 
         # Get the quote
-        quote = session.query(Quote).filter_by(id=quote_id).first()
+        quote = db_session.query(Quote).filter_by(id=quote_id).first()
         if not quote:
-            session.close()
+            db_session.close()
             return jsonify({'success': False, 'error': 'Quote not found'}), 404
 
         submission_id = quote.submission_id
 
-        session.delete(quote)
+        # Get all documents linked to this quote and delete their files
+        documents = db_session.query(Document).filter_by(quote_id=quote_id).all()
+        for doc in documents:
+            # Delete file from storage
+            if doc.storage_provider == 'local':
+                if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
+                    local_path = doc.storage_key
+                else:
+                    local_path = os.path.join(current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER']), doc.storage_key)
+                if os.path.exists(local_path):
+                    try:
+                        os.remove(local_path)
+                    except Exception as e:
+                        print(f"Warning: Could not delete document file {local_path}: {e}")
+            # Document will be cascade deleted from DB
+
+        # Delete the quote (cascade will delete documents due to relationship)
+        db_session.delete(quote)
         log_action(
             entity_type='quote',
             entity_id=quote_id,
             action='deleted',
             submission_id=submission_id,
             quote_id=quote_id,
-            details="Deleted quote"
+            details="Deleted quote and associated documents"
         )
 
-        session.commit()
-        session.close()
+        db_session.commit()
+        db_session.close()
 
         return jsonify({
             'success': True,
@@ -1518,6 +1536,10 @@ def get_admin_data():
         users_query = session.query(User).order_by(User.created_at.desc()).all()
         users = [u.to_dict() for u in users_query]
 
+        # Get all brokers
+        brokers_query = session.query(Broker).order_by(Broker.name).all()
+        brokers = [b.to_dict() for b in brokers_query]
+
         # Get last 50 audit logs
         audit_logs = session.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(50).all()
         audit_data = [{
@@ -1539,6 +1561,7 @@ def get_admin_data():
             'submissions': submissions,
             'quotes': quotes,
             'users': users,
+            'brokers': brokers,
             'audit_log': audit_data
         })
     except Exception as e:
@@ -1668,6 +1691,386 @@ def delete_user(user_id):
                 action='deactivated',
                 details=f"Deactivated user {user.username}"
             )
+
+            return jsonify({'success': True})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# SUBMIT TO MARKET
+# ============================================================================
+
+@bp.route('/api/submission/<int:submission_id>/submit_to_market', methods=['POST'])
+@login_required
+def submit_to_market(submission_id):
+    """
+    Submit a submission to selected brokers.
+    Sends emails to email brokers and generates zip files for portal brokers.
+    """
+    try:
+        user_id = session.get('user_id')
+        data = request.get_json() or {}
+        broker_ids = data.get('broker_ids', [])
+
+        if not broker_ids:
+            return jsonify({'success': False, 'error': 'No brokers selected'}), 400
+
+        db_session = get_session()
+        try:
+            # Get submission
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            # Get selected brokers
+            brokers = db_session.query(Broker).filter(
+                Broker.id.in_(broker_ids),
+                Broker.user_id == user_id,
+                Broker.is_enabled == True
+            ).all()
+
+            if not brokers:
+                return jsonify({'success': False, 'error': 'No valid brokers selected'}), 400
+
+            # Get submission documents (applications, SOVs, loss runs)
+            documents = db_session.query(Document).filter(
+                Document.submission_id == submission_id,
+                Document.document_type.in_([DocumentType.APPLICATION, DocumentType.SOV, DocumentType.LOSS_RUN])
+            ).all()
+
+            # Separate email and portal brokers
+            email_brokers = [b for b in brokers if not b.is_portal]
+            portal_brokers = [b for b in brokers if b.is_portal]
+
+            results = {
+                'emails_sent': [],
+                'portal_downloads': []
+            }
+
+            # Send emails to email brokers
+            for broker in email_brokers:
+                try:
+                    _send_broker_email(submission, broker, documents)
+                    results['emails_sent'].append(broker.name)
+                except Exception as e:
+                    print(f"Error sending email to {broker.name}: {e}")
+
+            # Generate zip files for portal brokers
+            for broker in portal_brokers:
+                try:
+                    zip_path = _generate_broker_zip(submission, broker, documents)
+                    results['portal_downloads'].append({
+                        'broker_name': broker.name,
+                        'zip_path': zip_path
+                    })
+                except Exception as e:
+                    print(f"Error generating zip for {broker.name}: {e}")
+
+            # Log action
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='submitted_to_market',
+                submission_id=submission_id,
+                details=f"Submitted to {len(brokers)} brokers"
+            )
+
+            return jsonify({
+                'success': True,
+                'results': results
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _send_broker_email(submission, broker, documents):
+    """Send email to broker with zip file attachment using SendGrid HTTP API."""
+    import base64
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+
+    # Create zip file
+    zip_path = _generate_broker_zip(submission, broker, documents)
+
+    try:
+        # Email configuration
+        api_key = current_app.config.get('SENDGRID_API_KEY')
+        sender_email = current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
+
+        if not api_key:
+            raise ValueError("SendGrid API key is not configured. Set SENDGRID_API_KEY environment variable.")
+
+        # Build email body - use custom body if configured, otherwise use default
+        if broker.email_body:
+            body = broker.email_body
+        else:
+            body = f"""Hello {broker.name},
+
+Please find attached the insurance submission documents for {submission.insured_name}.
+
+Effective Date: {submission.effective_date}
+State: {submission.state}
+
+Best regards,
+Insurance Placement System"""
+
+        # Add letterhead if configured
+        if broker.letterhead:
+            body = f"{body}\n\n{broker.letterhead}"
+
+        # Create the email message
+        message = Mail(
+            from_email=sender_email,
+            to_emails=broker.email,
+            subject=f"Insurance Submission - {submission.insured_name}",
+            plain_text_content=body
+        )
+
+        # Read and attach zip file
+        with open(zip_path, 'rb') as f:
+            zip_data = f.read()
+
+        encoded_file = base64.b64encode(zip_data).decode()
+        attached_file = Attachment(
+            FileContent(encoded_file),
+            FileName(os.path.basename(zip_path)),
+            FileType('application/zip'),
+            Disposition('attachment')
+        )
+        message.attachment = attached_file
+
+        # Send via SendGrid HTTP API
+        print(f"[BROKER EMAIL] Sending submission to {broker.name} ({broker.email})...")
+        sg = SendGridAPIClient(api_key)
+        response = sg.send(message)
+        print(f"[BROKER EMAIL] Success! Status code: {response.status_code}")
+        return response
+
+    except Exception as e:
+        print(f"[BROKER EMAIL] FAILED to send to {broker.name}: {type(e).__name__}: {str(e)}")
+        raise
+    finally:
+        # Clean up zip file
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+
+def _generate_broker_zip(submission, broker, documents):
+    """Generate a zip file with submission documents"""
+    import zipfile
+
+    # Create temp directory for zip
+    temp_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'temp_zips')
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Create zip file
+    zip_filename = f"{submission.insured_name.replace(' ', '_')}_{submission.id}_{broker.id}.zip"
+    zip_path = os.path.join(temp_dir, zip_filename)
+
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for doc in documents:
+            # Get file path
+            if doc.storage_provider == 'local':
+                if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
+                    file_path = doc.storage_key
+                else:
+                    file_path = os.path.join(current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER']), doc.storage_key)
+
+                if os.path.exists(file_path):
+                    # Add file to zip with document type prefix
+                    arcname = f"{doc.document_type.value}/{doc.original_filename}"
+                    zipf.write(file_path, arcname=arcname)
+
+    return zip_path
+
+
+@bp.route('/api/submission/<int:submission_id>/download_broker_zip/<int:broker_id>', methods=['GET'])
+@login_required
+def download_broker_zip(submission_id, broker_id):
+    """Download zip file for a portal broker"""
+    try:
+        user_id = session.get('user_id')
+
+        db_session = get_session()
+        try:
+            # Get submission
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            # Get broker
+            broker = db_session.query(Broker).filter_by(id=broker_id, user_id=user_id).first()
+            if not broker:
+                return jsonify({'success': False, 'error': 'Broker not found'}), 404
+
+            if not broker.is_portal:
+                return jsonify({'success': False, 'error': 'This is not a portal broker'}), 400
+
+            # Get documents
+            documents = db_session.query(Document).filter(
+                Document.submission_id == submission_id,
+                Document.document_type.in_([DocumentType.APPLICATION, DocumentType.SOV, DocumentType.LOSS_RUN])
+            ).all()
+
+            # Generate zip
+            zip_path = _generate_broker_zip(submission, broker, documents)
+
+            # Send file
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name=os.path.basename(zip_path),
+                mimetype='application/zip'
+            )
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# BROKER MANAGEMENT
+# ============================================================================
+
+@bp.route('/api/brokers', methods=['GET'])
+@login_required
+def get_brokers():
+    """Get all brokers for the current user"""
+    try:
+        user_id = session.get('user_id')
+        db_session = get_session()
+        try:
+            brokers = db_session.query(Broker).filter_by(user_id=user_id).order_by(Broker.name).all()
+            return jsonify({
+                'success': True,
+                'brokers': [broker.to_dict() for broker in brokers]
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/brokers', methods=['POST'])
+@login_required
+def create_broker():
+    """Create a new broker for the current user"""
+    try:
+        user_id = session.get('user_id')
+        data = request.get_json() or {}
+
+        name = (data.get('name') or '').strip()
+        email = (data.get('email') or '').strip()
+        portal_name = (data.get('portal_name') or '').strip()
+        is_portal = data.get('is_portal', False)
+        letterhead = (data.get('letterhead') or '').strip()
+        email_body = (data.get('email_body') or '').strip()
+
+        # Validate input
+        if not email and not portal_name:
+            return jsonify({'success': False, 'error': 'Either email or portal_name is required'}), 400
+
+        if is_portal and not portal_name:
+            return jsonify({'success': False, 'error': 'Portal name is required for portal brokers'}), 400
+
+        if not is_portal and not email:
+            return jsonify({'success': False, 'error': 'Email is required for email brokers'}), 400
+
+        # Generate name if not provided
+        if not name:
+            if is_portal:
+                name = portal_name
+            else:
+                # Extract name from email (part before @)
+                name = email.split('@')[0].title()
+
+        db_session = get_session()
+        try:
+            broker = Broker(
+                user_id=user_id,
+                name=name,
+                email=email if not is_portal else None,
+                portal_name=portal_name if is_portal else None,
+                is_portal=is_portal,
+                is_enabled=True,
+                letterhead=letterhead if letterhead else None,
+                email_body=email_body if email_body else None
+            )
+            db_session.add(broker)
+            db_session.commit()
+
+            return jsonify({
+                'success': True,
+                'broker': broker.to_dict()
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/brokers/<int:broker_id>', methods=['PUT'])
+@login_required
+def update_broker(broker_id):
+    """Update a broker"""
+    try:
+        user_id = session.get('user_id')
+        data = request.get_json() or {}
+
+        db_session = get_session()
+        try:
+            broker = db_session.query(Broker).filter_by(id=broker_id, user_id=user_id).first()
+            if not broker:
+                return jsonify({'success': False, 'error': 'Broker not found'}), 404
+
+            # Update fields
+            if 'name' in data:
+                broker.name = (data.get('name') or '').strip()
+            if 'email' in data:
+                broker.email = (data.get('email') or '').strip() if not broker.is_portal else None
+            if 'portal_name' in data:
+                broker.portal_name = (data.get('portal_name') or '').strip() if broker.is_portal else None
+            if 'is_enabled' in data:
+                broker.is_enabled = data.get('is_enabled', True)
+            if 'letterhead' in data:
+                letterhead = (data.get('letterhead') or '').strip()
+                broker.letterhead = letterhead if letterhead else None
+            if 'email_body' in data:
+                email_body = (data.get('email_body') or '').strip()
+                broker.email_body = email_body if email_body else None
+
+            db_session.commit()
+
+            return jsonify({
+                'success': True,
+                'broker': broker.to_dict()
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/brokers/<int:broker_id>', methods=['DELETE'])
+@login_required
+def delete_broker(broker_id):
+    """Delete a broker"""
+    try:
+        user_id = session.get('user_id')
+
+        db_session = get_session()
+        try:
+            broker = db_session.query(Broker).filter_by(id=broker_id, user_id=user_id).first()
+            if not broker:
+                return jsonify({'success': False, 'error': 'Broker not found'}), 404
+
+            db_session.delete(broker)
+            db_session.commit()
 
             return jsonify({'success': True})
         finally:

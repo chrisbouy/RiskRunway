@@ -9,23 +9,25 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --blue:   #2d4a8a;
-            --orange: #d4720a;
-            --green:  #1a7a4a;
+            --blue:   #4a9eff;
+            --orange: #ff9f40;
+            --green:  #4ade80;
 
-            --bg:          #f4f2ef;
-            --surface:     #ffffff;
-            --border:      #ddd9d3;
-            --border-soft: #e8e5e0;
-            --text:        #1a1814;
-            --text-muted:  #6b6760;
-            --text-xmuted: #9c9893;
+            --bg:          #0a0a0a;
+            --surface:     #1a1a1a;
+            --border:      #2a2a2a;
+            --border-soft: #222222;
+            --text:        #e5e5e5;
+            --text-muted:  #a0a0a0;
+            --text-xmuted: #707070;
 
-            --rail-bg:     #1e2d50;
-            --rail-text:   #e8ecf5;
-            --rail-muted:  #8b9ac0;
-            --rail-border: #2d3f6e;
-            --rail-hover:  #2a3d6a;
+            --rail-bg:     #0f0f0f;
+            --rail-text:   #e5e5e5;
+            --rail-muted:  #909090;
+            --rail-border: #2a2a2a;
+            --rail-hover:  #252525;
+
+            --runway-light: #ffd700;
         }
 
         *, *::before, *::after { box-sizing: border-box; }
@@ -172,6 +174,8 @@
             border-bottom: 2px solid var(--border);
             min-height: 38px;
             flex-shrink: 0;
+            position: relative;
+            z-index: 2;
         }
 
         .runway-header-cell {
@@ -213,42 +217,66 @@
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Ensure runway rows container can hold absolutely positioned lights */
+        .runway-board {
+            position: relative;
         }
 
         .runway-row {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             border-bottom: 1px solid var(--border-soft);
-            min-height: 48px;
+            min-height: 100px;
+            position: relative;
         }
-        .runway-row:hover { background: #faf9f7; }
+        .runway-row:hover { background: #252525; }
 
         .runway-lane {
             display: flex;
             align-items: center;
             padding: 4px 6px;
             border-right: 1px solid var(--border-soft);
-            min-height: 48px;
+            min-height: 100px;
+            position: relative;
         }
         .runway-lane:last-child { border-right: none; }
 
+        /* Runway lights container - spans entire row width */
+        .runway-lights {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Ensure submission card is above lights */
+        .submission-card {
+            position: relative;
+            z-index: 1;
+        }
+
         /* Lane tints when active */
-        .runway-lane.active-sub  { background: #f0f3fa; }
-        .runway-lane.active-quot { background: #fdf6ee; }
-        .runway-lane.active-bind { background: #f0f8f3; }
+        .runway-lane.active-sub  { background: rgba(74, 158, 255, 0.08); }
+        .runway-lane.active-quot { background: rgba(255, 159, 64, 0.08); }
+        .runway-lane.active-bind { background: rgba(74, 222, 128, 0.08); }
 
         /* ── SUBMISSION CARD ── */
         .submission-card {
-            width: max-content;
-            max-width: 100%;
+            width: 100%;
             cursor: pointer;
             display: flex;
             flex-direction: column;
-            gap: 3px;
-            border: 1px solid var(--border-soft);
-            background: #fff;
+            gap: 4px;
+            border: 1px solid var(--border);
+            background: var(--surface);
             border-radius: 4px;
-            padding: 3px;
+            padding: 6px 8px;
         }
 
         .card-name {
@@ -259,8 +287,30 @@
             overflow: hidden;
             text-overflow: ellipsis;
             line-height: 1.2;
-            padding: 0 1px;
             text-align: center;
+        }
+
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .card-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+            flex-shrink: 0;
         }
 
         .status-label-input {
@@ -269,18 +319,51 @@
             color: var(--text-muted);
             border: 1px solid transparent;
             border-radius: 3px;
-            padding: 1px 4px;
+            padding: 2px 4px;
             background: transparent;
-            width: 100%;
-            line-height: 1.3;
+            line-height: 1.2;
             transition: border-color 0.15s, background 0.15s;
+            text-align: left;
+            min-width: 120px;
         }
         .status-label-input:hover,
         .status-label-input:focus {
             border-color: var(--border);
-            background: white;
+            background: var(--bg);
             outline: none;
             color: var(--text);
+        }
+
+        .card-status {
+            font-size: 10px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-muted);
+            text-align: right;
+            line-height: 1.2;
+        }
+
+        .card-quotes-count {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-align: right;
+            line-height: 1.2;
+        }
+
+        .documents-select {
+            font-size: 10px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 2px 4px;
+            line-height: 1.2;
+            cursor: pointer;
+            min-width: 100px;
+        }
+
+        .documents-select:hover {
+            border-color: var(--text-muted);
         }
         .status-label-input::placeholder { color: var(--text-xmuted); }
 
@@ -343,6 +426,7 @@
             <div class="left-divider"></div>
             <button id="rulesBtn" class="left-btn btn-rules">Appetite Rules</button>
             <button id="newSubmissionBtn" class="left-btn btn-new">+ New Submission</button>
+            <button id="configureBrokersBtn" class="left-btn btn-new">⚙ Configure Brokers</button>
             <div class="user-block">
                 <div class="user-label">Logged in as</div>
                 <div id="currentUserName" class="user-name"></div>
@@ -369,7 +453,7 @@
                     <div class="runway-header-cell">
                         <span class="stage-dot dot-bind"></span>
                         <span class="header-text">
-                            <span class="header-label-bind">Bind</span>
+                            <span class="header-label-bind">Binding</span>
                         </span>
                     </div>
                 </div>
@@ -379,11 +463,11 @@
     </div>
 
     <!-- Rules Management Modal -->
-    <div id="rulesModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div id="rulesModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-2xl font-bold">PF Appetite Scoring Rules</h2>
-                <button id="closeRulesModal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                <h2 class="text-2xl font-bold text-white">PF Appetite Scoring Rules</h2>
+                <button id="closeRulesModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
             </div>
 
             <p class="text-gray-600 mb-6">Configure the rules used to calculate Premium Finance appetite scores (0-100 points total)</p>
@@ -404,9 +488,9 @@
     </div>
 
     <!-- New Submission Modal -->
-    <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
-            <h2 class="text-2xl font-bold mb-3">Create Submission</h2>
+    <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl border border-gray-700">
+            <h2 class="text-2xl font-bold mb-3 text-white">Create Submission</h2>
             <p class="text-gray-600 mb-4">Enter insured name, or drop an application to prefill client/submission info.</p>
 
             <div class="mb-4">
@@ -435,11 +519,111 @@
         </div>
     </div>
 
+    <!-- Configure Brokers Modal -->
+    <div id="configureBrokersModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-white">Configure Brokers</h2>
+
+            <div id="brokersList" class="mb-6 space-y-3">
+                <!-- Brokers will be loaded here -->
+            </div>
+
+            <div class="border-t pt-4 mb-4">
+                <h3 class="text-lg font-semibold mb-3">Add New Broker</h3>
+
+                <div class="mb-3">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Broker Type</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center gap-2">
+                            <input type="radio" id="brokerTypeEmail" name="brokerType" value="email" checked>
+                            <span>Email</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" id="brokerTypePortal" name="brokerType" value="portal">
+                            <span>Portal</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="brokerName" class="block text-sm font-semibold text-gray-700 mb-1">Broker Name (optional)</label>
+                    <input id="brokerName" type="text" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Leave blank to auto-generate from email/portal">
+                </div>
+
+                <div id="emailSection" class="mb-3">
+                    <label for="brokerEmail" class="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
+                    <input id="brokerEmail" type="email" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="broker@example.com">
+                </div>
+
+                <div id="portalSection" class="mb-3 hidden">
+                    <label for="brokerPortalName" class="block text-sm font-semibold text-gray-700 mb-1">Portal Site Name</label>
+                    <input id="brokerPortalName" type="text" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="e.g., Carrier Portal, XYZ Broker Portal">
+                </div>
+
+                <div class="mb-3">
+                    <label for="brokerEmailBody" class="block text-sm font-semibold text-gray-700 mb-1">Email Body (optional)</label>
+                    <textarea id="brokerEmailBody" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" rows="4" placeholder="Custom email message. Leave blank for default message."></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="brokerLetterhead" class="block text-sm font-semibold text-gray-700 mb-1">Letterhead/Signature (optional)</label>
+                    <textarea id="brokerLetterhead" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" rows="3" placeholder="Your signature or letterhead to append to emails"></textarea>
+                </div>
+
+                <button id="addBrokerBtn" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                    Add Broker
+                </button>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button id="closeBrokersModal" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Broker Modal -->
+    <div id="editBrokerModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-white">Edit Broker</h2>
+
+            <div class="mb-3">
+                <label for="editBrokerName" class="block text-sm font-semibold text-gray-700 mb-1">Broker Name</label>
+                <input id="editBrokerName" type="text" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" readonly>
+            </div>
+
+            <div class="mb-3">
+                <label for="editBrokerContact" class="block text-sm font-semibold text-gray-700 mb-1">Contact</label>
+                <input id="editBrokerContact" type="text" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" readonly>
+            </div>
+
+            <div class="mb-3">
+                <label for="editBrokerEmailBody" class="block text-sm font-semibold text-gray-700 mb-1">Email Body (optional)</label>
+                <textarea id="editBrokerEmailBody" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" rows="4" placeholder="Custom email message. Leave blank for default message."></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label for="editBrokerLetterhead" class="block text-sm font-semibold text-gray-700 mb-1">Letterhead/Signature (optional)</label>
+                <textarea id="editBrokerLetterhead" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" rows="3" placeholder="Your signature or letterhead to append to emails"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button id="closeEditBrokerModal" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="saveEditBrokerBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script>
         // Theme Management
         function initTheme() {
-            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-light';
+            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
             const themeSelect = document.getElementById('themeSelect');
             if (themeSelect) {
@@ -540,6 +724,9 @@
             const rows = document.getElementById('runwayRows');
             rows.innerHTML = '';
 
+            // Clear old canvases from tracking array
+            runwayLightsCanvases.length = 0;
+
             const grouped = { submission: 0, quoting: 0, bind: 0 };
             submissions.forEach(sub => {
                 const stageKey = getStageKey(sub);
@@ -550,6 +737,9 @@
             document.getElementById('count-submission').textContent = `Submission: ${grouped.submission}`;
             document.getElementById('count-quoting').textContent = `Quoting: ${grouped.quoting}`;
             document.getElementById('count-bind').textContent = `Bound: ${grouped.bind}`;
+
+            // Start animation after rendering
+            startRunwayLightsAnimation();
         }
 
         async function updateSubmissionStage(submissionId, newStatus) {
@@ -620,20 +810,128 @@
         }
 
         function getRenewalCountdown(submission, stageKey, daysUntilRenewal) {
-            if (daysUntilRenewal === null) return 'Countdown till renewal: no renewal date';
+            // Only show renewal countdown when bound
+            const isBound = isBoundStatus(submission.status);
 
-            const returnedToQuotingForRenewal = stageKey === 'quoting' && isBoundStatus(submission.status);
-            if (returnedToQuotingForRenewal) {
-                if (daysUntilRenewal < 0) {
-                    return 'Countdown till renewal: lapsed';
-                }
-                return `Up for renewal: T-${daysUntilRenewal}d`;
-            }
+            // If not bound, don't show renewal countdown
+            if (!isBound) return '';
 
+            // If no renewal date, don't show anything
+            if (daysUntilRenewal === null) return '';
+
+            // Show renewal countdown for all bound submissions
             if (daysUntilRenewal < 0) {
                 return 'Countdown till renewal: lapsed';
             }
             return `Countdown till renewal: T-${daysUntilRenewal}d`;
+        }
+
+        // ============================================================================
+        // RUNWAY LIGHTS ANIMATION
+        // ============================================================================
+
+        const runwayLightsCanvases = [];
+        let animationFrameId = null;
+        let animationStartTime = Date.now();
+
+        function createRunwayLights() {
+            const canvas = document.createElement('canvas');
+            canvas.className = 'runway-lights';
+            canvas.width = 800; // Will be adjusted dynamically
+            canvas.height = 100; // Wider runway height
+
+            runwayLightsCanvases.push(canvas);
+
+            return canvas;
+        }
+
+        function animateRunwayLights() {
+            const currentTime = (Date.now() - animationStartTime) / 1000; // Convert to seconds
+
+            runwayLightsCanvases.forEach(canvas => {
+                if (!canvas.parentElement) {
+                    // Canvas has been removed from DOM
+                    return;
+                }
+
+                const parent = canvas.parentElement;
+                const rect = parent.getBoundingClientRect();
+
+                // Update canvas size if parent size changed
+                if (canvas.width !== rect.width) {
+                    canvas.width = rect.width;
+                }
+                if (canvas.height !== rect.height) {
+                    canvas.height = rect.height;
+                }
+
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Runway light configuration - tiny lights running horizontally
+                const lightRadius = 1.5;
+                const numLights = 60; // About 60 lights across the runway
+                const lightSpacing = canvas.width / (numLights + 1); // Evenly distribute horizontally
+                const runwayHeight = 100; // Height between the two lines of lights (much wider runway)
+                const centerY = canvas.height / 2;
+
+                // Animation parameters
+                const speed = 1.7;
+                const offset = 0.23;
+
+                // Draw lights in pairs (top and bottom of runway) - running horizontally
+                for (let i = 0; i < numLights; i++) {
+                    const x = lightSpacing * (i + 1);
+
+                    // Calculate shimmer using sine wave
+                    const shimmer = 0.8 + Math.sin(currentTime * speed + i * offset) * 0.2;
+
+                    // Draw top light (top edge of runway)
+                    drawRunwayLight(ctx, x, centerY - runwayHeight / 2, lightRadius, shimmer);
+
+                    // Draw bottom light (bottom edge of runway)
+                    drawRunwayLight(ctx, x, centerY + runwayHeight / 2, lightRadius, shimmer);
+                }
+            });
+
+            animationFrameId = requestAnimationFrame(animateRunwayLights);
+        }
+
+        function drawRunwayLight(ctx, x, y, radius, opacity) {
+            // Amber/orange color - brighter for visibility
+            const color = 'rgba(255, 159, 64, ' + opacity + ')';
+
+            // Draw glow (subtle for tiny lights)
+            const glowRadius = radius * 5;
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(0.3, 'rgba(255, 159, 64, ' + (opacity * 0.5) + ')');
+            gradient.addColorStop(1, 'rgba(255, 159, 64, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x - glowRadius, y - glowRadius, glowRadius * 2, glowRadius * 2);
+
+            // Draw core light (tiny bright center)
+            ctx.fillStyle = 'rgba(255, 180, 100, ' + opacity + ')';
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Start animation when page loads
+        function startRunwayLightsAnimation() {
+            if (animationFrameId === null) {
+                animationStartTime = Date.now();
+                animateRunwayLights();
+            }
+        }
+
+        // Stop animation (for cleanup)
+        function stopRunwayLightsAnimation() {
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
         }
 
         function createRunwayRow(submission) {
@@ -643,12 +941,17 @@
 
             const stageKey = getStageKey(submission);
 
+            // Add runway lights canvas that spans the entire row
+            const lightsCanvas = createRunwayLights();
+            row.appendChild(lightsCanvas);
+
             ['submission', 'quoting', 'bind'].forEach((laneKey) => {
                 const lane = document.createElement('div');
                 const tint = laneKey === 'submission' ? 'active-sub' : laneKey === 'quoting' ? 'active-quot' : 'active-bind';
                 lane.className = 'runway-lane' + (laneKey === stageKey ? ' ' + tint : '');
                 lane.dataset.lane = laneKey;
                 lane.dataset.apiStatus = STAGE_BY_KEY[laneKey].apiStatus;
+
                 if (laneKey === stageKey) {
                     lane.appendChild(createSubmissionCard(submission, stageKey));
                 }
@@ -685,15 +988,27 @@
             card.className = 'submission-card';
             card.dataset.submissionId = submission.id;
             card.draggable = true;
-            const insuredNameLength = (submission.insured_name || '').length;
-            const cardWidth = Math.min(420, Math.max(138, Math.round(insuredNameLength * 7.2) + 24));
-            card.style.width = `${cardWidth}px`;
 
             const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
             const displayLabel = (submission.status_label || '').trim();
-            const renewalCountdown = getRenewalCountdown(submission, stageKey, daysUntilRenewal);
             const quoteReceivedCount = Number(submission.quote_count || 0);
             const quoteSentCount = Number(submission.quotes_sent_count || 0);
+
+            // Determine status based on stage
+            let status = '';
+            if (stageKey === 'submission') {
+                status = submission.api_status === 'submission' ? 'application in progress' : 'application sent';
+            } else if (stageKey === 'quoting') {
+                status = 'waiting on quotes';
+            } else if (stageKey === 'bind') {
+                if (submission.api_status === 'bound') {
+                    // Show countdown till renewal
+                    const renewalCountdown = getRenewalCountdown(submission, stageKey, daysUntilRenewal);
+                    status = renewalCountdown || 'bound';
+                } else {
+                    status = 'to be bound';
+                }
+            }
 
             const docOptions = (submission.documents || []).map((doc) => {
                 const label = `${doc.document_type}: ${doc.name}`;
@@ -702,14 +1017,22 @@
 
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
-                ${docOptions ? `<select class="documents-select card-control" style="width:100%;" data-submission-id="${submission.id}"><option value="">Documents</option>${docOptions}</select>` : '<div style="height:20px;"></div>'}
-                <input class="status-label-input"
-                       type="text"
-                       maxlength="255"
-                       placeholder="Add status note…"
-                       value="${escapeHtml(displayLabel)}">
-                <div class="quote-meta">Quotes received/sent: ${quoteReceivedCount}/${quoteSentCount}</div>
-                <div class="renewal-meta">${escapeHtml(renewalCountdown)}</div>
+                <div class="card-row">
+                    <div class="card-left">
+                        ${docOptions ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="">Documents</option>${docOptions}</select>` : ''}
+                    </div>
+                    <div class="card-right">
+                        <div class="card-status">${escapeHtml(status)}</div>
+                        ${stageKey === 'quoting' ? `<div class="card-quotes-count">Quotes: ${quoteReceivedCount}/${quoteSentCount}</div>` : ''}
+                    </div>
+                </div>
+                <div class="card-row">
+                    <input class="status-label-input"
+                           type="text"
+                           maxlength="255"
+                           placeholder="Add status note…"
+                           value="${escapeHtml(displayLabel)}">
+                </div>
             `;
 
             card.addEventListener('click', (e) => {
@@ -1200,6 +1523,240 @@
             // Then load submissions
             await loadSubmissions();
         }
+
+        // ============================================================================
+        // BROKER MANAGEMENT
+        // ============================================================================
+
+        let brokers = [];
+
+        // Configure Brokers Modal
+        document.getElementById('configureBrokersBtn').addEventListener('click', async () => {
+            await loadBrokers();
+            document.getElementById('configureBrokersModal').classList.remove('hidden');
+        });
+
+        document.getElementById('closeBrokersModal').addEventListener('click', () => {
+            document.getElementById('configureBrokersModal').classList.add('hidden');
+        });
+
+        // Broker type toggle
+        document.querySelectorAll('input[name="brokerType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const isPortal = e.target.value === 'portal';
+                document.getElementById('emailSection').classList.toggle('hidden', isPortal);
+                document.getElementById('portalSection').classList.toggle('hidden', !isPortal);
+            });
+        });
+
+        async function loadBrokers() {
+            try {
+                const response = await fetch('/api/brokers');
+                const data = await response.json();
+
+                if (data.success) {
+                    brokers = data.brokers;
+                    renderBrokersList();
+                }
+            } catch (error) {
+                console.error('Error loading brokers:', error);
+                alert('Error loading brokers');
+            }
+        }
+
+        function renderBrokersList() {
+            const list = document.getElementById('brokersList');
+
+            if (brokers.length === 0) {
+                list.innerHTML = '<p class="text-gray-500 text-sm">No brokers configured yet.</p>';
+                return;
+            }
+
+            list.innerHTML = brokers.map(broker => `
+                <div class="flex items-center justify-between p-3 border border-gray-200 rounded bg-gray-50">
+                    <div class="flex items-center gap-3 flex-1">
+                        <input type="checkbox" class="broker-checkbox" data-broker-id="${broker.id}" ${broker.is_enabled ? 'checked' : ''}>
+                        <div>
+                            <div class="font-semibold text-sm">${escapeHtml(broker.name)}</div>
+                            <div class="text-xs text-gray-500">
+                                ${broker.is_portal ? `Portal: ${escapeHtml(broker.portal_name)}` : `Email: ${escapeHtml(broker.email)}`}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="edit-broker-btn px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600" data-broker-id="${broker.id}">
+                            Edit
+                        </button>
+                        <button class="delete-broker-btn px-3 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600" data-broker-id="${broker.id}">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Add event listeners
+            document.querySelectorAll('.broker-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', async (e) => {
+                    const brokerId = parseInt(e.target.dataset.brokerId);
+                    const broker = brokers.find(b => b.id === brokerId);
+                    if (broker) {
+                        await updateBroker(brokerId, { is_enabled: e.target.checked });
+                    }
+                });
+            });
+
+            document.querySelectorAll('.edit-broker-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const brokerId = parseInt(e.target.dataset.brokerId);
+                    const broker = brokers.find(b => b.id === brokerId);
+                    if (broker) {
+                        openEditBrokerModal(broker);
+                    }
+                });
+            });
+
+            document.querySelectorAll('.delete-broker-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const brokerId = parseInt(e.target.dataset.brokerId);
+                    if (confirm('Delete this broker?')) {
+                        await deleteBroker(brokerId);
+                    }
+                });
+            });
+        }
+
+        document.getElementById('addBrokerBtn').addEventListener('click', async () => {
+            const brokerType = document.querySelector('input[name="brokerType"]:checked').value;
+            const name = document.getElementById('brokerName').value.trim();
+            const email = document.getElementById('brokerEmail').value.trim();
+            const portalName = document.getElementById('brokerPortalName').value.trim();
+            const emailBody = document.getElementById('brokerEmailBody').value.trim();
+            const letterhead = document.getElementById('brokerLetterhead').value.trim();
+
+            if (brokerType === 'email' && !email) {
+                alert('Email is required for email brokers');
+                return;
+            }
+
+            if (brokerType === 'portal' && !portalName) {
+                alert('Portal name is required for portal brokers');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/brokers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        email: brokerType === 'email' ? email : '',
+                        portal_name: brokerType === 'portal' ? portalName : '',
+                        is_portal: brokerType === 'portal',
+                        email_body: emailBody,
+                        letterhead: letterhead
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    brokers.push(data.broker);
+                    renderBrokersList();
+
+                    // Clear form
+                    document.getElementById('brokerName').value = '';
+                    document.getElementById('brokerEmail').value = '';
+                    document.getElementById('brokerPortalName').value = '';
+                    document.getElementById('brokerEmailBody').value = '';
+                    document.getElementById('brokerLetterhead').value = '';
+                    document.getElementById('brokerTypeEmail').checked = true;
+                    document.getElementById('emailSection').classList.remove('hidden');
+                    document.getElementById('portalSection').classList.add('hidden');
+                } else {
+                    alert('Error adding broker: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error adding broker:', error);
+                alert('Error adding broker');
+            }
+        });
+
+        async function updateBroker(brokerId, updates) {
+            try {
+                const response = await fetch(`/api/brokers/${brokerId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const broker = brokers.find(b => b.id === brokerId);
+                    if (broker) {
+                        Object.assign(broker, data.broker);
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating broker:', error);
+            }
+        }
+
+        async function deleteBroker(brokerId) {
+            try {
+                const response = await fetch(`/api/brokers/${brokerId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    brokers = brokers.filter(b => b.id !== brokerId);
+                    renderBrokersList();
+                } else {
+                    alert('Error deleting broker: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting broker:', error);
+                alert('Error deleting broker');
+            }
+        }
+
+        let currentEditingBrokerId = null;
+
+        function openEditBrokerModal(broker) {
+            currentEditingBrokerId = broker.id;
+            document.getElementById('editBrokerName').value = broker.name || '';
+            document.getElementById('editBrokerContact').value = broker.is_portal
+                ? `Portal: ${broker.portal_name}`
+                : `Email: ${broker.email}`;
+            document.getElementById('editBrokerEmailBody').value = broker.email_body || '';
+            document.getElementById('editBrokerLetterhead').value = broker.letterhead || '';
+            document.getElementById('editBrokerModal').classList.remove('hidden');
+        }
+
+        document.getElementById('closeEditBrokerModal').addEventListener('click', () => {
+            document.getElementById('editBrokerModal').classList.add('hidden');
+            currentEditingBrokerId = null;
+        });
+
+        document.getElementById('saveEditBrokerBtn').addEventListener('click', async () => {
+            if (!currentEditingBrokerId) return;
+
+            const emailBody = document.getElementById('editBrokerEmailBody').value.trim();
+            const letterhead = document.getElementById('editBrokerLetterhead').value.trim();
+
+            try {
+                await updateBroker(currentEditingBrokerId, {
+                    email_body: emailBody,
+                    letterhead: letterhead
+                });
+
+                document.getElementById('editBrokerModal').classList.add('hidden');
+                renderBrokersList();
+                alert('Broker updated successfully!');
+            } catch (error) {
+                console.error('Error saving broker:', error);
+                alert('Error saving broker');
+            }
+        });
 
         // Run initialization on page load
         initializePage();

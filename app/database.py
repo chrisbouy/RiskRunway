@@ -1,7 +1,7 @@
 # app/database.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from app.models import Base, Submission, Quote, AuditLog, AppetiteRule
+from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker
 import os
 
 
@@ -80,6 +80,20 @@ def _ensure_schema_updates(engine):
         if 'status_label' not in submission_columns:
             conn.exec_driver_sql("ALTER TABLE submissions ADD COLUMN status_label VARCHAR(255)")
             print("Applied schema update: added submissions.status_label")
+
+        broker_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(brokers)").fetchall()]
+        if 'letterhead' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN letterhead TEXT")
+            print("Applied schema update: added brokers.letterhead")
+        if 'email_body' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN email_body TEXT")
+            print("Applied schema update: added brokers.email_body")
+        if 'created_at' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+            print("Applied schema update: added brokers.created_at")
+        if 'updated_at' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+            print("Applied schema update: added brokers.updated_at")
 
 
 def get_session():

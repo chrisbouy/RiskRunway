@@ -54,6 +54,7 @@ class User(Base):
 
     # Relationships
     assigned_submissions = relationship("Submission", back_populates="assigned_user")
+    brokers = relationship("Broker", back_populates="user", cascade="all, delete-orphan")
 
     def set_password(self, password):
         """Hash and set the user's password"""
@@ -146,7 +147,7 @@ class Quote(Base):
 
     # Relationships
     submission = relationship("Submission", back_populates="quotes")
-    documents = relationship("Document", back_populates="quote")
+    documents = relationship("Document", back_populates="quote", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="quote", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -280,5 +281,49 @@ class AppetiteRule(Base):
             'rule_data': self.rule_data,
             'max_score': self.max_score,
             'enabled': self.enabled,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class Broker(Base):
+    """
+    Represents a broker that an agent can send submissions to.
+    Each user can configure their own list of brokers.
+    Brokers can be email-based or portal-based.
+    """
+    __tablename__ = 'brokers'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    name = Column(String(255), nullable=True)  # Optional broker name
+    email = Column(String(255), nullable=True)  # Email address (for email brokers)
+    portal_name = Column(String(255), nullable=True)  # Portal site name (for portal brokers)
+    is_portal = Column(Boolean, default=False, nullable=False)  # True if portal-based, False if email-based
+    is_enabled = Column(Boolean, default=True, nullable=False)  # Whether this broker is active
+    letterhead = Column(Text, nullable=True)  # Custom letterhead/signature for emails
+    email_body = Column(Text, nullable=True)  # Custom email body template
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="brokers")
+
+    def __repr__(self):
+        broker_type = "Portal" if self.is_portal else "Email"
+        return f"<Broker(id={self.id}, user_id={self.user_id}, name='{self.name}', type='{broker_type}')>"
+
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'email': self.email,
+            'portal_name': self.portal_name,
+            'is_portal': self.is_portal,
+            'is_enabled': self.is_enabled,
+            'letterhead': self.letterhead,
+            'email_body': self.email_body,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

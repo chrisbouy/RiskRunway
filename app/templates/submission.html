@@ -6,39 +6,39 @@
     <link href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /* Theme Variables */
+        /* Theme Variables - Default to Dark */
         :root {
-            --color-primary: #1e40af;
-            --color-primary-dark: #1e3a8a;
-            --color-primary-light: #3b82f6;
-            --color-success: #059669;
-            --color-warning: #d97706;
-            --color-danger: #dc2626;
-            --color-neutral-50: #f8fafc;
-            --color-neutral-100: #f1f5f9;
-            --color-neutral-200: #e2e8f0;
-            --color-neutral-300: #cbd5e1;
-            --color-neutral-400: #94a3b8;
-            --color-neutral-500: #64748b;
-            --color-neutral-600: #475569;
-            --color-neutral-700: #334155;
-            --color-neutral-800: #1e293b;
-            --color-neutral-900: #0f172a;
+            --color-primary: #4a9eff;
+            --color-primary-dark: #3b82f6;
+            --color-primary-light: #60a5fa;
+            --color-success: #4ade80;
+            --color-warning: #ff9f40;
+            --color-danger: #ef4444;
+            --color-neutral-50: #1a1a1a;
+            --color-neutral-100: #2a2a2a;
+            --color-neutral-200: #3a3a3a;
+            --color-neutral-300: #4a4a4a;
+            --color-neutral-400: #6a6a6a;
+            --color-neutral-500: #8a8a8a;
+            --color-neutral-600: #a0a0a0;
+            --color-neutral-700: #c0c0c0;
+            --color-neutral-800: #e0e0e0;
+            --color-neutral-900: #f0f0f0;
 
             /* Excel-inspired table colors */
-            --table-header-bg: #4472c4;
+            --table-header-bg: #2a2a2a;
             --table-header-text: #ffffff;
-            --table-border: #d0d7de;
-            --table-row-hover: #f6f8fa;
+            --table-border: #3a3a3a;
+            --table-row-hover: #252525;
 
             /* Theme-specific variables */
-            --bg-gradient-start: #f8fafc;
-            --bg-gradient-end: #e2e8f0;
-            --card-bg: white;
-            --text-primary: var(--color-neutral-800);
-            --border-color: var(--color-neutral-200);
-            --header-gradient-start: var(--color-primary-dark);
-            --header-gradient-end: var(--color-primary);
+            --bg-gradient-start: #0a0a0a;
+            --bg-gradient-end: #1a1a1a;
+            --card-bg: #1a1a1a;
+            --text-primary: #e5e5e5;
+            --border-color: #2a2a2a;
+            --header-gradient-start: #0f0f0f;
+            --header-gradient-end: #1a1a1a;
 
             /* Typography */
             --font-weight-normal: 400;
@@ -504,31 +504,99 @@
             color: rgba(255, 255, 255, 0.9);
         }
 
-        /* Theme selector */
-        .theme-selector {
+        /* Hamburger menu */
+        .menu-container {
+            position: relative;
+        }
+
+        .menu-toggle-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 0.5rem;
+            border-radius: var(--button-border-radius);
+            cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.375rem 0.75rem;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .menu-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .header-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
             border-radius: var(--button-border-radius);
-            border: var(--button-border-width) solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 220px;
+            margin-top: 0.5rem;
+            display: none;
+            flex-direction: column;
+            z-index: 1000;
         }
 
-        .theme-selector label {
-            font-size: 0.813rem;
-            font-weight: var(--font-weight-semibold);
-            color: rgba(255, 255, 255, 0.9);
-            white-space: nowrap;
+        .header-menu.active {
+            display: flex;
         }
 
-        .theme-selector select {
-            background: rgba(255, 255, 255, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: var(--color-neutral-800);
+        .menu-item {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .menu-item label {
             font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
-            min-width: 140px;
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-neutral-600);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .menu-item select {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 0.813rem;
+            padding: 0.5rem;
+            border-radius: var(--button-border-radius);
+            font-family: 'IBM Plex Sans', sans-serif;
+        }
+
+        .menu-action-btn {
+            padding: 0.75rem 1rem;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 0.813rem;
+            font-weight: var(--font-weight-medium);
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.15s;
+            text-decoration: none;
+            display: block;
+        }
+
+        .menu-action-btn:last-child {
+            border-bottom: none;
+        }
+
+        .menu-action-btn:hover {
+            background: var(--border-color);
+        }
+
+        .menu-action-btn#deleteSubmissionBtn:hover {
+            background: rgba(220, 38, 38, 0.1);
+            color: var(--color-danger);
         }
 
         select {
@@ -574,32 +642,7 @@
             letter-spacing: var(--letter-spacing-normal);
         }
 
-        #saveBtn {
-            background: var(--color-success);
-            color: white;
-        }
 
-        #saveBtn:hover:not(:disabled) {
-            background: #047857;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        #saveBtn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        #cancelBtn {
-            background: var(--color-neutral-500);
-            color: white;
-        }
-
-        #cancelBtn:hover {
-            background: var(--color-neutral-600);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
 
         #deleteSubmissionBtn {
             background: var(--color-danger);
@@ -1069,32 +1112,27 @@
                 <div id="appetiteScoreBadge" style="display: none;">
                     <!-- Appetite score will be inserted here -->
                 </div>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect">
-                        <option value="traditional-light">Traditional Light</option>
-                        <option value="traditional-dark">Traditional Dark</option>
-                        <option value="modern-light">Modern Light</option>
-                        <option value="modern-dark">Modern Dark</option>
-                    </select>
-                </div>
-                <div class="status-controls">
-                    <label class="status-label">Status:</label>
-                    <select id="statusDropdown">
-                        <option value="RECEIVED">Received</option>
-                        <option value="IN_PROGRESS">In Progress</option>
-                        <option value="CHOSEN">Chosen</option>
-                        <option value="SENT_TO_FINANCE">Sent to Finance</option>
-                    </select>
-                    <button id="saveBtn" disabled>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M13.5 4.5L6 12L2.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Hamburger menu -->
+                <div class="menu-container">
+                    <button id="menuToggleBtn" class="menu-toggle-btn" title="Menu">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2 5H18M2 10H18M2 15H18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         </svg>
-                        Save
                     </button>
-                    <button id="cancelBtn">Cancel</button>
-                    <button id="deleteSubmissionBtn">Delete Submission</button>
-                    <button id="reportBugBtn">Report Bug</button>
+                    <div id="headerMenu" class="header-menu">
+                        <div class="menu-item">
+                            <label class="status-label">Status:</label>
+                            <select id="statusDropdown">
+                                <option value="RECEIVED">Received</option>
+                                <option value="IN_PROGRESS">In Progress</option>
+                                <option value="CHOSEN">Chosen</option>
+                                <option value="SENT_TO_FINANCE">Sent to Finance</option>
+                            </select>
+                        </div>
+                        <button id="deleteSubmissionBtn" class="menu-action-btn">Delete Submission</button>
+                        <button id="reportBugBtn" class="menu-action-btn">Report Bug</button>
+                        <a href="/logout" class="menu-action-btn">Logout</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1288,6 +1326,30 @@
         </div>
     </div>
 
+    <!-- Submit to Market Modal -->
+    <div id="submitToMarketModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <h2 class="text-2xl font-bold mb-4">Email to these brokers:</h2>
+
+            <div id="brokersList" class="mb-6 space-y-2">
+                <!-- Brokers will be loaded here -->
+            </div>
+
+            <div id="noBrokersMessage" class="text-gray-500 text-sm mb-6">
+                No brokers configured. <a href="#" id="configureBrokersLink" class="text-blue-600 hover:underline">Configure brokers</a>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button id="cancelSubmitToMarket" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="sendToMarketsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="bugModalBackdrop" class="bug-modal-backdrop">
         <div class="bug-modal">
             <div class="bug-modal-header">
@@ -1325,33 +1387,24 @@
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
-        // Theme Management
+        // Theme Management - initialized from localStorage (set on kanban page)
         function initTheme() {
-            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-light';
+            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
-            const themeSelect = document.getElementById('themeSelect');
-            if (themeSelect) {
-                themeSelect.value = savedTheme;
-            }
-        }
-
-        function changeTheme(theme) {
-            document.documentElement.setAttribute('data-theme', theme);
-            localStorage.setItem('ipfs-mapper-theme', theme);
         }
 
         // Initialize theme on page load
         initTheme();
 
-        // Theme selector event listener
-        document.addEventListener('DOMContentLoaded', function() {
-            const themeSelect = document.getElementById('themeSelect');
-            if (themeSelect) {
-                themeSelect.addEventListener('change', function(e) {
-                    changeTheme(e.target.value);
-                });
-            }
-        });
+        // HTML escape function
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         Dropzone.autoDiscover = false;
 
@@ -2417,80 +2470,184 @@
 
         // Track original status
         let originalStatus = null;
+        let statusSaveTimeout = null;
 
-        // Status dropdown change handler
-        document.getElementById('statusDropdown').addEventListener('change', function(e) {
-            const saveBtn = document.getElementById('saveBtn');
-            if (e.target.value !== originalStatus) {
-                saveBtn.disabled = false;
-            } else {
-                saveBtn.disabled = true;
-            }
-            applyStageView(e.target.value, submissionData?.effective_date);
+        // Menu toggle handler
+        document.getElementById('menuToggleBtn').addEventListener('click', function() {
+            const menu = document.getElementById('headerMenu');
+            menu.classList.toggle('active');
         });
 
-        // Save button handler
-        document.getElementById('saveBtn').addEventListener('click', async function() {
-            const statusDropdown = document.getElementById('statusDropdown');
-            const newStatus = statusDropdown.value;
-            const saveBtn = document.getElementById('saveBtn');
-            const cancelBtn = document.getElementById('cancelBtn');
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('headerMenu');
+            const menuBtn = document.getElementById('menuToggleBtn');
+            if (!menu.contains(e.target) && !menuBtn.contains(e.target)) {
+                menu.classList.remove('active');
+            }
+        });
 
+        // Status dropdown change handler with autosave
+        document.getElementById('statusDropdown').addEventListener('change', function(e) {
+            const newStatus = e.target.value;
+            applyStageView(newStatus, submissionData?.effective_date);
+
+            // Clear any pending save
+            if (statusSaveTimeout) {
+                clearTimeout(statusSaveTimeout);
+            }
+
+            // Autosave after 500ms of no changes
+            statusSaveTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/submission/${submissionId}/status`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+
+                    const data = await response.json();
+
+                    if (!data.success) {
+                        console.error('Error updating status:', data.error);
+                        alert('Error updating status: ' + data.error);
+                    }
+                } catch (error) {
+                    console.error('Error updating status:', error);
+                    alert('Error updating status');
+                }
+            }, 500);
+        });
+
+        // Submit to Market Modal
+        let selectedBrokerIds = [];
+
+        document.getElementById('submitToMarketBtn').addEventListener('click', async function() {
+            await loadBrokersForSubmission();
+            document.getElementById('submitToMarketModal').classList.remove('hidden');
+        });
+
+        document.getElementById('cancelSubmitToMarket').addEventListener('click', () => {
+            document.getElementById('submitToMarketModal').classList.add('hidden');
+            selectedBrokerIds = [];
+        });
+
+        async function loadBrokersForSubmission() {
             try {
-                saveBtn.disabled = true;
-                cancelBtn.disabled = true;
-
-                const response = await fetch(`/api/submission/${submissionId}/status`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ status: newStatus })
-                });
-
+                const response = await fetch('/api/brokers');
                 const data = await response.json();
 
                 if (data.success) {
-                    window.location.href = '/';
-                } else {
-                    alert('Error updating status: ' + data.error);
-                    saveBtn.disabled = false;
-                    cancelBtn.disabled = false;
+                    renderBrokersForSubmission(data.brokers);
                 }
             } catch (error) {
-                console.error('Error updating status:', error);
-                alert('Error updating status');
-                saveBtn.disabled = false;
-                cancelBtn.disabled = false;
+                console.error('Error loading brokers:', error);
+                alert('Error loading brokers');
             }
-        });
+        }
 
-        // Cancel button handler
-        document.getElementById('cancelBtn').addEventListener('click', function() {
-            window.location.href = '/';
-        });
+        function renderBrokersForSubmission(brokers) {
+            const list = document.getElementById('brokersList');
+            const noBrokersMsg = document.getElementById('noBrokersMessage');
 
-        document.getElementById('submitToMarketBtn').addEventListener('click', async function() {
+            if (brokers.length === 0) {
+                list.innerHTML = '';
+                noBrokersMsg.style.display = 'block';
+                document.getElementById('sendToMarketsBtn').disabled = true;
+                return;
+            }
+
+            noBrokersMsg.style.display = 'none';
+            document.getElementById('sendToMarketsBtn').disabled = false;
+
+            list.innerHTML = brokers.map(broker => {
+                const brokerInfo = broker.is_portal
+                    ? `Portal: ${escapeHtml(broker.portal_name || 'Unknown')}`
+                    : `Email: ${escapeHtml(broker.email || 'No email')}`;
+                return `
+                <label class="flex items-center gap-3 p-3 border border-gray-200 rounded bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <input type="checkbox" class="broker-checkbox" data-broker-id="${broker.id}" checked>
+                    <div>
+                        <div class="font-semibold text-sm">${escapeHtml(broker.name || 'Unnamed Broker')}</div>
+                        <div class="text-xs text-gray-500">${brokerInfo}</div>
+                    </div>
+                </label>
+            `;
+            }).join('');
+
+            // Update selected brokers when checkboxes change
+            document.querySelectorAll('.broker-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    selectedBrokerIds = Array.from(document.querySelectorAll('.broker-checkbox:checked'))
+                        .map(cb => parseInt(cb.dataset.brokerId));
+                });
+            });
+
+            // Initialize selected brokers
+            selectedBrokerIds = brokers.map(b => b.id);
+        }
+
+        document.getElementById('sendToMarketsBtn').addEventListener('click', async function() {
+            if (selectedBrokerIds.length === 0) {
+                alert('Please select at least one broker');
+                return;
+            }
+
             const btn = this;
             btn.disabled = true;
             const previousText = btn.textContent;
-            btn.textContent = 'Submitting...';
+            btn.textContent = 'Sending...';
 
             try {
-                const response = await fetch(`/api/submission/${submissionId}/status`, {
+                // First, update submission status to IN_PROGRESS
+                const statusResponse = await fetch(`/api/submission/${submissionId}/status`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'IN_PROGRESS' })
                 });
-                const data = await response.json();
 
-                if (!data.success) {
-                    throw new Error(data.error || 'Failed to submit to market');
+                const statusData = await statusResponse.json();
+                if (!statusData.success) {
+                    throw new Error(statusData.error || 'Failed to update submission status');
                 }
 
-                window.location.href = '/';
+                // Then, submit to selected brokers
+                const submitResponse = await fetch(`/api/submission/${submissionId}/submit_to_market`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ broker_ids: selectedBrokerIds })
+                });
+
+                const submitData = await submitResponse.json();
+                if (!submitData.success) {
+                    throw new Error(submitData.error || 'Failed to submit to market');
+                }
+
+                // Handle portal downloads
+                const results = submitData.results;
+                if (results.portal_downloads && results.portal_downloads.length > 0) {
+                    alert(`Emails sent to ${results.emails_sent.length} brokers.\n\nPortal downloads ready for: ${results.portal_downloads.map(p => p.broker_name).join(', ')}`);
+
+                    // Download portal zips
+                    for (const portal of results.portal_downloads) {
+                        const brokerId = selectedBrokerIds.find(id => {
+                            // Find broker by name (this is a workaround, ideally we'd have broker_id in response)
+                            return true;
+                        });
+                        // Trigger download
+                        window.location.href = `/api/submission/${submissionId}/download_broker_zip/${portal.broker_id || selectedBrokerIds[0]}`;
+                    }
+                } else {
+                    alert(`Submission sent to ${results.emails_sent.length} brokers!`);
+                }
+
+                // Close modal and redirect
+                document.getElementById('submitToMarketModal').classList.add('hidden');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
             } catch (error) {
                 console.error('Error submitting to market:', error);
                 alert(error.message || 'Error submitting to market');

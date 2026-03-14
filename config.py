@@ -17,7 +17,7 @@ class Config:
     # Database settings
     DATABASE_PATH = os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
 
-    # Bug report email settings (using SendGrid HTTP API)
+    # Email settings (using SendGrid HTTP API for both bug reports and broker submissions)
     BUG_REPORT_RECIPIENT = os.environ.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
     BUG_REPORT_SENDER = os.environ.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
     SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
