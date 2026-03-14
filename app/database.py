@@ -49,16 +49,57 @@ class Database:
         self.Session.remove()
 
 
-# Global database instance
+# Global database instances
 _db = None
+_current_db_name = 'production'  # Default database
+_db_instances = {}  # Cache for database instances
+
+
+def get_current_db_name():
+    """Get the name of the currently active database"""
+    return _current_db_name
+
+
+def set_current_db(db_name):
+    """
+    Switch to a different database.
+
+    Args:
+        db_name: Name of the database ('production', 'use_cases', 'test')
+
+    Returns:
+        bool: True if successful, False if database name is invalid
+    """
+    global _current_db_name, _db
+    from config import Config
+
+    if db_name not in Config.DATABASES:
+        return False
+
+    _current_db_name = db_name
+
+    # Get or create database instance
+    if db_name not in _db_instances:
+        _db_instances[db_name] = Database(db_path=Config.DATABASES[db_name])
+        _db_instances[db_name].init_db()  # Ensure tables exist
+
+    _db = _db_instances[db_name]
+    return True
 
 
 def get_db():
-    """Get the global database instance"""
+    """Get the current database instance"""
     global _db
     if _db is None:
-        _db = Database()
+        # Initialize with default database
+        set_current_db(_current_db_name)
     return _db
+
+
+def get_available_databases():
+    """Get list of available database names"""
+    from config import Config
+    return list(Config.DATABASES.keys())
 
 
 def init_db():

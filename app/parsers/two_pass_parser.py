@@ -608,7 +608,7 @@ def pass3_classify_intent(normalized_data, existing_quotes=None):
 
     return json.loads(result_text.strip())
 
-def process_quote_three_pass(pdf_path, existing_quotes=None):
+def process_quote_two_pass(pdf_path, existing_quotes=None):
 
     import time
 
@@ -655,7 +655,7 @@ def parse_quote(pdf_path):
     Backward compatible function that returns just the normalized data
     (for existing code that expects the old single-pass behavior)
     """
-    result = process_quote_three_pass(pdf_path)
+    result = process_quote_two_pass(pdf_path)
     # print(f"parse_quote result: {result}")
     return result["pass2_normalized"]
 

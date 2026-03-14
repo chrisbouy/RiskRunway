@@ -21,13 +21,15 @@
             --text-muted:  #a0a0a0;
             --text-xmuted: #707070;
 
-            --rail-bg:     #0f0f0f;
-            --rail-text:   #e5e5e5;
-            --rail-muted:  #909090;
-            --rail-border: #2a2a2a;
-            --rail-hover:  #252525;
+            /* Updated rail colors to match submission detail pages */
+            --rail-bg:     #334155;
+            --rail-text:   #f1f5f9;
+            --rail-muted:  #94a3b8;
+            --rail-border: #475569;
+            --rail-hover:  #475569;
+            --rail-section-bg: #2d3a4d;
 
-            --runway-light: #ffd700;
+            --runway-light: #d4a574;
         }
 
         *, *::before, *::after { box-sizing: border-box; }
@@ -62,13 +64,21 @@
         }
 
         .left-title {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--rail-muted);
-            padding: 0 2px;
-            margin-bottom: 4px;
+            font-size: 16px;
+            font-weight: 300;
+            letter-spacing: 0.02em;
+            color: var(--rail-text);
+            padding: 12px 8px 8px;
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+        .left-title .title-risk {
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        .left-title .title-runway {
+            font-weight: 300;
+            color: var(--rail-text);
         }
 
         .left-divider {
@@ -77,55 +87,87 @@
             margin: 4px 0;
         }
 
+        .left-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--rail-text);
+            padding: 6px 8px;
+            margin-top: 2px;
+            background: var(--rail-section-bg);
+            border-radius: 4px;
+        }
+
         .left-control {
             width: 100%;
             font-size: 11px;
-            font-family: inherit;
-            padding: 4px 6px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-weight: 500;
+            padding: 6px 8px;
             border: 1px solid var(--rail-border);
             border-radius: 4px;
-            background: rgba(255,255,255,0.07);
+            background: var(--rail-section-bg);
             color: var(--rail-text);
             line-height: 1.3;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
         }
 
-        .left-control option { background: #1e2d50; color: var(--rail-text); }
+        .left-control:hover {
+            border-color: var(--blue);
+            background: #3d4a5f;
+        }
+
+        .left-control:focus {
+            outline: none;
+            border-color: var(--blue);
+            background: #3d4a5f;
+        }
+
+        .left-control option { background: #2d3a4d; color: var(--rail-text); }
+
+        #databaseSelect {
+            font-weight: 600;
+            border-color: var(--blue);
+        }
 
         .left-checkbox-row {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
             font-size: 11px;
-            color: var(--rail-muted);
-            padding: 3px 4px;
+            font-weight: 500;
+            color: var(--rail-text);
+            padding: 6px 8px;
             border-radius: 4px;
             cursor: pointer;
+            background: var(--rail-section-bg);
         }
-        .left-checkbox-row:hover { background: var(--rail-hover); color: var(--rail-text); }
-        .left-checkbox-row input { accent-color: #7b9fd4; }
+        .left-checkbox-row:hover { background: #3d4a5f; }
+        .left-checkbox-row input { accent-color: var(--blue); }
 
         .stage-count {
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 10px;
-            font-weight: 600;
-            font-family: 'IBM Plex Mono', monospace;
-            padding: 3px 6px;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            font-family: 'IBM Plex Sans', sans-serif;
+            padding: 6px 8px;
             border-radius: 4px;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.01em;
+            background: var(--rail-section-bg);
+            color: var(--rail-text);
         }
         .stage-count::before {
             content: '';
-            width: 7px; height: 7px;
+            width: 6px; height: 6px;
             border-radius: 50%;
             flex-shrink: 0;
         }
-        #count-submission { color: #92a8d8; }
-        #count-submission::before { background: #4a72c4; }
-        #count-quoting    { color: #d4a265; }
+        #count-submission::before { background: var(--blue); }
         #count-quoting::before    { background: var(--orange); }
-        #count-bind       { color: #5fba8a; }
         #count-bind::before       { background: var(--green); }
 
         .left-btn {
@@ -138,17 +180,51 @@
             border-radius: 4px;
             border: none;
             cursor: pointer;
-            transition: filter 0.15s, background 0.15s;
+            transition: all 0.2s;
             line-height: 1.3;
         }
-        .left-btn:hover { filter: brightness(1.12); }
+        .left-btn:hover {
+            filter: brightness(1.15);
+            transform: translateX(2px);
+        }
 
-        .btn-rules   { background: rgba(255,255,255,0.1); color: var(--rail-text); }
-        .btn-new     { background: var(--blue); color: #fff; }
-        .btn-logout  { background: rgba(200,60,60,0.25); color: #f07070; }
+        .btn-config  {
+            background: var(--rail-section-bg);
+            color: var(--rail-text);
+            border: 1px solid var(--rail-border);
+            font-size: 11px;
+            font-weight: 500;
+            padding: 6px 8px;
+        }
+        .btn-config:hover {
+            background: #3d4a5f;
+            border-color: var(--blue);
+        }
+        .btn-new     {
+            background: linear-gradient(135deg, #d4c5a8 0%, #9a8a72 100%) !important;
+            color: #2d2416 !important;
+            font-weight: 600;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
+            border: 1px solid #6d5f4d !important;
+            text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+        }
+        .btn-new:hover {
+            background: linear-gradient(135deg, #e0d1b4 0%, #a89680 100%) !important;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.5) !important;
+            transform: translateY(-1px) !important;
+            filter: none !important;
+        }
+        .btn-logout  {
+            background: rgba(200,60,60,0.25);
+            color: #f07070;
+            border: 1px solid rgba(200,60,60,0.3);
+        }
+        .btn-logout:hover {
+            background: rgba(220,60,60,0.35);
+            color: #ff8080;
+        }
 
         .user-block {
-            margin-top: auto;
             padding: 8px 6px 4px;
             border-top: 1px solid var(--rail-border);
         }
@@ -170,12 +246,13 @@
         .runway-header {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            background: var(--surface);
-            border-bottom: 2px solid var(--border);
+            background: var(--rail-bg);
+            border-bottom: 2px solid var(--rail-border);
             min-height: 38px;
             flex-shrink: 0;
             position: relative;
             z-index: 2;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
 
         .runway-header-cell {
@@ -184,10 +261,11 @@
             padding: 0 10px;
             font-size: 10px;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
             gap: 7px;
-            border-right: 1px solid var(--border-soft);
+            border-right: 1px solid var(--rail-border);
+            color: var(--rail-text);
         }
         .runway-header-cell:last-child { border-right: none; }
         .runway-header-cell .stage-dot {
@@ -413,20 +491,45 @@
 <body class="bg-gray-50">
     <div class="page-layout">
         <aside class="left-rail">
-            <div class="left-title">RiskRunway</div>
+            <div class="left-title">
+                <span class="title-risk">Risk</span><span class="title-runway">Runway</span>
+            </div>
             <div class="left-divider"></div>
-            <label class="left-checkbox-row">
-                <input type="checkbox" id="filterMyCards">
-                <span>My Cards Only</span>
-            </label>
-            <div class="left-divider"></div>
+
             <span id="count-submission" class="stage-count">Submission: 0</span>
             <span id="count-quoting" class="stage-count">Quoting: 0</span>
             <span id="count-bind" class="stage-count">Bound: 0</span>
             <div class="left-divider"></div>
-            <button id="rulesBtn" class="left-btn btn-rules">Appetite Rules</button>
+
             <button id="newSubmissionBtn" class="left-btn btn-new">+ New Submission</button>
-            <button id="configureBrokersBtn" class="left-btn btn-new">⚙ Configure Brokers</button>
+
+            <!-- Config Section -->
+            <div class="left-divider" style="margin-top: 8px;"></div>
+            <div class="left-section-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m0 6l4.2 4.2M23 12h-6m-6 0H1m18.2-5.2l-4.2 4.2m0 6l4.2 4.2"></path>
+                </svg>
+                Configuration
+            </div>
+            <label class="left-checkbox-row">
+                <input type="checkbox" id="filterMyCards">
+                <span>My Cards Only</span>
+            </label>
+            <button id="configureBrokersBtn" class="left-btn btn-config">Configure Brokers</button>
+            <button id="rulesBtn" class="left-btn btn-config">Appetite Rules</button>
+
+            <!-- Spacer to push bottom items down -->
+            <div style="flex: 1;"></div>
+
+            <!-- Database & User Section at Bottom -->
+            <div class="left-divider"></div>
+            <select id="databaseSelect" class="left-control" style="margin-bottom: 8px;">
+                <option value="production">Production DB</option>
+                <option value="use_cases">Use Cases DB</option>
+                <option value="test">Test DB</option>
+            </select>
+
             <div class="user-block">
                 <div class="user-label">Logged in as</div>
                 <div id="currentUserName" class="user-name"></div>
@@ -683,6 +786,50 @@
             }
         }
 
+        // Database switching
+        async function loadCurrentDatabase() {
+            try {
+                const response = await fetch('/api/database/current');
+                const data = await response.json();
+
+                if (data.success) {
+                    const dbSelect = document.getElementById('databaseSelect');
+                    dbSelect.value = data.current_database;
+                }
+            } catch (error) {
+                console.error('Error loading current database:', error);
+            }
+        }
+
+        async function switchDatabase(dbName) {
+            try {
+                const response = await fetch('/api/database/switch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ database: dbName })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    console.log(`Switched to ${dbName} database`);
+                    // Reload submissions from new database
+                    await loadSubmissions();
+                } else {
+                    alert(`Error switching database: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error switching database:', error);
+                alert('Error switching database');
+            }
+        }
+
+        // Database select handler
+        document.getElementById('databaseSelect').addEventListener('change', async function(e) {
+            const dbName = e.target.value;
+            await switchDatabase(dbName);
+        });
+
         // Load submissions on page load
         async function loadSubmissions() {
             try {
@@ -898,21 +1045,22 @@
         }
 
         function drawRunwayLight(ctx, x, y, radius, opacity) {
-            // Amber/orange color - brighter for visibility
-            const color = 'rgba(255, 159, 64, ' + opacity + ')';
+            // More subtle amber color - reduced brightness
+            const subtleOpacity = opacity * 0.4; // Reduce overall opacity by 60%
+            const color = 'rgba(212, 165, 116, ' + subtleOpacity + ')';
 
-            // Draw glow (subtle for tiny lights)
-            const glowRadius = radius * 5;
+            // Draw glow (more subtle)
+            const glowRadius = radius * 3.5; // Reduced glow radius
             const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
             gradient.addColorStop(0, color);
-            gradient.addColorStop(0.3, 'rgba(255, 159, 64, ' + (opacity * 0.5) + ')');
-            gradient.addColorStop(1, 'rgba(255, 159, 64, 0)');
+            gradient.addColorStop(0.3, 'rgba(212, 165, 116, ' + (subtleOpacity * 0.3) + ')');
+            gradient.addColorStop(1, 'rgba(212, 165, 116, 0)');
 
             ctx.fillStyle = gradient;
             ctx.fillRect(x - glowRadius, y - glowRadius, glowRadius * 2, glowRadius * 2);
 
-            // Draw core light (tiny bright center)
-            ctx.fillStyle = 'rgba(255, 180, 100, ' + opacity + ')';
+            // Draw core light (subtle center)
+            ctx.fillStyle = 'rgba(212, 165, 116, ' + subtleOpacity + ')';
             ctx.beginPath();
             ctx.arc(x, y, radius, 0, Math.PI * 2);
             ctx.fill();
@@ -1501,7 +1649,10 @@
 
         // Initialize page
         async function initializePage() {
-            // Load users first
+            // Load current database first
+            await loadCurrentDatabase();
+
+            // Load users
             try {
                 const response = await fetch('/api/users');
                 const data = await response.json();

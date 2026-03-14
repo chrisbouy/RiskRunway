@@ -9,7 +9,7 @@ import uuid
 import shutil
 from functools import wraps
 from werkzeug.utils import secure_filename
-from app.parsers.three_pass_parser import process_quote_three_pass
+from app.parsers.two_pass_parser import process_quote_two_pass
 from app.parsers.application_parser import process_application_two_pass
 from app.database import (
     get_all_submissions,
@@ -17,7 +17,10 @@ from app.database import (
     create_submission,
     create_quote,
     log_action,
-    get_session
+    get_session,
+    get_current_db_name,
+    set_current_db,
+    get_available_databases
 )
 from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker
 
@@ -179,7 +182,7 @@ def parse_pdf_from_url():
         
         try:
             # Process the PDF with three-pass parser
-            three_pass_result = process_quote_three_pass(temp_filepath, [])
+            three_pass_result = process_quote_two_pass(temp_filepath, [])
             
             # Extract data from passes
             parsed_data = three_pass_result['pass2_normalized']
@@ -265,6 +268,10 @@ def login():
             session['full_name'] = user.full_name
             session['user_role'] = user.role.name
 
+            # Restore database selection if it was set
+            if 'current_database' in session:
+                set_current_db(session['current_database'])
+
             return jsonify({
                 'success': True,
                 'user': user.to_dict()
@@ -315,6 +322,45 @@ def _board_stage_key(submission):
     if status in ('chosen', 'sent to finance') and days_until_renewal is not None and days_until_renewal <= 120:
         return 'quoting'
     return 'bind'
+
+
+@bp.route('/api/database/current', methods=['GET'])
+@login_required
+def get_current_database():
+    """Get the currently active database name"""
+    try:
+        return jsonify({
+            'success': True,
+            'current_database': get_current_db_name(),
+            'available_databases': get_available_databases()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/database/switch', methods=['POST'])
+@login_required
+def switch_database():
+    """Switch to a different database"""
+    try:
+        data = request.get_json()
+        db_name = data.get('database')
+
+        if not db_name:
+            return jsonify({'success': False, 'error': 'Database name required'}), 400
+
+        if set_current_db(db_name):
+            # Store in session for persistence
+            session['current_database'] = db_name
+            return jsonify({
+                'success': True,
+                'current_database': db_name,
+                'message': f'Switched to {db_name} database'
+            })
+        else:
+            return jsonify({'success': False, 'error': f'Invalid database name: {db_name}'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @bp.route('/api/submissions', methods=['GET'])
@@ -945,7 +991,7 @@ def upload_quote():
                     ]
 
             # Run three-pass processing
-            three_pass_result = process_quote_three_pass(filepath, existing_quotes)
+            three_pass_result = process_quote_two_pass(filepath, existing_quotes)
 
             # Extract data from passes
             layout_data = three_pass_result['pass1_layout']
