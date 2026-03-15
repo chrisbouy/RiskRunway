@@ -327,3 +327,83 @@ class Broker(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+class EmailMessage(Base):
+    """
+    Represents an email message scraped from IMAP that matches a submission.
+    """
+    __tablename__ = 'email_messages'
+
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=True, index=True)
+    message_id = Column(String(500), unique=True, nullable=False, index=True)  # Email Message-ID header
+    from_email = Column(String(255), nullable=False)
+    from_name = Column(String(255), nullable=True)
+    to_email = Column(String(255), nullable=True)
+    subject = Column(String(1000), nullable=True)
+    body_text = Column(Text, nullable=True)
+    body_html = Column(Text, nullable=True)
+    received_date = Column(DateTime, nullable=False, index=True)
+    has_attachments = Column(Boolean, default=False, nullable=False)
+    attachment_count = Column(Integer, default=0, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    matched_insured_name = Column(Boolean, default=False, nullable=False)
+    matched_quote_attachment = Column(Boolean, default=False, nullable=False)
+    matched_keywords = Column(String(500), nullable=True)  # Comma-separated keywords that matched
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    submission = relationship('Submission', backref='emails')
+    attachments = relationship('EmailAttachment', back_populates='email', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'submission_id': self.submission_id,
+            'message_id': self.message_id,
+            'from_email': self.from_email,
+            'from_name': self.from_name,
+            'to_email': self.to_email,
+            'subject': self.subject,
+            'body_text': self.body_text,
+            'body_html': self.body_html,
+            'received_date': self.received_date.isoformat() if self.received_date else None,
+            'has_attachments': self.has_attachments,
+            'attachment_count': self.attachment_count,
+            'is_read': self.is_read,
+            'matched_insured_name': self.matched_insured_name,
+            'matched_quote_attachment': self.matched_quote_attachment,
+            'matched_keywords': self.matched_keywords,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'attachments': [att.to_dict() for att in self.attachments] if self.attachments else []
+        }
+
+
+class EmailAttachment(Base):
+    """
+    Represents an attachment from an email message.
+    """
+    __tablename__ = 'email_attachments'
+
+    id = Column(Integer, primary_key=True)
+    email_id = Column(Integer, ForeignKey('email_messages.id'), nullable=False, index=True)
+    filename = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    file_path = Column(String(1000), nullable=True)  # Path to saved file on disk
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    email = relationship('EmailMessage', back_populates='attachments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email_id': self.email_id,
+            'filename': self.filename,
+            'content_type': self.content_type,
+            'size_bytes': self.size_bytes,
+            'file_path': self.file_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
