@@ -359,6 +359,7 @@ class EmailMessage(Base):
     has_attachments = Column(Boolean, default=False, nullable=False)
     attachment_count = Column(Integer, default=0, nullable=False)
     is_read = Column(Boolean, default=False, nullable=False, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)  # Mark as deleted so won't reappear on scrape
     matched_insured_name = Column(Boolean, default=False, nullable=False)
     matched_quote_attachment = Column(Boolean, default=False, nullable=False)
     matched_keywords = Column(String(500), nullable=True)  # Comma-separated keywords that matched
@@ -383,6 +384,7 @@ class EmailMessage(Base):
             'has_attachments': self.has_attachments,
             'attachment_count': self.attachment_count,
             'is_read': self.is_read,
+            'is_deleted': self.is_deleted,
             'matched_insured_name': self.matched_insured_name,
             'matched_quote_attachment': self.matched_quote_attachment,
             'matched_keywords': self.matched_keywords,

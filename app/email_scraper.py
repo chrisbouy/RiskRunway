@@ -233,10 +233,13 @@ class EmailScraper:
                         except:
                             pass
             
-            # Get already-processed message IDs
+            # Get already-processed message IDs (including deleted ones - so they won't reappear)
+            # Use a fresh query with expire_on_commit to ensure fresh data
+            db_session.expire_on_commit = True
             existing_message_ids = set(
                 row[0] for row in db_session.query(EmailMessage.message_id).all()
             )
+            logger.info(f"Found {len(existing_message_ids)} existing email message IDs in database")
             
             # Select inbox
             self.mail.select('INBOX')

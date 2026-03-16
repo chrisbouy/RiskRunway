@@ -1050,6 +1050,327 @@ def get_email_scrape_status():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/api/email/unread', methods=['GET'])
+@login_required
+def get_unread_emails():
+    """Get all unread matched emails (not deleted)"""
+    try:
+        db_session = get_session()
+        try:
+            # Get unread emails that are matched to a submission
+            # Try to filter by is_deleted, but if column doesn't exist, just return all unread
+            try:
+                emails = db_session.query(EmailMessage).filter(
+                    EmailMessage.is_read == False,
+                    EmailMessage.submission_id != None,
+                    EmailMessage.is_deleted == False
+                ).order_by(EmailMessage.received_date.desc()).all()
+            except Exception:
+                # is_deleted column might not exist yet
+                emails = db_session.query(EmailMessage).filter(
+                    EmailMessage.is_read == False,
+                    EmailMessage.submission_id != None
+                ).order_by(EmailMessage.received_date.desc()).all()
+            
+            email_list = []
+            for email in emails:
+                email_dict = email.to_dict()
+                # Get submission info
+                if email.submission_id:
+                    submission = db_session.query(Submission).filter_by(id=email.submission_id).first()
+                    if submission:
+                        email_dict['submission_name'] = submission.insured_name
+                email_list.append(email_dict)
+            
+            return jsonify({
+                'success': True,
+                'emails': email_list,
+                'count': len(email_list)
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/<int:email_id>/read', methods=['PUT'])
+@login_required
+def mark_email_read(email_id):
+    """Mark an email as read"""
+    try:
+        db_session = get_session()
+        try:
+            email = db_session.query(EmailMessage).filter_by(id=email_id).first()
+            if not email:
+                return jsonify({'success': False, 'error': 'Email not found'}), 404
+            
+            email.is_read = True
+            db_session.commit()
+            
+            return jsonify({'success': True})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/<int:email_id>', methods=['DELETE'])
+@login_required
+def delete_email(email_id):
+    """Delete an email message (marks as deleted so it won't reappear on scrape)"""
+    try:
+        db_session = get_session()
+        try:
+            email = db_session.query(EmailMessage).filter_by(id=email_id).first()
+            if not email:
+                return jsonify({'success': False, 'error': 'Email not found'}), 404
+            
+            # Try to mark as deleted, but if column doesn't exist, just delete the record
+            try:
+                email.is_deleted = True
+                db_session.commit()
+            except Exception:
+                # is_deleted column might not exist, delete the record instead
+                # Delete attachments files
+                attachments = db_session.query(EmailAttachment).filter_by(email_id=email_id).all()
+                for att in attachments:
+                    if att.file_path and os.path.exists(att.file_path):
+                        try:
+                            os.remove(att.file_path)
+                        except Exception:
+                            pass
+                db_session.delete(email)
+                db_session.commit()
+            
+            return jsonify({'success': True})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/<int:email_id>/ingest_quote/<int:submission_id>', methods=['POST'])
+@login_required
+def ingest_quote_to_submission(email_id, submission_id):
+    """Ingest a quote from an email attachment to a submission"""
+    try:
+        db_session = get_session()
+        try:
+            # Get the email with attachments eagerly loaded
+            email = db_session.query(EmailMessage).filter_by(id=email_id).first()
+            if not email:
+                return jsonify({'success': False, 'error': 'Email not found'}), 404
+            
+            # Get the submission
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+            
+            # Get PDF attachments - query separately to avoid session issues
+            attachments = db_session.query(EmailAttachment).filter(
+                EmailAttachment.email_id == email_id,
+                EmailAttachment.filename.like('%.pdf')
+            ).all()
+            
+            if not attachments:
+                return jsonify({'success': False, 'error': 'No PDF attachments found in this email'}), 400
+            
+            # Store file paths before we potentially close the session
+            attachment_data = []
+            for att in attachments:
+                attachment_data.append({
+                    'file_path': att.file_path,
+                    'filename': att.filename,
+                    'content_type': att.content_type,
+                    'size_bytes': att.size_bytes
+                })
+            
+            created_quotes = []
+            
+            for att_data in attachment_data:
+                if not att_data['file_path'] or not os.path.exists(att_data['file_path']):
+                    continue
+                
+                # Copy file to uploads folder
+                filename = secure_filename(att_data['filename'])
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unique_filename = f"{timestamp}_{filename}"
+                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+                shutil.copy2(att_data['file_path'], filepath)
+                
+                # Process the quote
+                try:
+                    three_pass_result = process_quote_two_pass(filepath, [])
+                    layout_data = three_pass_result['pass1_layout']
+                    parsed_data = three_pass_result['pass2_normalized']
+                    
+                    # Extract key fields
+                    carrier_name = None
+                    effective_date = None
+                    if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
+                        first_policy = parsed_data['policies'][0]
+                        carrier_name = first_policy.get('carrier')
+                        effective_date = first_policy.get('effective_date')
+                    
+                    if not effective_date:
+                        effective_date = submission.effective_date
+                    
+                    # Create quote record
+                    quote_id = create_quote(
+                        submission_id=submission_id,
+                        carrier_name=carrier_name,
+                        raw_document_path=filepath,
+                        extracted_json=json.dumps(parsed_data),
+                        pass1_layout_json=json.dumps(layout_data),
+                        user=session.get('username')
+                    )
+                    
+                    # Create document record - need to get a new session
+                    quote_session = get_session()
+                    try:
+                        quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename)
+                        storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att_data['content_type'])
+                        doc = Document(
+                            submission_id=submission_id,
+                            quote_id=quote_id,
+                            document_type=DocumentType.QUOTE,
+                            carrier=carrier_name,
+                            term_key=effective_date,
+                            version=1,
+                            is_active=True,
+                            storage_provider=storage_provider,
+                            storage_key=storage_key,
+                            original_filename=filename,
+                            content_type=att_data['content_type'],
+                            size_bytes=att_data['size_bytes'],
+                            uploaded_by=session.get('username')
+                        )
+                        quote_session.add(doc)
+                        quote_session.commit()
+                    finally:
+                        quote_session.close()
+                    
+                    created_quotes.append({
+                        'quote_id': quote_id,
+                        'filename': filename,
+                        'carrier': carrier_name
+                    })
+                    
+                    # Log action
+                    log_action(
+                        entity_type='quote',
+                        entity_id=quote_id,
+                        action='email_quote_ingested',
+                        submission_id=submission_id,
+                        quote_id=quote_id,
+                        details=json.dumps({'email_id': email_id, 'filename': filename})
+                    )
+                    
+                except Exception as e:
+                    print(f"Error processing quote {att_data['filename']}: {e}")
+                    continue
+            
+            if not created_quotes:
+                return jsonify({'success': False, 'error': 'Failed to process any quotes'}), 500
+            
+            # Mark email as read
+            email.is_read = True
+            db_session.commit()
+            
+            return jsonify({
+                'success': True,
+                'quotes': created_quotes,
+                'submission_id': submission_id
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/<int:email_id>/add_correspondence/<int:submission_id>', methods=['POST'])
+@login_required
+def add_email_correspondence(email_id, submission_id):
+    """Add email body as correspondence document to a submission"""
+    try:
+        db_session = get_session()
+        try:
+            # Get the email
+            email = db_session.query(EmailMessage).filter_by(id=email_id).first()
+            if not email:
+                return jsonify({'success': False, 'error': 'Email not found'}), 404
+            
+            # Get the submission
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+            
+            # Create a text file with the email content
+            filename = f"email_correspondence_{email_id}.txt"
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_filename = f"{timestamp}_{filename}"
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+            
+            # Build email content
+            email_content = f"""From: {email.from_name or email.from_email}
+To: {email.to_email}
+Subject: {email.subject}
+Date: {email.received_date}
+
+---
+
+{email.body_text or '(No text content)'}
+"""
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(email_content)
+            
+            # Create document record
+            term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
+            doc_key = _build_storage_key(submission_id, 'CORRESPONDENCE', filename)
+            storage_provider, storage_key = _storage_upload(filepath, doc_key, 'text/plain')
+            
+            doc = Document(
+                submission_id=submission_id,
+                quote_id=None,
+                document_type=DocumentType.OTHER,
+                carrier=None,
+                term_key=term_key,
+                version=1,
+                is_active=True,
+                storage_provider=storage_provider,
+                storage_key=storage_key,
+                original_filename=filename,
+                content_type='text/plain',
+                size_bytes=os.path.getsize(filepath) if os.path.exists(filepath) else None,
+                uploaded_by=session.get('username')
+            )
+            db_session.add(doc)
+            
+            # Mark email as read
+            email.is_read = True
+            db_session.commit()
+            
+            # Log action
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='email_correspondence_added',
+                submission_id=submission_id,
+                details=json.dumps({'email_id': email_id, 'subject': email.subject})
+            )
+            
+            return jsonify({
+                'success': True,
+                'document_id': doc.id,
+                'submission_id': submission_id
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================================
 # QUOTE UPLOAD & PROCESSING
 # ============================================================================

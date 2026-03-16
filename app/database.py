@@ -33,6 +33,7 @@ class Database:
     def init_db(self):
         """Create all tables in the database"""
         Base.metadata.create_all(self.engine)
+        _ensure_schema_updates(self.engine)
         print(f"Database initialized successfully")
     
     def drop_all(self):
@@ -135,6 +136,15 @@ def _ensure_schema_updates(engine):
         if 'updated_at' not in broker_columns:
             conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
             print("Applied schema update: added brokers.updated_at")
+
+        # Add is_deleted column to email_messages table
+        try:
+            email_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(email_messages)").fetchall()]
+            if 'is_deleted' not in email_columns:
+                conn.exec_driver_sql("ALTER TABLE email_messages ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
+                print("Applied schema update: added email_messages.is_deleted")
+        except:
+            pass  # Table might not exist yet
 
 
 def get_session():
