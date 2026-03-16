@@ -289,35 +289,44 @@ class EmailScraper:
                 
                 # Only save if matched to a submission
                 if submission:
-                    email_record = EmailMessage(
-                        submission_id=submission.id,
-                        message_id=message_id,
-                        from_email=from_email,
-                        from_name=from_name,
-                        to_email=to_header,
-                        subject=subject,
-                        body_text=text_body,
-                        body_html=html_body,
-                        received_date=received_date,
-                        has_attachments=len(attachments) > 0,
-                        attachment_count=len(attachments),
-                        is_read=False,
-                        matched_insured_name='insured_name' in ','.join(keywords),
-                        matched_quote_attachment=any(
-                            att['filename'].lower().endswith(('.pdf', '.xlsx', '.xls'))
-                            for att in attachments
-                        ),
-                        matched_keywords=','.join(keywords)
-                    )
-                    db_session.add(email_record)
-                    db_session.flush()  # Get email_record.id
-                    
-                    # Save attachments
-                    for att_data in attachments:
-                        self.save_attachment(att_data, email_record.id, db_session)
-                    
-                    matched += 1
-                    new_emails += 1
+                    try:
+                        email_record = EmailMessage(
+                            submission_id=submission.id,
+                            message_id=message_id,
+                            from_email=from_email,
+                            from_name=from_name,
+                            to_email=to_header,
+                            subject=subject,
+                            body_text=text_body,
+                            body_html=html_body,
+                            received_date=received_date,
+                            has_attachments=len(attachments) > 0,
+                            attachment_count=len(attachments),
+                            is_read=False,
+                            matched_insured_name='insured_name' in ','.join(keywords),
+                            matched_quote_attachment=any(
+                                att['filename'].lower().endswith(('.pdf', '.xlsx', '.xls'))
+                                for att in attachments
+                            ),
+                            matched_keywords=','.join(keywords)
+                        )
+                        db_session.add(email_record)
+                        db_session.flush()  # Get email_record.id
+                        
+                        # Save attachments
+                        for att_data in attachments:
+                            self.save_attachment(att_data, email_record.id, db_session)
+                        
+                        matched += 1
+                        new_emails += 1
+                    except Exception as db_error:
+                        # Handle duplicate message_id - email already exists
+                        if 'UNIQUE constraint failed' in str(db_error) or 'message_id' in str(db_error).lower():
+                            logger.warning(f"Email with message_id {message_id} already exists, skipping")
+                        else:
+                            logger.error(f"Error saving email record: {db_error}")
+                        db_session.rollback()
+                        continue
                 
                 processed += 1
             

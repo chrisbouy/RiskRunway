@@ -1917,11 +1917,24 @@
                         colorClass = 'background: #dc2626;';
                     }
 
-                    badge.className = 'appetite-badge';
-                    badge.style = colorClass;
-                    badge.title = `PF Appetite: ${appetite.rating}\n\nPremium Size: ${appetite.breakdown.premium_size.score}/${appetite.breakdown.premium_size.max} (${appetite.breakdown.premium_size.label})\nDown Payment: ${appetite.breakdown.down_payment.score}/${appetite.breakdown.down_payment.max} (${appetite.breakdown.down_payment.label})\nState Risk: ${appetite.breakdown.state_risk.score}/${appetite.breakdown.state_risk.max} (${appetite.breakdown.state_risk.label})`;
-                    badge.textContent = `PF Appetite: ${appetite.total_score}/100`;
-                    badge.style.display = 'block';
+                    // Only show badge if premium_size is present and > 0
+                    if (appetite.breakdown.premium_size && appetite.breakdown.premium_size.value > 0) {
+                        badge.className = 'appetite-badge';
+                        badge.style = colorClass;
+                        let title = `PF Appetite: ${appetite.rating}\n\n`;
+                        title += `Premium Size: ${appetite.breakdown.premium_size.score}/${appetite.breakdown.premium_size.max} (${appetite.breakdown.premium_size.label})\n`;
+                        if (appetite.breakdown.down_payment && appetite.breakdown.down_payment.value) {
+                            title += `Down Payment: ${appetite.breakdown.down_payment.score}/${appetite.breakdown.down_payment.max} (${appetite.breakdown.down_payment.label})\n`;
+                        }
+                        if (appetite.breakdown.state_risk && appetite.breakdown.state_risk.value) {
+                            title += `State Risk: ${appetite.breakdown.state_risk.score}/${appetite.breakdown.state_risk.max} (${appetite.breakdown.state_risk.label})`;
+                        }
+                        badge.title = title;
+                        badge.textContent = `PF Appetite: ${appetite.total_score}/100`;
+                        badge.style.display = 'block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
                 }
             } catch (error) {
                 console.error('Error loading appetite score:', error);

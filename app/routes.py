@@ -22,7 +22,8 @@ from app.database import (
     set_current_db,
     get_available_databases
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment
+from app.email_scraper import EmailScraper
 
 bp = Blueprint('main', __name__)
 
@@ -377,13 +378,15 @@ def get_submissions():
         if filter_assigned and 'user_id' in session:
             submissions = [s for s in submissions if s.get('assigned_to') == session['user_id']]
 
-        # Attach document summaries for kanban dropdown and bound indicator.
+        # Attach document summaries and email counts for kanban dropdown and bound indicator.
         submission_ids = [s['id'] for s in submissions]
         docs_by_submission = {sid: [] for sid in submission_ids}
+        email_counts_by_submission = {sid: {'sent': 0, 'received': 0} for sid in submission_ids}
         active_binder_submission_ids = set()
         if submission_ids:
             db_session = get_session()
             try:
+                # Get documents
                 docs = db_session.query(Document).filter(Document.submission_id.in_(submission_ids)).order_by(Document.created_at.desc()).all()
                 for doc in docs:
                     docs_by_submission.setdefault(doc.submission_id, []).append({
@@ -396,12 +399,30 @@ def get_submissions():
                     })
                     if doc.document_type == DocumentType.BINDER and doc.is_active:
                         active_binder_submission_ids.add(doc.submission_id)
+                
+                # Get email messages for email counts
+                from app.models import EmailMessage
+                emails = db_session.query(EmailMessage).filter(EmailMessage.submission_id.in_(submission_ids)).all()
+                for email in emails:
+                    if email.submission_id in email_counts_by_submission:
+                        email_counts_by_submission[email.submission_id]['received'] += 1
+                
+                # Get sent emails (broker submissions) from audit log
+                sent_emails = db_session.query(AuditLog).filter(
+                    AuditLog.submission_id.in_(submission_ids),
+                    AuditLog.action == 'broker_submission_sent'
+                ).all()
+                for sent_email in sent_emails:
+                    if sent_email.submission_id in email_counts_by_submission:
+                        email_counts_by_submission[sent_email.submission_id]['sent'] += 1
+                        
             finally:
                 db_session.close()
 
         for sub in submissions:
             sub['documents'] = docs_by_submission.get(sub['id'], [])
             sub['is_bound'] = sub['id'] in active_binder_submission_ids
+            sub['email_counts'] = email_counts_by_submission.get(sub['id'], {'sent': 0, 'received': 0})
 
         return jsonify({'success': True, 'submissions': submissions})
     except Exception as e:
@@ -944,6 +965,89 @@ def view_quote_file(quote_id):
         return send_file(quote.raw_document_path, as_attachment=False, download_name=os.path.basename(quote.raw_document_path))
     finally:
         db_session.close()
+
+
+# ============================================================================
+# EMAIL SCRAPING
+# ============================================================================
+
+@bp.route('/api/email/scrape', methods=['POST'])
+@login_required
+def trigger_email_scrape():
+    """Manually trigger email scraping"""
+    try:
+        if not current_app.config.get('EMAIL_SCRAPING_ENABLED', False):
+            return jsonify({'success': False, 'error': 'Email scraping is disabled'}), 400
+        
+        if not current_app.config.get('IMAP_PASSWORD'):
+            return jsonify({'success': False, 'error': 'IMAP password not configured'}), 400
+        
+        # Initialize scraper
+        scraper = EmailScraper(
+            imap_server=current_app.config['IMAP_SERVER'],
+            email_address=current_app.config['IMAP_EMAIL'],
+            password=current_app.config['IMAP_PASSWORD'],
+            use_ssl=current_app.config['IMAP_USE_SSL']
+        )
+        
+        # Scrape emails from last 24 hours
+        from datetime import timedelta
+        since_date = datetime.now() - timedelta(hours=24)
+        
+        result = scraper.scrape_emails(since_date)
+        
+        # Log the action
+        log_action(
+            entity_type='system',
+            entity_id=0,
+            action='email_scrape_triggered',
+            user=session.get('username'),
+            details=json.dumps(result)
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/status', methods=['GET'])
+@login_required
+def get_email_scrape_status():
+    """Get current email scraping status and configuration"""
+    try:
+        status = {
+            'enabled': current_app.config.get('EMAIL_SCRAPING_ENABLED', False),
+            'configured': bool(current_app.config.get('IMAP_PASSWORD')),
+            'imap_server': current_app.config.get('IMAP_SERVER', ''),
+            'imap_email': current_app.config.get('IMAP_EMAIL', ''),
+            'scrape_interval_minutes': current_app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)
+        }
+        
+        # Get last scrape results from audit log
+        db_session = get_session()
+        try:
+            last_scrape = db_session.query(AuditLog).filter(
+                AuditLog.action == 'email_scrape_triggered'
+            ).order_by(AuditLog.timestamp.desc()).first()
+            
+            if last_scrape and last_scrape.details:
+                try:
+                    last_result = json.loads(last_scrape.details)
+                    status['last_scrape'] = {
+                        'timestamp': last_scrape.timestamp.isoformat(),
+                        'user': last_scrape.user,
+                        'result': last_result
+                    }
+                except:
+                    pass
+        finally:
+            db_session.close()
+        
+        return jsonify({'success': True, 'status': status})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================================================
@@ -1586,7 +1690,7 @@ def get_admin_data():
         brokers_query = session.query(Broker).order_by(Broker.name).all()
         brokers = [b.to_dict() for b in brokers_query]
 
-        # Get last 50 audit logs
+ # Get last 50 audit logs
         audit_logs = session.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(50).all()
         audit_data = [{
             'id': log.id,
@@ -1599,6 +1703,10 @@ def get_admin_data():
             'submission_id': log.submission_id,
             'quote_id': log.quote_id
         } for log in audit_logs]
+        
+        # Get all email messages (last 100 for performance)
+        email_messages_query = session.query(EmailMessage).order_by(EmailMessage.received_date.desc()).limit(100).all()
+        email_messages = [e.to_dict() for e in email_messages_query]
 
         session.close()
 
@@ -1608,6 +1716,7 @@ def get_admin_data():
             'quotes': quotes,
             'users': users,
             'brokers': brokers,
+            'email_messages': email_messages,
             'audit_log': audit_data
         })
     except Exception as e:

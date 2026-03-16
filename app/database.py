@@ -1,7 +1,7 @@
 # app/database.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker
+from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment
 import os
 
 

@@ -107,6 +107,16 @@ class Submission(Base):
 
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
+        # Determine api_status for frontend compatibility
+        status_name = self.status.name if self.status else None
+        api_status_map = {
+            'RECEIVED': 'submission',
+            'IN_PROGRESS': 'in_progress',
+            'CHOSEN': 'chosen',
+            'SENT_TO_FINANCE': 'bound'
+        }
+        api_status = api_status_map.get(status_name, 'submission')
+        
         return {
             'id': self.id,
             'insured_name': self.insured_name,
@@ -114,6 +124,7 @@ class Submission(Base):
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'status': self.status.value if self.status else None,
+            'api_status': api_status,
             'status_label': self.status_label,
             'quote_count': len(self.quotes) if self.quotes else 0,
             'appetite_score': self.appetite_score,

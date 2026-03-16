@@ -29,6 +29,14 @@ class Config:
     BUG_REPORT_SENDER = os.environ.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
     SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 
+    # IMAP Email Scraping Configuration
+    IMAP_SERVER = os.environ.get('IMAP_SERVER', 'imap.gmail.com')  # Default to Gmail
+    IMAP_EMAIL = os.environ.get('IMAP_EMAIL', 'chrisbouy@gmail.com')  # Email address to monitor
+    IMAP_PASSWORD = os.environ.get('IMAP_PASSWORD', '')  # App password (recommended)
+    IMAP_USE_SSL = os.environ.get('IMAP_USE_SSL', 'true').lower() == 'true'
+    EMAIL_SCRAPING_ENABLED = os.environ.get('EMAIL_SCRAPING_ENABLED', 'false').lower() == 'true'
+    EMAIL_SCRAPE_INTERVAL_MINUTES = int(os.environ.get('EMAIL_SCRAPE_INTERVAL_MINUTES', '5'))
+
     # Document storage settings
     STORAGE_PROVIDER = os.environ.get('STORAGE_PROVIDER', 'local')  # local | s3
     S3_BUCKET = os.environ.get('S3_BUCKET', '')
