@@ -363,7 +363,8 @@
             background: linear-gradient(135deg, #d1fae5aa 0%, #d1fae5 100%) !important;
             border-left: 3px solid #10b981;
         }
-        .quote-color-1 .file-icon { fill: #10b981; }
+        .quote-color-1 .file-icon { fill: #000000; }
+        .quote-color-1 .file-name { color: #000000; }
         .quote-color-1 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -373,7 +374,8 @@
             background: linear-gradient(135deg, #fef3c7bb 0%, #fef3c7 100%) !important;
             border-left: 3px solid #f59e0b;
         }
-        .quote-color-2 .file-icon { fill: #f59e0b; }
+        .quote-color-2 .file-icon { fill: #000000; }
+        .quote-color-2 .file-name { color: #000000; }
         .quote-color-2 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -383,7 +385,8 @@
             background: linear-gradient(135deg, #b89aff4c 0%, #d4c1ff 100%) !important;
             border-left: 3px solid #8b5cf6;
         }
-        .quote-color-3 .file-icon { fill: #8b5cf6; }
+        .quote-color-3 .file-icon { fill: #000000; }
+        .quote-color-3 .file-name { color: #000000; }
         .quote-color-3 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -393,7 +396,8 @@
             background: linear-gradient(135deg, #faacd391 0%, #fdcbe4 100%) !important;
             border-left: 3px solid #ec4899;
         }
-        .quote-color-4 .file-icon { fill: #ec4899; }
+        .quote-color-4 .file-icon { fill: #000000; }
+        .quote-color-4 .file-name { color: #000000; }
         .quote-color-4 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -403,7 +407,8 @@
             background: linear-gradient(135deg, #f0fdfa 0%, #cffafe 100%) !important;
             border-left: 3px solid #06b6d4;
         }
-        .quote-color-5 .file-icon { fill: #06b6d4; }
+        .quote-color-5 .file-icon { fill: #000000; }
+        .quote-color-5 .file-name { color: #000000; }
         .quote-color-5 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -413,7 +418,8 @@
             background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%) !important;
             border-left: 3px solid #ef4444;
         }
-        .quote-color-6 .file-icon { fill: #ef4444; }
+        .quote-color-6 .file-icon { fill: #000000; }
+        .quote-color-6 .file-name { color: #000000; }
         .quote-color-6 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -423,7 +429,8 @@
             background: linear-gradient(135deg, #f7fee7 0%, #ecfccb 100%) !important;
             border-left: 3px solid #84cc16;
         }
-        .quote-color-7 .file-icon { fill: #84cc16; }
+        .quote-color-7 .file-icon { fill: #000000; }
+        .quote-color-7 .file-name { color: #000000; }
         .quote-color-7 td {
             color: #1f2937 !important;
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
@@ -822,7 +829,7 @@
 
         .dz-message p {
             margin: 0.125rem 0;
-            color: var(--color-neutral-600);
+            color: #000000;
         }
 
         /* Bug report modal */
@@ -2692,11 +2699,19 @@
                     alert(`Submission sent to ${results.emails_sent.length} brokers!`);
                 }
 
-                // Close modal and redirect
+                // Close modal and switch to quoting screen
                 document.getElementById('submitToMarketModal').classList.add('hidden');
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1000);
+                
+                // Update status dropdown and switch to quoting view
+                const statusDropdown = document.getElementById('statusDropdown');
+                statusDropdown.value = 'IN_PROGRESS';
+                applyStageView('IN_PROGRESS', submissionData?.effective_date);
+                setStageProgress('quoting');
+                
+                // Show the quoting stage section explicitly
+                document.getElementById('submissionStageSection').classList.remove('active');
+                document.getElementById('quotingStageSection').classList.add('active');
+                document.getElementById('bindStageSection').classList.remove('active');
             } catch (error) {
                 console.error('Error submitting to market:', error);
                 alert(error.message || 'Error submitting to market');
@@ -2979,7 +2994,32 @@
                     throw new Error(data.error || 'Failed to move submission to bind');
                 }
 
+                // Reload submission and force UI update
                 await loadSubmission();
+                
+                // Force show bind section after reload
+                const newStatus = document.getElementById('statusDropdown').value;
+                applyStageView(newStatus, submissionData?.effective_date);
+                
+                // Also update stage progress manually to ensure it shows
+                setStageProgress('bind');
+                
+                // Show bind section explicitly
+                document.getElementById('submissionStageSection').classList.remove('active');
+                document.getElementById('quotingStageSection').classList.remove('active');
+                document.getElementById('bindStageSection').classList.add('active');
+                
+                // Update stage progress bar
+                document.querySelectorAll('.stage-step').forEach(step => {
+                    step.classList.remove('done', 'current-submission', 'current-quoting', 'current-bind');
+                });
+                const bindStep = document.querySelector('.stage-step[data-stage="bind"]');
+                if (bindStep) {
+                    bindStep.classList.add('current-bind');
+                    const dot = bindStep.querySelector('.stage-dot');
+                    if (dot) dot.textContent = '3';
+                }
+                
             } catch (error) {
                 console.error('Error moving to bind:', error);
                 alert(error.message || 'Error moving to bind');
