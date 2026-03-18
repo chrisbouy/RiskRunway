@@ -314,13 +314,10 @@ def _days_until_renewal(effective_date):
 
 def _board_stage_key(submission):
     status = str(submission.get('status') or '').strip().lower()
-    days_until_renewal = _days_until_renewal(submission.get('effective_date'))
 
     if status == 'received':
         return 'submission'
     if status == 'in progress':
-        return 'quoting'
-    if status in ('chosen', 'sent to finance') and days_until_renewal is not None and days_until_renewal <= 120:
         return 'quoting'
     return 'bind'
 

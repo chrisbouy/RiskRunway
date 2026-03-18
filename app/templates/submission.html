@@ -1491,12 +1491,8 @@
 
         function statusToStage(statusValue, effectiveDate) {
             const normalized = (statusValue || '').toUpperCase();
-            const daysUntilRenewal = getDaysUntilRenewal(effectiveDate);
             if (normalized === 'RECEIVED') return 'submission';
             if (normalized === 'IN_PROGRESS') return 'quoting';
-            if ((normalized === 'CHOSEN' || normalized === 'SENT_TO_FINANCE') && daysUntilRenewal !== null && daysUntilRenewal <= 120) {
-                return 'quoting';
-            }
             return 'bind';
         }
 
@@ -2994,10 +2990,10 @@
                     throw new Error(data.error || 'Failed to move submission to bind');
                 }
 
-                // Reload submission and force UI update
+                // Reload submission and show bind section
                 await loadSubmission();
                 
-                // Force show bind section after reload
+                // Force show bind section
                 const newStatus = document.getElementById('statusDropdown').value;
                 applyStageView(newStatus, submissionData?.effective_date);
                 

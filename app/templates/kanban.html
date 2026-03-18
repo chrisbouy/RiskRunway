@@ -824,6 +824,17 @@
             <div id="submissionsList" class="space-y-2 max-h-96 overflow-y-auto">
                 <!-- Submissions will be loaded here -->
             </div>
+            
+            <!-- Loading Overlay for OCR Processing -->
+            <div id="ocrLoadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10000]">
+                <div class="bg-gray-800 rounded-lg p-8 border border-gray-600 text-center">
+                    <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <h3 class="text-xl font-bold text-white mb-2">Processing Quote</h3>
+                    <p class="text-gray-400 mb-2">Running OCR on the quote document...</p>
+                    <p class="text-sm text-gray-500">This may take a few moments</p>
+                </div>
+            </div>
+            
             <div class="flex justify-end gap-2 mt-6">
                 <button id="cancelSelectSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
                     Cancel
@@ -1038,11 +1049,8 @@
                 ? submissionOrStatus
                 : { status: submissionOrStatus, effective_date: maybeEffectiveDate };
             const normalized = normalizeStatus(submission.status);
-            const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
-
             if (normalized === 'RECEIVED') return 'submission';
             if (normalized === 'IN_PROGRESS') return 'quoting';
-            if (isBoundStatus(normalized) && daysUntilRenewal !== null && daysUntilRenewal <= 120) return 'quoting';
             return 'bind';
         }
 
@@ -1752,7 +1760,21 @@
 
         // Handle email action (ingest quote or add correspondence)
         async function handleEmailAction(submissionId) {
+            const loadingOverlay = document.getElementById('ocrLoadingOverlay');
+            const selectSubmissionBtns = document.querySelectorAll('.select-submission-btn');
+            const cancelBtn = document.getElementById('cancelSelectSubmission');
+            const closeBtn = document.getElementById('closeSelectSubmissionModal');
+            
             try {
+                // Show loading spinner for quote ingestion
+                if (currentEmailAction === 'quote') {
+                    loadingOverlay.classList.remove('hidden');
+                    // Disable interaction buttons
+                    selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
+                    cancelBtn.disabled = true;
+                    closeBtn.disabled = true;
+                }
+                
                 let response;
                 
                 if (currentEmailAction === 'quote') {
@@ -1768,7 +1790,11 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    alert(currentEmailAction === 'quote' ? 'Quote ingested successfully!' : 'Correspondence added successfully!');
+                    if (currentEmailAction === 'quote') {
+                        alert('Quote ingested successfully!');
+                    } else {
+                        alert('Correspondence added successfully!');
+                    }
                     document.getElementById('selectSubmissionModal').classList.add('hidden');
                     document.getElementById('newMessagesModal').classList.add('hidden');
                     
@@ -1782,6 +1808,13 @@
             } catch (error) {
                 console.error('Failed to process email action:', error);
                 alert('Failed to process email. Check console for details.');
+            } finally {
+                // Hide loading spinner
+                loadingOverlay.classList.add('hidden');
+                // Re-enable buttons
+                selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'auto');
+                cancelBtn.disabled = false;
+                closeBtn.disabled = false;
             }
         }
 
