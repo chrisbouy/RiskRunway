@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "PDF Quote Extractor",
+  "name": "Air Quotes",
   "version": "1.0.0",
   "description": "Extract quote data from PDF documents and send to backend for processing",
   "permissions": [

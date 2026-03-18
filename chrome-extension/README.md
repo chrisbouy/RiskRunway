@@ -16,7 +16,7 @@ A minimal Chrome Extension (Manifest V3) that extracts quote data from PDF docum
 Edit `popup.js` and replace `YOUR_BACKEND_DOMAIN` with your actual backend domain:
 
 ```javascript
-const BACKEND_DOMAIN = 'https://your-domain.com';
+const BACKEND_DOMAIN = 'http://localhost:5001';
 ```
 
 ### 2. Add Icons
