@@ -1351,13 +1351,14 @@
                 <div class="card-header">
                     <h2 class="card-title">Bind Actions</h2>
                 </div>
-                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <button id="markBoundBtn">Mark as Bound</button>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
                     <button id="moveBackToQuotingBtn">Back to Quoting</button>
-                    <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg">
-                    <button id="uploadBinderBtn">Upload Binder Doc</button>
-                    <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg">
+                    <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload insurance binder (proof of coverage)">
+                    <button id="uploadBinderBtn">Upload Binder</button>
+                    <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload premium finance agreement">
                     <button id="uploadFinanceBtn">Upload Finance Agreement</button>
+                    <button id="markBoundBtn" style="background: #059669; color: white; margin-left: auto;">Mark as Bound</button>
+                    <button id="generateExportBtn" style="background: #059669; color: white;">📤 Generate Export</button>
                 </div>
             </div>
             <div class="card">
@@ -1422,6 +1423,46 @@
                 <div class="bug-modal-actions">
                     <button type="button" id="closeBugModalBtn">Close</button>
                     <button type="button" id="submitBugBtn">Send Bug Report</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AMS Export Modal -->
+    <div id="amsExportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden border border-gray-700 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-white">AMS Export Data</h2>
+                <button id="closeAmsExportModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <p class="text-gray-400 mb-4">Preview of data to be exported to AMS:</p>
+            
+            <!-- CSV Grid -->
+            <div id="exportGridContainer" class="flex-1 overflow-auto border border-gray-600 rounded bg-gray-900">
+                <table id="exportGrid" class="w-full text-sm">
+                    <thead class="bg-gray-700 sticky top-0">
+                        <tr id="exportGridHeader"></tr>
+                    </thead>
+                    <tbody id="exportGridBody" class="divide-y divide-gray-700"></tbody>
+                </table>
+            </div>
+            
+            <!-- Empty state -->
+            <div id="exportEmptyState" class="hidden text-center py-8 text-gray-500">
+                No chosen quote available for this submission.
+            </div>
+            
+            <div class="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
+                <div class="text-sm text-gray-400">
+                    <span id="exportRecordCount">0</span> records
+                </div>
+                <div class="flex gap-2">
+                    <button id="downloadCsvBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        📥 Download CSV
+                    </button>
+                    <button id="exportToAmsBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-not-allowed opacity-75" disabled>
+                        ☁️ Export to AMS
+                    </button>
                 </div>
             </div>
         </div>
@@ -2501,20 +2542,24 @@
             if (selectedQuoteBody) {
                 selectedQuoteBody.innerHTML = `
                     <tr>
-                        <td>${selected.coverage || 'null'}</td>
-                        <td>${selected.carrier || 'null'}</td>
-                        <td>${selected.policyNumber || 'pending'}</td>
-                        <td>${selected.effective || 'null'}</td>
-                        <td>${selected.expiration || 'null'}</td>
-                        <td>${formatMoney(selected.premium)}</td>
-                        <td>${formatMoney(selected.tax)}</td>
-                        <td>${formatMoney(selected.fee)}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.coverage || 'null')).replace(/'/g, "\\'")}', this)">${selected.coverage || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.carrier || 'null')).replace(/'/g, "\\'")}', this)">${selected.carrier || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.policyNumber || 'pending')).replace(/'/g, "\\'")}', this)">${selected.policyNumber || 'pending'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.effective || 'null')).replace(/'/g, "\\'")}', this)">${selected.effective || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.expiration || 'null')).replace(/'/g, "\\'")}', this)">${selected.expiration || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.premium))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.premium)}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.tax))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.tax)}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.fee))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.fee)}</td>
                     </tr>
                 `;
             }
 
+            const grandTotalValue = total ? formatMoney(total) : 'null';
             container.innerHTML = [
-                stageField('Grand Total', total ? formatMoney(total) : 'null')
+                `<div class="stage-field" style="cursor: pointer;" onclick="copyToClipboard('${escapeHtml(grandTotalValue).replace(/'/g, "\\'")}', this.querySelector('.stage-field-value'))">
+                    <div class="stage-field-label">Grand Total</div>
+                    <div class="stage-field-value">${grandTotalValue}</div>
+                </div>`
             ].join('');
         }
 
@@ -3033,6 +3078,267 @@
                     ? 'CHOSEN'
                     : 'IN_PROGRESS'
         );
+
+        // ============================================================================
+        // AMS EXPORT FUNCTIONALITY
+        // ============================================================================
+        
+        let exportData = [];
+        
+        // Open AMS Export Modal
+        document.getElementById('generateExportBtn').addEventListener('click', async function() {
+            await generateExportData();
+            document.getElementById('amsExportModal').classList.remove('hidden');
+        });
+        
+        // Close AMS Export Modal
+        document.getElementById('closeAmsExportModal').addEventListener('click', function() {
+            document.getElementById('amsExportModal').classList.add('hidden');
+        });
+        
+        // Generate export data from current submission's quotes
+        async function generateExportData() {
+            try {
+                // Use the already loaded submission data and quotes
+                if (!submissionData || !quotes || quotes.length === 0) {
+                    exportData = [];
+                    renderExportGrid();
+                    return;
+                }
+                
+                exportData = [];
+                
+                // Filter to only include WON (chosen) quotes
+                const wonQuotes = quotes.filter(q => q.quote_outcome === 'WON');
+                
+                // Process each won quote
+                for (const quote of wonQuotes) {
+                    let parsedData = {};
+                    if (quote.extracted_json) {
+                        try {
+                            // Handle both string and object formats
+                            const jsonStr = typeof quote.extracted_json === 'string' 
+                                ? quote.extracted_json 
+                                : JSON.stringify(quote.extracted_json);
+                            parsedData = JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.error('Failed to parse quote JSON:', e);
+                        }
+                    }
+                    
+                    const policies = parsedData.policies || [];
+                    const totals = parsedData.totals || {};
+                    const financing = parsedData.financing || {};
+                    const insured = parsedData.insured || {};
+                    const retailAgent = parsedData.retail_agent || {};
+                    
+                    // If there are policies, create a row for each
+                    if (policies.length > 0) {
+                        for (const policy of policies) {
+                            exportData.push({
+                                submission_id: submissionData.id,
+                                insured_name: insured.name || submissionData.insured_name || '',
+                                insured_address: insured.address ? `${insured.address.street || ''} ${insured.address.city || ''} ${insured.address.state || ''} ${insured.address.zip || ''}`.trim() : '',
+                                state: submissionData.state || '',
+                                effective_date: policy.effective_date || submissionData.effective_date || '',
+                                expiration_date: policy.expiration_date || '',
+                                policy_term: policy.policy_term || '',
+                                coverage_type: policy.coverage_type || '',
+                                carrier: policy.carrier || quote.carrier_name || '',
+                                policy_number: policy.policy_number || '',
+                                quote_number: parsedData.quote_number || '',
+                                account_number: parsedData.account_number || '',
+                                annual_premium: policy.annual_premium || null,
+                                tax: policy.tax || null,
+                                fee: policy.fee || null,
+                                broker_fee: policy.broker_fee || null,
+                                total_premium: totals.total_premium || null,
+                                total_tax: totals.total_tax || null,
+                                total_fee: totals.total_fee || null,
+                                grand_total: totals.grand_total || null,
+                                down_payment: financing.down_payment || null,
+                                amount_financed: financing.amount_financed || null,
+                                retail_agent_name: retailAgent.name || '',
+                                retail_agent_code: retailAgent.code || '',
+                                quote_outcome: quote.quote_outcome || ''
+                            });
+                        }
+                    } else {
+                        // No policies - create a row with quote-level data only
+                        exportData.push({
+                            submission_id: submissionData.id,
+                            insured_name: insured.name || submissionData.insured_name || '',
+                            insured_address: insured.address ? `${insured.address.street || ''} ${insured.address.city || ''} ${insured.address.state || ''} ${insured.address.zip || ''}`.trim() : '',
+                            state: submissionData.state || '',
+                            effective_date: submissionData.effective_date || '',
+                            expiration_date: '',
+                            policy_term: '',
+                            coverage_type: '',
+                            carrier: quote.carrier_name || '',
+                            policy_number: '',
+                            quote_number: parsedData.quote_number || '',
+                            account_number: parsedData.account_number || '',
+                            annual_premium: null,
+                            tax: null,
+                            fee: null,
+                            broker_fee: null,
+                            total_premium: totals.total_premium || null,
+                            total_tax: totals.total_tax || null,
+                            total_fee: totals.total_fee || null,
+                            grand_total: totals.grand_total || null,
+                            down_payment: financing.down_payment || null,
+                            amount_financed: financing.amount_financed || null,
+                            retail_agent_name: retailAgent.name || '',
+                            retail_agent_code: retailAgent.code || '',
+                            quote_outcome: quote.quote_outcome || ''
+                        });
+                    }
+                }
+                
+                renderExportGrid();
+                
+            } catch (error) {
+                console.error('Error generating export data:', error);
+                alert('Error generating export data: ' + error.message);
+            }
+        }
+        
+        // Render the export data in a grid
+        function renderExportGrid() {
+            const headerRow = document.getElementById('exportGridHeader');
+            const body = document.getElementById('exportGridBody');
+            const container = document.getElementById('exportGridContainer');
+            const emptyState = document.getElementById('exportEmptyState');
+            const recordCount = document.getElementById('exportRecordCount');
+            
+            recordCount.textContent = exportData.length;
+            
+            if (exportData.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            container.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            
+            // Get columns for display
+            const columns = [
+                'insured_name', 'state', 'effective_date', 'expiration_date',
+                'coverage_type', 'carrier', 'policy_number', 'quote_number',
+                'annual_premium', 'total_premium', 'grand_total', 'down_payment',
+                'retail_agent_name', 'quote_outcome'
+            ];
+            
+            // Build header
+            const headerLabels = {
+                insured_name: 'Insured Name',
+                state: 'State',
+                effective_date: 'Effective Date',
+                expiration_date: 'Expiration Date',
+                coverage_type: 'Coverage Type',
+                carrier: 'Carrier',
+                policy_number: 'Policy #',
+                quote_number: 'Quote #',
+                annual_premium: 'Annual Premium',
+                total_premium: 'Total Premium',
+                grand_total: 'Grand Total',
+                down_payment: 'Down Payment',
+                retail_agent_name: 'Retail Agent',
+                quote_outcome: 'Outcome'
+            };
+            
+            headerRow.innerHTML = columns.map(col => 
+                `<th class="px-3 py-2 text-left text-gray-200 font-semibold">${headerLabels[col] || col}</th>`
+            ).join('');
+            
+            // Build body with click-to-copy functionality
+            body.innerHTML = exportData.map(row => 
+                `<tr class="hover:bg-gray-800">` + 
+                columns.map(col => {
+                    let value = row[col];
+                    if (value === null || value === undefined) value = '';
+                    if (typeof value === 'number') value = value.toLocaleString('en-US', {style: 'currency', currency: 'USD'});
+                    const cellValue = value === '' ? '<span class="text-gray-500">null</span>' : escapeHtml(String(value));
+                    return `<td class="px-3 py-2 text-gray-300 whitespace-nowrap cursor-pointer hover:text-blue-400" onclick="copyToClipboard('${escapeHtml(String(value)).replace(/'/g, "\\'")}', this)">${cellValue}</td>`;
+                }).join('') +
+                `</tr>`
+            ).join('');
+        }
+        
+        // Download CSV
+        document.getElementById('downloadCsvBtn').addEventListener('click', function() {
+            if (exportData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            const columns = [
+                'insured_name', 'insured_address', 'state', 'effective_date', 'expiration_date',
+                'policy_term', 'coverage_type', 'carrier', 'policy_number', 'quote_number',
+                'account_number', 'annual_premium', 'tax', 'fee', 'broker_fee',
+                'total_premium', 'total_tax', 'total_fee', 'grand_total',
+                'down_payment', 'amount_financed', 'retail_agent_name', 'retail_agent_code', 'quote_outcome'
+            ];
+            
+            const headerLabels = {
+                insured_name: 'Insured Name',
+                insured_address: 'Insured Address',
+                state: 'State',
+                effective_date: 'Effective Date',
+                expiration_date: 'Expiration Date',
+                policy_term: 'Policy Term',
+                coverage_type: 'Coverage Type',
+                carrier: 'Carrier',
+                policy_number: 'Policy Number',
+                quote_number: 'Quote Number',
+                account_number: 'Account Number',
+                annual_premium: 'Annual Premium',
+                tax: 'Tax',
+                fee: 'Fee',
+                broker_fee: 'Broker Fee',
+                total_premium: 'Total Premium',
+                total_tax: 'Total Tax',
+                total_fee: 'Total Fee',
+                grand_total: 'Grand Total',
+                down_payment: 'Down Payment',
+                amount_financed: 'Amount Financed',
+                retail_agent_name: 'Retail Agent Name',
+                retail_agent_code: 'Retail Agent Code',
+                quote_outcome: 'Quote Outcome'
+            };
+            
+            // Build CSV header
+            let csv = columns.map(col => `"${headerLabels[col] || col}"`).join(',');
+            
+            // Build CSV rows
+            for (const row of exportData) {
+                const csvRow = columns.map(col => {
+                    let value = row[col];
+                    if (value === null || value === undefined) value = '';
+                    // Escape quotes and wrap in quotes
+                    value = String(value).replace(/"/g, '""');
+                    return `"${value}"`;
+                }).join(',');
+                csv += '\n' + csvRow;
+            }
+            
+            // Download file
+            const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ams_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        });
+        
+        // Export to AMS (non-working button)
+        document.getElementById('exportToAmsBtn').addEventListener('click', function() {
+            alert('AMS export functionality is not yet implemented. Please use Download CSV for now.');
+        });
 
         // Load submission data on page load
         loadSubmission();
