@@ -24,8 +24,14 @@ class Database:
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir)
         
-        # Create engine
-        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
+        # Create engine with NullPool for SQLite to avoid connection exhaustion
+        # NullPool disables connection pooling - each connection is closed immediately after use
+        self.engine = create_engine(
+            f'sqlite:///{db_path}',
+            echo=False,
+            poolclass=NullPool,
+            connect_args={'check_same_thread': False}  # SQLite allows cross-thread access
+        )
         
         # Create session factory
         self.Session = scoped_session(sessionmaker(bind=self.engine))
