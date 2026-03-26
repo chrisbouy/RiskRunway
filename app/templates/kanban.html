@@ -561,12 +561,19 @@
                 </svg>
                 Check Emails Now
             </button>
-            <button id="newMessagesBtn" class="left-btn btn-config" style="display: none;">
+
+            <!-- Email Account Connection Section -->
+            <div class="left-divider" style="margin-top: 8px;"></div>
+            <button id="connectEmailAccountBtn" class="left-btn btn-config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+                Connect Email Account
+            </button>
+            <button id="newMessagesBtn" class="left-btn btn-config">
                 📬 New Messages (<span id="newMessageCount">0</span>)
             </button>
-            <div id="emailStatus" class="text-xs text-gray-500 mt-1 mb-2" style="font-size: 11px; margin-left: 8px; margin-right: 8px;">
-                Status: <span id="emailStatusText">Loading...</span>
-            </div>
 
             <!-- Config Section -->
             <div class="left-divider" style="margin-top: 8px;"></div>
@@ -687,6 +694,28 @@
                 </button>
                 <button id="createSubmissionBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                     Create Submission
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connect Email Account Modal -->
+    <div id="connectEmailAccountModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+            <h2 class="text-xl font-bold mb-4 text-white">Connect Email Account</h2>
+            <p class="text-gray-400 mb-4 text-sm">Enter an email address to check. If it's an Outlook account, you'll be redirected to sign in. Otherwise, IMAP configuration will be used.</p>
+            
+            <div class="mb-4">
+                <label for="emailAccountInput" class="block text-sm font-semibold text-gray-300 mb-1">Email Address</label>
+                <input id="emailAccountInput" type="email" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="your.email@example.com">
+            </div>
+            
+            <div class="flex justify-end gap-2">
+                <button id="cancelConnectEmail" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="confirmConnectEmail" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    OK
                 </button>
             </div>
         </div>
@@ -1470,6 +1499,89 @@
         });
 
         // ============================================================================
+        // EMAIL ACCOUNT CONNECTION
+        // ============================================================================
+
+        // Open Connect Email Account Modal
+        document.getElementById('connectEmailAccountBtn').addEventListener('click', function() {
+            const connectedEmail = this.dataset.connectedEmail;
+            document.getElementById('emailAccountInput').value = connectedEmail || '';
+            document.getElementById('connectEmailAccountModal').classList.remove('hidden');
+            document.getElementById('emailAccountInput').focus();
+        });
+
+        // Close modal
+        document.getElementById('cancelConnectEmail').addEventListener('click', function() {
+            document.getElementById('connectEmailAccountModal').classList.add('hidden');
+        });
+
+        // Handle email connection
+        document.getElementById('confirmConnectEmail').addEventListener('click', async function() {
+            const email = document.getElementById('emailAccountInput').value.trim();
+            
+            if (!email) {
+                alert('Please enter an email address');
+                return;
+            }
+
+            // Basic email validation
+            if (!email.includes('@')) {
+                alert('Please enter a valid email address');
+                return;
+            }
+
+            const emailDomain = email.split('@')[1].toLowerCase();
+            
+            // Check if it's an Outlook-related domain
+            const outlookDomains = ['outlook.com', 'hotmail.com', 'live.com', 'msn.com'];
+            const isOutlook = outlookDomains.some(domain => emailDomain === domain || emailDomain.endsWith('.' + domain));
+
+            if (isOutlook) {
+                // For Outlook, trigger OAuth flow
+                document.getElementById('connectEmailAccountModal').classList.add('hidden');
+                
+                try {
+                    // Call the API to get OAuth URL for outlook
+                    const response = await fetch('/api/oauth/connect/outlook');
+                    const data = await response.json();
+                    
+                    if (data.success && data.authorization_url) {
+                        // Redirect to OAuth consent screen
+                        window.location.href = data.authorization_url;
+                    } else {
+                        alert('Failed to start Outlook sign-in: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error connecting to Outlook:', error);
+                    alert('Error connecting to Outlook: ' + error.message);
+                }
+            } else {
+                // For non-Outlook, use IMAP - close modal and trigger email check
+                document.getElementById('connectEmailAccountModal').classList.add('hidden');
+                
+                // Store the email for IMAP configuration (will be used by checkEmailsBtn)
+                sessionStorage.setItem('pendingImapEmail', email);
+                
+                // Trigger the existing email check functionality
+                document.getElementById('checkEmailsBtn').click();
+            }
+        });
+
+        // Close modal on outside click
+        document.getElementById('connectEmailAccountModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.add('hidden');
+            }
+        });
+
+        // Handle Enter key in email input
+        document.getElementById('emailAccountInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('confirmConnectEmail').click();
+            }
+        });
+
+        // ============================================================================
         // EMAIL SCRAPING
         // ============================================================================
 
@@ -1481,34 +1593,36 @@
                 
                 if (data.success) {
                     const status = data.status;
-                    let statusText = '';
-                    
-                    if (!status.enabled) {
-                        statusText = 'Disabled';
-                        document.getElementById('emailStatusText').style.color = '#ef4444';
-                    } else if (!status.configured) {
-                        statusText = 'Not configured';
-                        document.getElementById('emailStatusText').style.color = '#f59e0b';
-                    } else {
-                        statusText = 'Active';
-                        document.getElementById('emailStatusText').style.color = '#10b981';
-                        
-                        if (status.last_scrape) {
-                            const lastTime = new Date(status.last_scrape.timestamp).toLocaleString();
-                            const result = status.last_scrape.result;
-                            statusText += ` (Last: ${lastTime}, ${result.processed || 0} processed, ${result.matched || 0} matched)`;
-                        }
-                    }
-                    
-                    document.getElementById('emailStatusText').textContent = statusText;
-                } else {
-                    document.getElementById('emailStatusText').textContent = 'Error loading status';
-                    document.getElementById('emailStatusText').style.color = '#ef4444';
+                    // Just log the status, no UI element to update since emailStatusText was removed
+                    console.log('Email status:', status);
                 }
             } catch (error) {
                 console.error('Failed to load email status:', error);
-                document.getElementById('emailStatusText').textContent = 'Connection error';
-                document.getElementById('emailStatusText').style.color = '#ef4444';
+            }
+        }
+
+        // Load connected email accounts on page load
+        async function loadConnectedAccounts() {
+            try {
+                const response = await fetch('/api/oauth/accounts');
+                const data = await response.json();
+                
+                if (data.success && data.accounts && data.accounts.length > 0) {
+                    const activeAccount = data.accounts.find(acc => acc.status === 'active');
+                    if (activeAccount) {
+                        const btn = document.getElementById('connectEmailAccountBtn');
+                        btn.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                <polyline points="22,6 12,13 2,6"></polyline>
+                            </svg>
+                            ${activeAccount.email_address}
+                        `;
+                        btn.dataset.connectedEmail = activeAccount.email_address;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load connected accounts:', error);
             }
         }
 
@@ -1516,56 +1630,57 @@
         document.getElementById('checkEmailsBtn').addEventListener('click', async function() {
             const btn = this;
             const originalText = btn.textContent;
-            
+
             btn.disabled = true;
             btn.textContent = '🔄 Checking...';
-            
+
             try {
                 const response = await fetch('/api/email/scrape', { method: 'POST' });
                 const data = await response.json();
-                
-                if (data.success) {
-                    btn.textContent = '✅ Done!';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                    }, 2000);
-                    
-                    // Refresh submissions to show any new emails
-                    setTimeout(() => {
-                        loadSubmissions();
-                        loadEmailStatus();
-                        loadUnreadEmailCount();
-                    }, 1000);
-                    
-                    // Show results
-                    let message = `Email scrape completed:\n`;
-                    message += `• ${data.processed || 0} emails processed\n`;
-                    message += `• ${data.matched || 0} matched to submissions\n`;
-                    message += `• ${data.new_emails || 0} new emails saved`;
-                    alert(message);
-                } else {
-                    btn.textContent = '❌ Error';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                    }, 2000);
-                    alert('Error: ' + data.error);
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Email sync failed');
                 }
+
+                const processed = data.processed  || 0;
+                const matched   = data.matched     || 0;
+                const newEmails = data.new_emails  || 0;
+
+                btn.textContent = '✅ Done!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+
+                setTimeout(() => {
+                    loadSubmissions();
+                    loadEmailStatus();
+                    loadUnreadEmailCount();
+                }, 1000);
+
+                if (newEmails > 0) {
+                    document.getElementById('newMessagesModal').classList.remove('hidden');
+                    await loadUnreadEmails();
+                } else {
+                    const source = data.source === 'IMAP' ? ' (IMAP)' : ' (OAuth)';
+                    alert(`Email sync completed${source}:\n• ${processed} emails processed\n• ${matched} matched to submissions\n• ${newEmails} new emails saved`);
+                }
+
             } catch (error) {
-                console.error('Email scrape failed:', error);
+                console.error('Email check failed:', error);
                 btn.textContent = '❌ Failed';
                 setTimeout(() => {
                     btn.textContent = originalText;
                     btn.disabled = false;
                 }, 2000);
-                alert('Failed to check emails. Check console for details.');
+                alert('Error: ' + error.message);
             }
         });
 
         // Load email status on page load
         loadEmailStatus();
         loadUnreadEmailCount();
+        loadConnectedAccounts();
 
         // ============================================================================
         // NEW MESSAGES FUNCTIONALITY
@@ -1580,11 +1695,8 @@
                 const response = await fetch('/api/email/unread');
                 const data = await response.json();
                 
-                if (data.success && data.count > 0) {
-                    document.getElementById('newMessagesBtn').style.display = 'block';
-                    document.getElementById('newMessageCount').textContent = data.count;
-                } else {
-                    document.getElementById('newMessagesBtn').style.display = 'none';
+                if (data.success) {
+                    document.getElementById('newMessageCount').textContent = data.count || 0;
                 }
             } catch (error) {
                 console.error('Failed to load unread email count:', error);

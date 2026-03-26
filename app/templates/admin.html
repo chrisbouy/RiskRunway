@@ -62,6 +62,22 @@
             </div>
         </div>
 
+        <!-- Connected Accounts (OAuth) -->
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-white">Connected Accounts (OAuth)</h2>
+                <div class="flex gap-2">
+                    <button onclick="connectOAuth('gmail')" class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">Connect Gmail</button>
+                    <button onclick="connectOAuth('outlook')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">Connect Outlook</button>
+                </div>
+            </div>
+            <div class="px-6 py-4">
+                <div id="connected-accounts-list" class="overflow-x-auto">
+                    <p class="text-gray-400 text-sm">Loading...</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Users Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
             <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
@@ -234,6 +250,7 @@
                     renderSubmissions(data.submissions);
                     renderQuotes(data.quotes);
                     renderUsers(data.users);
+                    loadConnectedAccounts();
                     renderBrokers(data.brokers);
                     renderEmailMessages(data.email_messages);
                     renderAuditLog(data.audit_log);
@@ -320,6 +337,66 @@
                 `;
                 tbody.appendChild(row);
             });
+        }
+
+        // OAuth Connected Accounts Functions
+        async function loadConnectedAccounts() {
+            try {
+                const response = await fetch('/api/oauth/accounts');
+                if (response.ok) {
+                    const accounts = await response.json();
+                    renderConnectedAccounts(accounts);
+                } else {
+                    document.getElementById('connected-accounts-list').innerHTML = '<p class="text-red-400 text-sm">Failed to load accounts</p>';
+                }
+            } catch (err) {
+                document.getElementById('connected-accounts-list').innerHTML = '<p class="text-red-400 text-sm">Error loading accounts</p>';
+            }
+        }
+
+        function renderConnectedAccounts(accounts) {
+            const container = document.getElementById('connected-accounts-list');
+            if (!accounts || accounts.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-sm">No connected accounts. Click a button above to connect.</p>';
+                return;
+            }
+            let html = '<table class="w-full text-sm text-left text-gray-300"><thead><tr class="border-b border-gray-700"><th class="py-2">Provider</th><th class="py-2">Email</th><th class="py-2">Connected</th><th class="py-2">Actions</th></tr></thead><tbody>';
+            accounts.forEach(acc => {
+                const provider = acc.provider === 'gmail' ? 'Gmail' : 'Outlook';
+                const connected = acc.created_at ? new Date(acc.created_at).toLocaleDateString() : 'Unknown';
+                html += `<tr class="border-b border-gray-700"><td class="py-2">${provider}</td><td class="py-2">${acc.email || 'N/A'}</td><td class="py-2">${connected}</td><td class="py-2"><button onclick="disconnectOAuth('${acc.id}')" class="text-red-400 hover:text-red-300">Disconnect</button></td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function connectOAuth(provider) {
+            try {
+                const response = await fetch(`/api/oauth/connect/${provider}`);
+                const data = await response.json();
+                if (data.success && data.authorization_url) {
+                    // Navigate to OAuth consent screen in same window (needed for session)
+                    window.location.href = data.authorization_url;
+                } else {
+                    alert('Failed to start OAuth: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error connecting account: ' + err.message);
+            }
+        }
+
+        async function disconnectOAuth(accountId) {
+            if (!confirm('Are you sure you want to disconnect this account?')) return;
+            try {
+                const response = await fetch(`/api/oauth/accounts/${accountId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadConnectedAccounts();
+                } else {
+                    alert('Failed to disconnect account');
+                }
+            } catch (err) {
+                alert('Error disconnecting account');
+            }
         }
 
         function renderUsers(users) {

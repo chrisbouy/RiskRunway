@@ -1,7 +1,8 @@
 # app/database.py
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
-from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment
+from sqlalchemy.pool import NullPool
+from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment, ConnectedAccount
 import os
 
 
@@ -149,7 +150,11 @@ def _ensure_schema_updates(engine):
             if 'is_deleted' not in email_columns:
                 conn.exec_driver_sql("ALTER TABLE email_messages ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
                 print("Applied schema update: added email_messages.is_deleted")
-        except:
+            if 'connected_account_id' not in email_columns:
+                conn.exec_driver_sql("ALTER TABLE email_messages ADD COLUMN connected_account_id INTEGER")
+                print("Applied schema update: added email_messages.connected_account_id")
+        except Exception as e:
+            print(f"Error updating email_messages schema: {e}")
             pass  # Table might not exist yet
 
 

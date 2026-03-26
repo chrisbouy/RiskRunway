@@ -5,6 +5,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from werkzeug.security import generate_password_hash, check_password_hash
 import enum
+import json
 
 Base = declarative_base()
 
@@ -26,6 +27,18 @@ class QuoteStatus(enum.Enum):
     REVIEWED = "Reviewed"
     COMPARED = "Compared"
     CHOSEN = "Chosen"
+
+
+class EmailProvider(enum.Enum):
+    GMAIL = "gmail"
+    OUTLOOK = "outlook"
+
+
+class ConnectedAccountStatus(enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+    ERROR = "error"
 
 
 class DocumentType(enum.Enum):
@@ -340,6 +353,80 @@ class Broker(Base):
         }
 
 
+class ConnectedAccount(Base):
+    """
+    Represents an OAuth-connected email account (Gmail or Outlook).
+    Tokens are stored encrypted for security.
+    """
+    __tablename__ = 'connected_accounts'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    provider = Column(Enum(EmailProvider), nullable=False, index=True)
+    email_address = Column(String(255), nullable=False)
+    
+    # Encrypted token storage (JSON blob containing access_token, refresh_token, etc.)
+    # Stored encrypted using cryptography library
+    encrypted_tokens = Column(Text, nullable=False)
+    
+    # Token metadata
+    token_type = Column(String(50), nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    scope = Column(String(500), nullable=True)
+    
+    # Status tracking
+    status = Column(Enum(ConnectedAccountStatus), default=ConnectedAccountStatus.ACTIVE, nullable=False)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    
+    # Metadata
+    connected_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    disconnected_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship('User', backref='connected_accounts')
+    email_messages = relationship('EmailMessage', back_populates='connected_account', cascade='all, delete-orphan')
+    
+    def to_dict(self, include_tokens=False):
+        """Convert to dictionary for JSON serialization"""
+        result = {
+            'id': self.id,
+            'user_id': self.user_id,
+            'provider': self.provider.value if self.provider else None,
+            'email_address': self.email_address,
+            'status': self.status.value if self.status else None,
+            'last_sync_at': self.last_sync_at.isoformat() if self.last_sync_at else None,
+            'last_error': self.last_error,
+            'connected_at': self.connected_at.isoformat() if self.connected_at else None,
+            'disconnected_at': self.disconnected_at.isoformat() if self.disconnected_at else None
+        }
+        if include_tokens:
+            result['tokens'] = self.get_decrypted_tokens()
+        return result
+    
+    def get_decrypted_tokens(self):
+        """Decrypt and return tokens (for OAuth refresh)"""
+        from app.oauth_services import decrypt_token
+        return decrypt_token(self.encrypted_tokens)
+    
+    def set_encrypted_tokens(self, tokens: dict):
+        """Encrypt and store tokens"""
+        from app.oauth_services import encrypt_token
+        self.encrypted_tokens = encrypt_token(tokens)
+        
+        # Store additional metadata
+        if 'token_type' in tokens:
+            self.token_type = tokens.get('token_type')
+        if 'expires_in' in tokens:
+            from datetime import timedelta
+            self.expires_at = datetime.utcnow() + timedelta(seconds=tokens.get('expires_in', 3600))
+        if 'scope' in tokens:
+            self.scope = tokens.get('scope')
+    
+    def __repr__(self):
+        return f"<ConnectedAccount(id={self.id}, provider='{self.provider.value}', email='{self.email_address}')>"
+
+
 class EmailMessage(Base):
     """
     Represents an email message scraped from IMAP that matches a submission.
@@ -348,6 +435,7 @@ class EmailMessage(Base):
 
     id = Column(Integer, primary_key=True)
     submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=True, index=True)
+    connected_account_id = Column(Integer, ForeignKey('connected_accounts.id'), nullable=True, index=True)
     message_id = Column(String(500), unique=True, nullable=False, index=True)  # Email Message-ID header
     from_email = Column(String(255), nullable=False)
     from_name = Column(String(255), nullable=True)
@@ -367,6 +455,7 @@ class EmailMessage(Base):
 
     # Relationships
     submission = relationship('Submission', backref='emails')
+    connected_account = relationship('ConnectedAccount', back_populates='email_messages')
     attachments = relationship('EmailAttachment', back_populates='email', cascade='all, delete-orphan')
 
     def to_dict(self):

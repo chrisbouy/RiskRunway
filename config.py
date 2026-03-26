@@ -8,7 +8,10 @@ load_dotenv()
 class Config:
     # Flask settings
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-123'
-
+    # Session cookie settings - required for OAuth cross-site redirects
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY = True
     # File upload settings
     UPLOAD_FOLDER = os.path.join(Path(__file__).parent, 'uploads')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
@@ -29,13 +32,37 @@ class Config:
     BUG_REPORT_SENDER = os.environ.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
     SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 
-    # IMAP Email Scraping Configuration
-    IMAP_SERVER = os.environ.get('IMAP_SERVER', 'imap.gmail.com')  # Default to Gmail
-    IMAP_EMAIL = os.environ.get('IMAP_EMAIL', 'chrisbouy@gmail.com')  # Email address to monitor
-    IMAP_PASSWORD = os.environ.get('IMAP_PASSWORD', '')  # App password (recommended)
+    # OAuth Email Integration Configuration
+    # Gmail OAuth (configure via Google Cloud Console)
+    GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '')
+    GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
+    GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'http://localhost:5000/oauth/gmail/callback')
+    
+    # Microsoft Outlook OAuth (configure via Azure Portal)
+    MICROSOFT_CLIENT_ID = os.environ.get('MICROSOFT_CLIENT_ID', '')
+    MICROSOFT_CLIENT_SECRET = os.environ.get('MICROSOFT_CLIENT_SECRET', '')
+    MICROSOFT_REDIRECT_URI = os.environ.get('MICROSOFT_REDIRECT_URI', 'http://localhost:5000/oauth/microsoft/callback')
+    MICROSOFT_TENANT_ID = os.environ.get('MICROSOFT_TENANT_ID', 'common')
+    
+    # IMAP Email Scraping Configuration (active)
+    IMAP_SERVER = os.environ.get('IMAP_SERVER', 'imap.gmail.com')
+    IMAP_EMAIL = os.environ.get('IMAP_EMAIL', '')
+    IMAP_PASSWORD = os.environ.get('IMAP_PASSWORD', '')
     IMAP_USE_SSL = os.environ.get('IMAP_USE_SSL', 'true').lower() == 'true'
+    
+    # Email Processing
     EMAIL_SCRAPING_ENABLED = os.environ.get('EMAIL_SCRAPING_ENABLED', 'false').lower() == 'true'
+    EMAIL_SCRAPING_MODE = os.environ.get('EMAIL_SCRAPING_MODE', 'oauth').lower()  # oauth | imap | auto
+    # 'oauth' - use OAuth (Gmail/Outlook) only
+    # 'imap' - use IMAP only
+    # 'auto' - try OAuth first, fall back to IMAP if OAuth not configured
     EMAIL_SCRAPE_INTERVAL_MINUTES = int(os.environ.get('EMAIL_SCRAPE_INTERVAL_MINUTES', '5'))
+    
+    # Token encryption key (generate a new one for production)
+    TOKEN_ENCRYPTION_KEY = os.environ.get('TOKEN_ENCRYPTION_KEY', '')
+    if not TOKEN_ENCRYPTION_KEY:
+        import secrets
+        TOKEN_ENCRYPTION_KEY = secrets.token_hex(32)
 
     # Document storage settings
     STORAGE_PROVIDER = os.environ.get('STORAGE_PROVIDER', 'local')  # local | s3

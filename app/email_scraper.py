@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class EmailScraper:
     """
     Scrapes emails from IMAP server and matches them to submissions.
+    Supports Gmail, Outlook, and other IMAP-compatible email providers.
     """
     
     def __init__(self, imap_server: str, email_address: str, password: str, use_ssl: bool = True):
@@ -348,4 +349,3 @@ class EmailScraper:
             return {'success': False, 'error': str(e)}
         finally:
             self.disconnect()
-

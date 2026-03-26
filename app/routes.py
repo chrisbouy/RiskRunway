@@ -2,13 +2,16 @@
 from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for, send_file
 import os
 import json
+import logging
 from datetime import datetime
+from typing import Dict, Optional, List
 import requests
 import base64
 import uuid
 import shutil
 from functools import wraps
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import Session
 from app.parsers.two_pass_parser import process_quote_two_pass
 from app.parsers.application_parser import process_application_two_pass
 from app.database import (
@@ -22,10 +25,30 @@ from app.database import (
     set_current_db,
     get_available_databases
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment
-from app.email_scraper import EmailScraper
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus
+from app.email_scraper import EmailScraper  # IMAP-based scraping (active)
+from app.email_client import EmailClient, create_email_client  # OAuth (future)
+from app.oauth_services import get_oauth_service
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
+
+# Server-side OAuth flow cache — avoids Flask cookie 4KB size limit
+# The MSAL flow object (with PKCE verifier) is too large for cookie-based sessions
+import time
+_oauth_flow_cache = {}
+
+def _store_flow(state: str, flow: dict, user_id: int = None):
+    """Store MSAL flow object server-side, keyed by state. Also store user_id."""
+    _oauth_flow_cache[state] = {'flow': flow, 'user_id': user_id, 'ts': time.time()}
+
+def _get_flow(state: str) -> tuple:
+    """Retrieve and remove MSAL flow object. Returns (flow, user_id) or (None, None) if missing or expired."""
+    entry = _oauth_flow_cache.pop(state, None)
+    if entry and time.time() - entry['ts'] < 300:  # 5 minute expiry
+        return entry['flow'], entry.get('user_id')
+    return None, None
 
 
 def _storage_upload(local_path, object_key, content_type=None):
@@ -971,41 +994,281 @@ def view_quote_file(quote_id):
 @bp.route('/api/email/scrape', methods=['POST'])
 @login_required
 def trigger_email_scrape():
-    """Manually trigger email scraping"""
+    """uses OAuth if available, falls back to IMAP"""
     try:
         if not current_app.config.get('EMAIL_SCRAPING_ENABLED', False):
             return jsonify({'success': False, 'error': 'Email scraping is disabled'}), 400
+        else:
+            print("Email scraping is enabled")
+        user_id = session.get('user_id')
+        db_session = get_session()
+        print(f"Got database session for user {user_id}")
+        # print(f"Current app config: {current_app.config}")
         
-        if not current_app.config.get('IMAP_PASSWORD'):
-            return jsonify({'success': False, 'error': 'IMAP password not configured'}), 400
-        
-        # Initialize scraper
-        scraper = EmailScraper(
-            imap_server=current_app.config['IMAP_SERVER'],
-            email_address=current_app.config['IMAP_EMAIL'],
-            password=current_app.config['IMAP_PASSWORD'],
-            use_ssl=current_app.config['IMAP_USE_SSL']
-        )
-        
-        # Scrape emails from last 24 hours
-        from datetime import timedelta
-        since_date = datetime.now() - timedelta(hours=24)
-        
-        result = scraper.scrape_emails(since_date)
-        
-        # Log the action
-        log_action(
-            entity_type='system',
-            entity_id=0,
-            action='email_scrape_triggered',
-            user=session.get('username'),
-            details=json.dumps(result)
-        )
-        
-        return jsonify(result)
+        try:
+            # Check for connected OAuth accounts first
+            oauth_accounts = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+            ).all()
+            print(f"Found {len(oauth_accounts)} connected OAuth accounts")
+            
+            results = {
+                'success': True,
+                'processed': 0,
+                'matched': 0,
+                'new_emails': 0,
+                'accounts_checked': []
+            }
+            
+            # Try OAuth accounts first
+            if oauth_accounts:
+                print(f"Processing {len(oauth_accounts)} OAuth accounts")
+                for account in oauth_accounts:
+                    try:
+                        result = _scrape_emails_with_oauth(account, db_session, user_id)
+                        print(f"OAuth result: {result}")
+                        if result.get('success'):
+                            results['processed'] += result.get('processed', 0)
+                            results['matched'] += result.get('matched', 0)
+                            results['new_emails'] += result.get('new_emails', 0)
+                            results['accounts_checked'].append(f"{account.provider.value}: {account.email_address}")
+                            results['source'] = 'OAuth'
+                            # Collect email details for frontend display
+                            if 'email_details' not in results:
+                                results['email_details'] = []
+                            results['email_details'].extend(result.get('email_details', []))
+                    except Exception as oauth_error:
+                        logger.error(f"OAuth email scraping failed for {account.email_address}: {oauth_error}")
+                        results['accounts_checked'].append(f"{account.provider.value}: {account.email_address} (failed: {str(oauth_error)})")
+                
+                # If we successfully processed at least one OAuth account, return success
+                if results['accounts_checked']:
+                    db_session.close()
+                    
+                    # Log the action
+                    log_action(
+                        entity_type='system',
+                        entity_id=0,
+                        action='email_scrape_triggered',
+                        user=session.get('username'),
+                        details=json.dumps(results)
+                    )
+                    
+                    return jsonify(results)
+            
+            # Fall back to IMAP if no OAuth accounts or OAuth failed
+            if current_app.config.get('IMAP_PASSWORD'):
+                scraper = EmailScraper(
+                    imap_server=current_app.config['IMAP_SERVER'],
+                    email_address=current_app.config['IMAP_EMAIL'],
+                    password=current_app.config['IMAP_PASSWORD'],
+                    use_ssl=current_app.config['IMAP_USE_SSL']
+                )
+                
+                # Scrape emails from last 24 hours
+                from datetime import timedelta
+                since_date = datetime.now() - timedelta(days=24)
+                
+                imap_result = scraper.scrape_emails(since_date)
+                results.update(imap_result)
+                results['source'] = 'IMAP'
+            else:
+                if not oauth_accounts:
+                    results['success'] = False
+                    results['error'] = 'No OAuth accounts connected and IMAP not configured'
+            
+            db_session.close()
+            
+            # Log the action
+            log_action(
+                entity_type='system',
+                entity_id=0,
+                action='email_scrape_triggered',
+                user=session.get('username'),
+                details=json.dumps(results)
+            )
+            
+            return jsonify(results)
+            
+        finally:
+            db_session.close()
         
     except Exception as e:
+        logger.error(f"Email scraping error: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _get_user_broker_emails(db_session: Session, user_id: int) -> List[str]:
+    """Get all active broker email addresses for a user"""
+    broker_emails = []
+    try:
+        brokers = db_session.query(Broker).filter(
+            Broker.user_id == user_id,
+            Broker.is_enabled == True,
+            Broker.email.isnot(None)
+        ).all()
+        broker_emails = [b.email.strip().lower() for b in brokers if b.email]
+    except Exception as e:
+        logger.warning(f"Failed to get broker emails for user {user_id}: {e}")
+    return broker_emails
+
+
+def _get_user_quote_subjects(db_session: Session, user_id: int) -> List[str]:
+    """Get all quote carrier names from submissions assigned to user"""
+    quote_subjects = []
+    try:
+        # Get submissions assigned to this user
+        submissions = db_session.query(Submission).filter(
+            Submission.assigned_to == user_id
+        ).all()
+        
+        # Collect carrier names from quotes
+        carriers = set()
+        for sub in submissions:
+            for quote in sub.quotes:
+                if quote.carrier_name:
+                    carriers.add(quote.carrier_name.strip().lower())
+        
+        quote_subjects = list(carriers)
+    except Exception as e:
+        logger.warning(f"Failed to get quote subjects for user {user_id}: {e}")
+    return quote_subjects
+
+
+def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, user_id: int) -> Dict:
+    """
+    Scrape emails using OAuth credentials from a connected account.
+    Filters emails by broker senders and quote subjects.
+    """
+    from datetime import timedelta
+    from app.oauth_services import get_oauth_service, get_unified_email_data
+    
+    try:
+        # Get the provider config
+        config = {
+            'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+            'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+            'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+            'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+            'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+            'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+            'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+        }
+        
+        # Get tokens
+        tokens = account.get_decrypted_tokens()
+        # print(f"Decrypted tokens for {account.email_address}: {tokens}")
+        access_token = tokens.get('access_token') if tokens else None
+        
+        if not access_token:
+            logger.warning(f"No valid access token for OAuth account {account.email_address} (provider: {account.provider.value})")
+            return {
+                'success': False,
+                'error': f'No valid access token for {account.email_address}',
+                'provider': account.provider.value.lower()
+            }
+        
+        # Get OAuth service
+        provider_str = account.provider.value.lower()
+        print(f"Getting OAuth service for {provider_str}")
+        oauth_service = get_oauth_service(provider_str, config)
+        
+        
+        
+        # Get broker emails and quote subjects for filtering
+        broker_emails = _get_user_broker_emails(db_session, user_id)
+        print(f"Broker emails for user {user_id}: {broker_emails}")
+        quote_subjects = _get_user_quote_subjects(db_session, user_id)
+        print(f"Quote subjects for user {user_id}: {quote_subjects}")
+
+        
+        # Fetch emails from last 24 hours
+        since_date = datetime.now() - timedelta(days=24)
+        unified_emails = oauth_service.fetch_emails(
+            access_token=access_token,
+            max_results=50,
+            since_date=since_date,
+            broker_emails=broker_emails,
+            quote_subjects=quote_subjects
+        )
+        
+        if not unified_emails:
+            return {
+                'success': True,
+                'processed': 0,
+                'new_emails': 0,
+                'email_details': []
+            }
+        
+        # Get already-processed message IDs
+        existing_message_ids = set(
+            row[0] for row in db_session.query(EmailMessage.message_id).all()
+        )
+        
+        processed = 0
+        new_emails = 0
+        email_details = []
+        
+        # Process each email
+        for unified_email in unified_emails:
+            processed += 1
+            print(f"Processing email {unified_email.message_id}")
+            print(f"Email details: From: {unified_email.from_email}, Subject: {unified_email.subject}, Date: {unified_email.date}")
+            # Skip if already processed
+            if unified_email.message_id in existing_message_ids:
+                continue
+            
+            new_emails += 1
+            email_details.append({
+                'from': unified_email.from_email or unified_email.from_name or 'Unknown',
+                'subject': unified_email.subject or '(No subject)',
+                'date': unified_email.date.isoformat() if unified_email.date else 'Unknown'
+            })
+            
+            # Save email to database (not matched to submission yet - manual matching needed)
+            email_msg = EmailMessage(
+                message_id=unified_email.message_id,
+                subject=unified_email.subject,
+                from_email=unified_email.from_email,
+                from_name=unified_email.from_name,
+                to_email=unified_email.to_email,
+                received_date=unified_email.date,
+                body_text=unified_email.body_text,
+                body_html=unified_email.body_html,
+                has_attachments=len(unified_email.attachments) > 0,
+                attachment_count=len(unified_email.attachments),
+                is_read=False
+            )
+            
+            db_session.add(email_msg)
+            db_session.flush()  # Get email_msg.id before creating attachments
+            
+            
+            # Save attachments
+            for att in unified_email.attachments:
+                attachment = EmailAttachment(
+                    email_id=email_msg.id,
+                    filename=att.get('filename', ''),
+                    content_type=att.get('content_type', ''),
+                    size_bytes=att.get('size', 0)
+                )
+                db_session.add(attachment)
+        
+        db_session.commit()
+        
+        return {
+            'success': True,
+            'processed': processed,
+            'new_emails': new_emails,
+            'email_details': email_details,
+            'provider': provider_str
+        }
+        
+    except Exception as e:
+        logger.error(f"OAuth email scraping error: {str(e)}", exc_info=True)
+        raise
+
 
 
 @bp.route('/api/email/status', methods=['GET'])
@@ -1059,14 +1322,14 @@ def get_unread_emails():
             try:
                 emails = db_session.query(EmailMessage).filter(
                     EmailMessage.is_read == False,
-                    EmailMessage.submission_id != None,
+                    # EmailMessage.submission_id != None,
                     EmailMessage.is_deleted == False
                 ).order_by(EmailMessage.received_date.desc()).all()
             except Exception:
                 # is_deleted column might not exist yet
                 emails = db_session.query(EmailMessage).filter(
                     EmailMessage.is_read == False,
-                    EmailMessage.submission_id != None
+                    # EmailMessage.submission_id != None
                 ).order_by(EmailMessage.received_date.desc()).all()
             
             email_list = []
@@ -1364,6 +1627,326 @@ Date: {email.received_date}
             })
         finally:
             db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# OAUTH EMAIL CONNECTIONS
+# ============================================================================
+
+@bp.route('/api/oauth/connect/<provider>', methods=['GET'])
+@login_required
+def oauth_connect(provider):
+    """
+    Start OAuth flow to connect an email account (Gmail or Outlook).
+    """
+    try:
+        if provider not in ['gmail', 'outlook']:
+            return jsonify({'success': False, 'error': 'Invalid provider'}), 400
+        
+        user_id = session.get('user_id')
+        
+        # Get OAuth config
+        config = {
+            'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+            'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+            'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+            'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+            'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+            'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+            'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+        }
+        
+        # Check if credentials are configured
+        if provider == 'gmail':
+            if not config.get('GMAIL_CLIENT_ID') or not config.get('GMAIL_CLIENT_SECRET'):
+                return jsonify({'success': False, 'error': 'Gmail OAuth not configured. Add GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET to environment.'}), 400
+        else:
+            if not config.get('MICROSOFT_CLIENT_ID') or not config.get('MICROSOFT_CLIENT_SECRET'):
+                return jsonify({'success': False, 'error': 'Outlook OAuth not configured. Add MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET to environment.'}), 400
+        
+        # Get OAuth service
+        oauth_service = get_oauth_service(provider, config)
+        
+        if provider == 'outlook':
+            auth_url, flow = oauth_service.get_authorization_url()
+            flow_state = flow.get('state', '')
+            _store_flow(flow_state, flow, user_id=user_id)  # Store user_id server-side with flow
+            state = flow_state
+        else:
+            auth_url, state = oauth_service.get_authorization_url()
+            session[f'oauth_state_{provider}'] = state
+            session[f'oauth_user_id_{provider}'] = user_id  # Store user_id in session too
+        
+        return jsonify({
+            'success': True,
+            'authorization_url': auth_url,
+            'state': state
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/oauth/<provider>/callback', methods=['GET'])
+def oauth_callback(provider):
+    """
+    OAuth callback handler - exchanges code for tokens.
+    """
+    try:
+        if provider not in ['gmail', 'outlook']:
+            return jsonify({'success': False, 'error': 'Invalid provider'}), 400
+        
+        # Get parameters
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        
+        if error:
+            return redirect(url_for('main.kanban', oauth_error=error))
+        
+        if not code:
+            return redirect(url_for('main.kanban', oauth_error='No authorization code received'))
+
+        # Get OAuth config
+        config = {
+            'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+            'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+            'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+            'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+            'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+            'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+            'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+        }
+
+        # Get OAuth service
+        oauth_service = get_oauth_service(provider, config)
+
+        # Provider-specific token exchange (do this BEFORE checking user_id)
+        if provider == 'outlook':
+            # Retrieve flow from server-side cache using state from callback URL
+            flow_state = request.args.get('state', '')
+            flow, user_id = _get_flow(flow_state)
+            if not flow:
+                raise Exception('OAuth session expired — please try connecting again')
+            auth_response = dict(request.args)
+            tokens = oauth_service.exchange_code_for_tokens(auth_response, flow)
+
+        else:
+            # Gmail — extract user_id from session, then validate state
+            user_id = session.get(f'oauth_user_id_{provider}')
+            expected_state = session.get(f'oauth_state_{provider}')
+            
+            if state != expected_state:
+                return redirect(url_for('main.kanban', oauth_error='Invalid state parameter'))
+            
+            tokens = oauth_service.exchange_code_for_tokens(code, state)
+            session.pop(f'oauth_state_{provider}', None)
+            session.pop(f'oauth_user_id_{provider}', None)
+
+        # Verify we have a valid user_id
+        if not user_id:
+            return redirect(url_for('main.kanban', oauth_error='Unable to determine user. Please log in and try again.'))
+
+        # Get user email
+        user_email = oauth_service.get_user_email(tokens['access_token'])
+
+        # Save connected account (now do DB operations)
+        db_session = get_session()
+        try:
+            # Check if account already connected
+            existing = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.provider == EmailProvider[provider.upper()],
+                ConnectedAccount.email_address == user_email,
+                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+            ).first()
+
+            if existing:
+                # Update existing tokens
+                existing.set_encrypted_tokens(tokens)
+                existing.status = ConnectedAccountStatus.ACTIVE
+            else:
+                # Create new connected account
+                account = ConnectedAccount(
+                    user_id=user_id,
+                    provider=EmailProvider[provider.upper()],
+                    email_address=user_email,
+                    encrypted_tokens='',
+                    status=ConnectedAccountStatus.ACTIVE
+                )
+                account.set_encrypted_tokens(tokens)
+                db_session.add(account)
+
+            db_session.commit()
+            db_session.close()
+
+            return redirect(url_for('main.kanban', oauth_success=f'{provider.capitalize()} account connected successfully!'))
+
+        except Exception as db_error:
+            db_session.close()
+            raise db_error
+
+    except Exception as e:
+        logger.error(f"OAuth callback error for {provider}: {str(e)}", exc_info=True)
+        return redirect(url_for('main.kanban', oauth_error=str(e)))
+
+@bp.route('/api/oauth/accounts', methods=['GET'])
+@login_required
+def get_connected_accounts():
+    """
+    Get all connected email accounts for the current user.
+    """
+    try:
+        user_id = session.get('user_id')
+        
+        db_session = get_session()
+        try:
+            accounts = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id
+            ).all()
+            
+            return jsonify({
+                'success': True,
+                'accounts': [account.to_dict() for account in accounts]
+            })
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/oauth/accounts/<int:account_id>', methods=['DELETE'])
+@login_required
+def disconnect_account(account_id):
+    """
+    Disconnect a connected email account (revokes tokens).
+    """
+    try:
+        user_id = session.get('user_id')
+        
+        db_session = get_session()
+        try:
+            account = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.id == account_id,
+                ConnectedAccount.user_id == user_id
+            ).first()
+            
+            if not account:
+                return jsonify({'success': False, 'error': 'Account not found'}), 404
+            
+            # Mark as revoked
+            account.status = ConnectedAccountStatus.REVOKED
+            from datetime import datetime
+            account.disconnected_at = datetime.utcnow()
+            
+            # Clear tokens
+            account.encrypted_tokens = ''
+            
+            db_session.commit()
+            
+            # Log action
+            log_action(
+                entity_type='connected_account',
+                entity_id=account_id,
+                action='disconnected',
+                user=session.get('username'),
+                details=f"Disconnected {account.provider.value} account: {account.email_address}"
+            )
+            
+            return jsonify({'success': True})
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# //is this needed
+@bp.route('/api/oauth/sync/<int:account_id>', methods=['POST'])
+@login_required
+def sync_account_emails(account_id):
+    """
+    Sync emails from a connected account.
+    """
+    try:
+        user_id = session.get('user_id')
+        
+        db_session = get_session()
+        try:
+            account = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.id == account_id,
+                ConnectedAccount.user_id == user_id
+            ).first()
+            
+            if not account:
+                return jsonify({'success': False, 'error': 'Account not found'}), 404
+            
+            if account.status != ConnectedAccountStatus.ACTIVE:
+                return jsonify({'success': False, 'error': 'Account is not active'}), 400
+        finally:
+            db_session.close()
+        
+        # Create email client and sync
+        config = {
+            'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+            'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+            'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+            'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+            'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+            'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+            'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+        }
+        
+        email_client = create_email_client(config)
+        result = email_client.fetch_and_process_emails(account_id)
+        
+        # Log action
+        log_action(
+            entity_type='connected_account',
+            entity_id=account_id,
+            action='emails_synced',
+            user=session.get('username'),
+            details=json.dumps(result)
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/oauth/config_status', methods=['GET'])
+@login_required
+def get_oauth_config_status():
+    """
+    Get OAuth configuration status.
+    """
+    try:
+        gmail_configured = bool(
+            current_app.config.get('GMAIL_CLIENT_ID') and 
+            current_app.config.get('GMAIL_CLIENT_SECRET')
+        )
+        outlook_configured = bool(
+            current_app.config.get('MICROSOFT_CLIENT_ID') and 
+            current_app.config.get('MICROSOFT_CLIENT_SECRET')
+        )
+        
+        return jsonify({
+            'success': True,
+            'config': {
+                'gmail': {
+                    'configured': gmail_configured,
+                    'client_id_set': bool(current_app.config.get('GMAIL_CLIENT_ID'))
+                },
+                'outlook': {
+                    'configured': outlook_configured,
+                    'client_id_set': bool(current_app.config.get('MICROSOFT_CLIENT_ID'))
+                }
+            }
+        })
+        
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -2262,23 +2845,126 @@ def submit_to_market(submission_id):
 
 
 def _send_broker_email(submission, broker, documents):
-    """Send email to broker with zip file attachment using SendGrid HTTP API."""
+    """
+    Send email to broker with zip file attachment.
+    Uses connected OAuth account (Outlook/Gmail) if available, falls back to SendGrid.
+    """
+    import base64
+    
+    # Create zip file
+    zip_path = _generate_broker_zip(submission, broker, documents)
+    
+    try:
+        # Try to use connected OAuth account first
+        user_id = session.get('user_id')
+        db_session = get_session()
+        
+        try:
+            # Look for a connected Outlook account
+            outlook_account = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.provider == EmailProvider.OUTLOOK,
+                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+            ).first()
+            
+            if outlook_account:
+                tokens = outlook_account.get_decrypted_tokens()
+                access_token = tokens.get('access_token')
+                
+                if access_token:
+                    print(f"[BROKER EMAIL] Using OAuth account: {outlook_account.email_address}")
+                    
+                    # Prepare email body
+                    if broker.email_body:
+                        body = broker.email_body
+                    else:
+                        body = f"""Hello {broker.name},
+
+Please find attached the insurance submission documents for {submission.insured_name}.
+
+Effective Date: {submission.effective_date}
+State: {submission.state}
+
+Best regards,
+Insurance Placement System"""
+                    
+                    # Add letterhead if configured
+                    if broker.letterhead:
+                        body = f"{body}\n\n{broker.letterhead}"
+                    
+                    # Read and encode zip file for attachment
+                    with open(zip_path, 'rb') as f:
+                        zip_data = f.read()
+                    
+                    zip_base64 = base64.b64encode(zip_data).decode()
+                    
+                    # Send via Graph API
+                    config = {
+                        'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+                        'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+                        'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+                        'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+                    }
+                    
+                    oauth_service = get_oauth_service('outlook', config)
+                    
+                    # Send email with attachment
+                    message_id = oauth_service.send_email(
+                        access_token=access_token,
+                        to_recipients=[broker.email],
+                        subject=f"Insurance Submission - {submission.insured_name}",
+                        body_text=body,
+                        attachments=[{
+                            'filename': os.path.basename(zip_path),
+                            'content_base64': zip_base64,
+                            'content_type': 'application/zip'
+                        }]
+                    )
+                    
+                    print(f"[BROKER EMAIL] Successfully sent via OAuth from {outlook_account.email_address}")
+                    return message_id
+        
+        except Exception as oauth_error:
+            print(f"[BROKER EMAIL] OAuth send failed: {oauth_error}")
+            logger.error(f"OAuth email send error: {oauth_error}")
+            # Fall through to SendGrid fallback
+        
+        finally:
+            db_session.close()
+        
+        # Fall back to SendGrid if no OAuth account available
+        print(f"[BROKER EMAIL] Falling back to SendGrid")
+        return _send_broker_email_with_sendgrid(submission, broker, documents, zip_path)
+        
+    except Exception as e:
+        print(f"[BROKER EMAIL] FAILED to send to {broker.name}: {type(e).__name__}: {str(e)}")
+        raise
+    
+    finally:
+        # Clean up zip file
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+
+def _send_broker_email_with_sendgrid(submission, broker, documents, zip_path):
+    """
+    Fallback: Send email to broker using SendGrid HTTP API.
+    Only used if no OAuth account is connected.
+    """
     import base64
     from sendgrid import SendGridAPIClient
     from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 
-    # Create zip file
-    zip_path = _generate_broker_zip(submission, broker, documents)
-
     try:
         # Email configuration
         api_key = current_app.config.get('SENDGRID_API_KEY')
-        sender_email = current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
+        # Use broker-specific sender email, with fallback to bug report sender
+        sender_email = current_app.config.get('BROKER_EMAIL_SENDER') or current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
 
         if not api_key:
             raise ValueError("SendGrid API key is not configured. Set SENDGRID_API_KEY environment variable.")
 
-        # Build email body - use custom body if configured, otherwise use default
+        # Build email body
         if broker.email_body:
             body = broker.email_body
         else:
@@ -2318,19 +3004,15 @@ Insurance Placement System"""
         message.attachment = attached_file
 
         # Send via SendGrid HTTP API
-        print(f"[BROKER EMAIL] Sending submission to {broker.name} ({broker.email})...")
+        print(f"[BROKER EMAIL] Sending via SendGrid from {sender_email}...")
         sg = SendGridAPIClient(api_key)
         response = sg.send(message)
-        print(f"[BROKER EMAIL] Success! Status code: {response.status_code}")
+        print(f"[BROKER EMAIL] SendGrid success! Status code: {response.status_code}")
         return response
 
     except Exception as e:
-        print(f"[BROKER EMAIL] FAILED to send to {broker.name}: {type(e).__name__}: {str(e)}")
+        print(f"[BROKER EMAIL] SendGrid FAILED to send to {broker.name}: {type(e).__name__}: {str(e)}")
         raise
-    finally:
-        # Clean up zip file
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
 
 
 def _generate_broker_zip(submission, broker, documents):
