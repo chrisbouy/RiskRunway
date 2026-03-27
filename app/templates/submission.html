@@ -6,39 +6,39 @@
     <link href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /* Theme Variables */
+        /* Theme Variables - Default to Dark */
         :root {
-            --color-primary: #1e40af;
-            --color-primary-dark: #1e3a8a;
-            --color-primary-light: #3b82f6;
-            --color-success: #059669;
-            --color-warning: #d97706;
-            --color-danger: #dc2626;
-            --color-neutral-50: #f8fafc;
-            --color-neutral-100: #f1f5f9;
-            --color-neutral-200: #e2e8f0;
-            --color-neutral-300: #cbd5e1;
-            --color-neutral-400: #94a3b8;
-            --color-neutral-500: #64748b;
-            --color-neutral-600: #475569;
-            --color-neutral-700: #334155;
-            --color-neutral-800: #1e293b;
-            --color-neutral-900: #0f172a;
+            --color-primary: #4a9eff;
+            --color-primary-dark: #3b82f6;
+            --color-primary-light: #60a5fa;
+            --color-success: #4ade80;
+            --color-warning: #ff9f40;
+            --color-danger: #ef4444;
+            --color-neutral-50: #1a1a1a;
+            --color-neutral-100: #2a2a2a;
+            --color-neutral-200: #3a3a3a;
+            --color-neutral-300: #4a4a4a;
+            --color-neutral-400: #6a6a6a;
+            --color-neutral-500: #8a8a8a;
+            --color-neutral-600: #a0a0a0;
+            --color-neutral-700: #c0c0c0;
+            --color-neutral-800: #e0e0e0;
+            --color-neutral-900: #f0f0f0;
 
             /* Excel-inspired table colors */
-            --table-header-bg: #4472c4;
+            --table-header-bg: #2a2a2a;
             --table-header-text: #ffffff;
-            --table-border: #d0d7de;
-            --table-row-hover: #f6f8fa;
+            --table-border: #3a3a3a;
+            --table-row-hover: #252525;
 
             /* Theme-specific variables */
-            --bg-gradient-start: #f8fafc;
-            --bg-gradient-end: #e2e8f0;
-            --card-bg: white;
-            --text-primary: var(--color-neutral-800);
-            --border-color: var(--color-neutral-200);
-            --header-gradient-start: var(--color-primary-dark);
-            --header-gradient-end: var(--color-primary);
+            --bg-gradient-start: #0a0a0a;
+            --bg-gradient-end: #1a1a1a;
+            --card-bg: #1a1a1a;
+            --text-primary: #e5e5e5;
+            --border-color: #2a2a2a;
+            --header-gradient-start: #0f0f0f;
+            --header-gradient-end: #1a1a1a;
 
             /* Typography */
             --font-weight-normal: 400;
@@ -287,6 +287,8 @@
             color: var(--color-neutral-700);
             cursor: pointer;
             transition: all 0.15s;
+            font-weight: 500;
+            font-size: 1rem;
         }
 
         table tbody td:last-child {
@@ -298,6 +300,41 @@
             color: var(--color-primary);
         }
 
+        .row-muted {
+            opacity: 0.45;
+            filter: grayscale(0.65);
+        }
+
+        .eye-toggle-btn {
+            border: 1px solid var(--color-neutral-300);
+            background: white;
+            border-radius: 0.375rem;
+            width: 1.75rem;
+            height: 1.75rem;
+            padding: 0;
+            justify-content: center;
+        }
+
+        .eye-toggle-btn:hover {
+            border-color: var(--color-primary);
+            transform: none;
+            box-shadow: none;
+        }
+
+        #moveToBindBtn {
+            background: #94a3b8;
+            color: white;
+        }
+
+        #submitToMarketBtn {
+            background: #2d4a8a;
+            color: white;
+        }
+
+        #moveToBindBtn.ready {
+            background: #d97706;
+        }
+
         /* Monospace for data fields */
         .field-value {
             font-family: 'IBM Plex Mono', 'Courier New', monospace;
@@ -305,58 +342,99 @@
         }
 
         .field-value .text-gray-400 {
-            color: var(--color-neutral-400);
+            color: #4b5563 !important;
             font-style: italic;
+            font-weight: 400 !important;
         }
 
         /* Quote color palette - refined for professionalism */
-        .quote-color-0 { 
+        .quote-color-0 {
             background: linear-gradient(135deg, #fed7aa5e 0%, #fed7aa 100%) !important;
-            border-left: 3px solid #f59221;
+            border-left: 3px solid #ffba6c;
         }
-        .quote-color-0 .file-icon { fill: #f59221; }
-        
-        .quote-color-1 { 
+        .quote-color-0 .file-icon { fill: #000000; }
+        .quote-color-0 .file-name { color: #000000; }
+        .quote-color-0 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-1 {
             background: linear-gradient(135deg, #d1fae5aa 0%, #d1fae5 100%) !important;
             border-left: 3px solid #10b981;
         }
-        .quote-color-1 .file-icon { fill: #10b981; }
-        
-        .quote-color-2 { 
+        .quote-color-1 .file-icon { fill: #000000; }
+        .quote-color-1 .file-name { color: #000000; }
+        .quote-color-1 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-2 {
             background: linear-gradient(135deg, #fef3c7bb 0%, #fef3c7 100%) !important;
             border-left: 3px solid #f59e0b;
         }
-        .quote-color-2 .file-icon { fill: #f59e0b; }
-        
-        .quote-color-3 { 
+        .quote-color-2 .file-icon { fill: #000000; }
+        .quote-color-2 .file-name { color: #000000; }
+        .quote-color-2 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-3 {
             background: linear-gradient(135deg, #b89aff4c 0%, #d4c1ff 100%) !important;
             border-left: 3px solid #8b5cf6;
         }
-        .quote-color-3 .file-icon { fill: #8b5cf6; }
-        
-        .quote-color-4 { 
+        .quote-color-3 .file-icon { fill: #000000; }
+        .quote-color-3 .file-name { color: #000000; }
+        .quote-color-3 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-4 {
             background: linear-gradient(135deg, #faacd391 0%, #fdcbe4 100%) !important;
             border-left: 3px solid #ec4899;
         }
-        .quote-color-4 .file-icon { fill: #ec4899; }
-        
-        .quote-color-5 { 
+        .quote-color-4 .file-icon { fill: #000000; }
+        .quote-color-4 .file-name { color: #000000; }
+        .quote-color-4 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-5 {
             background: linear-gradient(135deg, #f0fdfa 0%, #cffafe 100%) !important;
             border-left: 3px solid #06b6d4;
         }
-        .quote-color-5 .file-icon { fill: #06b6d4; }
-        
-        .quote-color-6 { 
+        .quote-color-5 .file-icon { fill: #000000; }
+        .quote-color-5 .file-name { color: #000000; }
+        .quote-color-5 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-6 {
             background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%) !important;
             border-left: 3px solid #ef4444;
         }
-        .quote-color-6 .file-icon { fill: #ef4444; }
-        
-        .quote-color-7 { 
+        .quote-color-6 .file-icon { fill: #000000; }
+        .quote-color-6 .file-name { color: #000000; }
+        .quote-color-6 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .quote-color-7 {
             background: linear-gradient(135deg, #f7fee7 0%, #ecfccb 100%) !important;
             border-left: 3px solid #84cc16;
         }
-        .quote-color-7 .file-icon { fill: #84cc16; }
+        .quote-color-7 .file-icon { fill: #000000; }
+        .quote-color-7 .file-name { color: #000000; }
+        .quote-color-7 td {
+            color: #1f2937 !important;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+        }
 
         /* File upload section */
         .upload-zone {
@@ -469,31 +547,99 @@
             color: rgba(255, 255, 255, 0.9);
         }
 
-        /* Theme selector */
-        .theme-selector {
+        /* Hamburger menu */
+        .menu-container {
+            position: relative;
+        }
+
+        .menu-toggle-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 0.5rem;
+            border-radius: var(--button-border-radius);
+            cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.375rem 0.75rem;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .menu-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .header-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
             border-radius: var(--button-border-radius);
-            border: var(--button-border-width) solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 220px;
+            margin-top: 0.5rem;
+            display: none;
+            flex-direction: column;
+            z-index: 1000;
         }
 
-        .theme-selector label {
-            font-size: 0.813rem;
-            font-weight: var(--font-weight-semibold);
-            color: rgba(255, 255, 255, 0.9);
-            white-space: nowrap;
+        .header-menu.active {
+            display: flex;
         }
 
-        .theme-selector select {
-            background: rgba(255, 255, 255, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: var(--color-neutral-800);
+        .menu-item {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .menu-item label {
             font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
-            min-width: 140px;
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-neutral-600);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .menu-item select {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 0.813rem;
+            padding: 0.5rem;
+            border-radius: var(--button-border-radius);
+            font-family: 'IBM Plex Sans', sans-serif;
+        }
+
+        .menu-action-btn {
+            padding: 0.75rem 1rem;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 0.813rem;
+            font-weight: var(--font-weight-medium);
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.15s;
+            text-decoration: none;
+            display: block;
+        }
+
+        .menu-action-btn:last-child {
+            border-bottom: none;
+        }
+
+        .menu-action-btn:hover {
+            background: var(--border-color);
+        }
+
+        .menu-action-btn#deleteSubmissionBtn:hover {
+            background: rgba(220, 38, 38, 0.1);
+            color: var(--color-danger);
         }
 
         select {
@@ -539,34 +685,18 @@
             letter-spacing: var(--letter-spacing-normal);
         }
 
-        #saveBtn {
-            background: var(--color-success);
+
+
+        #deleteSubmissionBtn {
+            background: var(--color-danger);
             color: white;
         }
 
-        #saveBtn:hover:not(:disabled) {
-            background: #047857;
+        #deleteSubmissionBtn:hover {
+            background: #b91c1c;
             transform: translateY(-1px);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-
-        #saveBtn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        #cancelBtn {
-            background: var(--color-neutral-500);
-            color: white;
-        }
-
-        #cancelBtn:hover {
-            background: var(--color-neutral-600);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-
 
         #reportBugBtn {
             background: var(--color-danger);
@@ -699,7 +829,7 @@
 
         .dz-message p {
             margin: 0.125rem 0;
-            color: var(--color-neutral-600);
+            color: #000000;
         }
 
         /* Bug report modal */
@@ -830,6 +960,182 @@
             background: var(--color-neutral-500);
             color: white;
         }
+
+        /* Stage-based layout */
+        .stage-progress {
+            display: flex;
+            background: #f0f2f7;
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .stage-step {
+            flex: 1;
+            padding: 0.625rem 0.875rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-right: 1px solid var(--border-color);
+            background: #f8fafc;
+        }
+
+        .stage-step:last-child {
+            border-right: none;
+        }
+
+        .stage-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.688rem;
+            font-weight: 700;
+            background: #dbe3ef;
+            color: #64748b;
+        }
+
+        .stage-step.done {
+            color: #166534;
+            background: #ecfdf5;
+        }
+
+        .stage-step.done .stage-dot {
+            background: #166534;
+            color: #fff;
+        }
+
+        .stage-step.current-submission {
+            color: #1e3a8a;
+            background: #eef2ff;
+        }
+
+        .stage-step.current-submission .stage-dot {
+            background: #1e3a8a;
+            color: #fff;
+        }
+
+        .stage-step.current-quoting {
+            color: #9a3412;
+            background: #fff7ed;
+        }
+
+        .stage-step.current-quoting .stage-dot {
+            background: #c2410c;
+            color: #fff;
+        }
+
+        .stage-step.current-bind {
+            color: #14532d;
+            background: #f0fdf4;
+        }
+
+        .stage-step.current-bind .stage-dot {
+            background: #166534;
+            color: #fff;
+        }
+
+        .stage-section {
+            display: none;
+        }
+
+        .stage-section.active {
+            display: block;
+        }
+
+        .stage-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+            padding: 0.75rem;
+        }
+
+        .stage-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .stage-field-label {
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-neutral-500);
+        }
+
+        .stage-field-value {
+            font-size: 0.875rem;
+            color: var(--color-neutral-700);
+            font-weight: 600;
+        }
+
+        .stage-checklist {
+            padding: 0.75rem;
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        .stage-check-item {
+            font-size: 0.813rem;
+            color: var(--color-neutral-700);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stage-check-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.625rem;
+            font-weight: 700;
+        }
+
+        .stage-check-icon.ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .stage-check-icon.pending {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .doc-list {
+            display: grid;
+            gap: 0.375rem;
+            padding: 0.75rem;
+        }
+
+        .doc-item {
+            border: 1px solid var(--color-neutral-200);
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.625rem;
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .doc-item a {
+            color: var(--color-primary);
+            text-decoration: none;
+        }
+
+        .doc-item a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -849,37 +1155,87 @@
                 <div id="appetiteScoreBadge" style="display: none;">
                     <!-- Appetite score will be inserted here -->
                 </div>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect">
-                        <option value="traditional-light">Traditional Light</option>
-                        <option value="traditional-dark">Traditional Dark</option>
-                        <option value="modern-light">Modern Light</option>
-                        <option value="modern-dark">Modern Dark</option>
-                    </select>
-                </div>
-                <div class="status-controls">
-                    <label class="status-label">Status:</label>
-                    <select id="statusDropdown">
-                        <option value="RECEIVED">Received</option>
-                        <option value="IN_PROGRESS">In Progress</option>
-                        <option value="CHOSEN">Chosen</option>
-                        <option value="SENT_TO_FINANCE">Sent to Finance</option>
-                    </select>
-                    <button id="saveBtn" disabled>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M13.5 4.5L6 12L2.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Hamburger menu -->
+                <div class="menu-container">
+                    <button id="menuToggleBtn" class="menu-toggle-btn" title="Menu">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2 5H18M2 10H18M2 15H18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         </svg>
-                        Save
                     </button>
-                    <button id="cancelBtn">Cancel</button>
-                    <button id="reportBugBtn">Report Bug</button>
+                    <div id="headerMenu" class="header-menu">
+                        <div class="menu-item">
+                            <label class="status-label">Status:</label>
+                            <select id="statusDropdown">
+                                <option value="RECEIVED">Received</option>
+                                <option value="IN_PROGRESS">In Progress</option>
+                                <option value="CHOSEN">Chosen</option>
+                                <option value="SENT_TO_FINANCE">Sent to Finance</option>
+                            </select>
+                        </div>
+                        <button id="deleteSubmissionBtn" class="menu-action-btn">Delete Submission</button>
+                        <button id="reportBugBtn" class="menu-action-btn">Report Bug</button>
+                        <a href="/logout" class="menu-action-btn">Logout</a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div id="bugCaptureRoot" class="main-container">
+        <div class="stage-progress" id="stageProgress">
+            <div class="stage-step" data-stage="submission">
+                <span class="stage-dot">1</span>
+                <span>Submission</span>
+            </div>
+            <div class="stage-step" data-stage="quoting">
+                <span class="stage-dot">2</span>
+                <span>Quoting</span>
+            </div>
+            <div class="stage-step" data-stage="bind">
+                <span class="stage-dot">3</span>
+                <span>Bound</span>
+            </div>
+        </div>
+
+        <div id="submissionStageSection" class="stage-section">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Client &amp; Submission Info</h2>
+                </div>
+                <div id="submissionStageInfo" class="stage-grid"></div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Submission Readiness</h2>
+                </div>
+                <div class="stage-checklist">
+                    <div class="stage-check-item"><span class="stage-check-icon ok">✓</span>Initial quote uploaded</div>
+                    <div class="stage-check-item"><span class="stage-check-icon pending">!</span>Verify supporting documents</div>
+                    <div class="stage-check-item"><span class="stage-check-icon pending">!</span>Add market routing notes</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Submission Documents</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                    <select id="stage1DocType">
+                        <option value="APPLICATION">Application</option>
+                        <option value="SOV">SOV</option>
+                        <option value="LOSS_RUN">Loss Run</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                    <input type="file" id="stage1DocFile" accept=".pdf,.png,.jpg,.jpeg">
+                    <button id="uploadStage1DocBtn">Upload</button>
+                </div>
+                <div id="stage1DocsList" class="doc-list"></div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-top: 0.75rem;">
+                <button id="submitToMarketBtn">Submit to Market</button>
+            </div>
+        </div>
+
+        <div id="quotingStageSection" class="stage-section active">
         <!-- Upload section -->
         <div class="card" style="margin-bottom: 1rem;">
             <div class="card-header">
@@ -948,6 +1304,94 @@
                 </div>
             </div>
         </div>
+        <div style="display:flex; justify-content:flex-end; margin-top: 0.75rem;">
+            <button id="moveToBindBtn">Bind</button>
+        </div>
+        </div>
+
+        <div id="bindStageSection" class="stage-section">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Selected Quote</h2>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Coverage</th>
+                                <th>Carrier</th>
+                                <th>Policy #</th>
+                                <th>Effective</th>
+                                <th>Expiration</th>
+                                <th>Premium</th>
+                                <th>Tax</th>
+                                <th>Fee</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bindSelectedQuoteBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Bind Summary</h2>
+                </div>
+                <div id="bindStageInfo" class="stage-grid"></div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Premium Finance Decision</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items:center;">
+                    <label><input type="radio" name="pfDecision" value="yes"> Yes - generate finance agreement</label>
+                    <label><input type="radio" name="pfDecision" value="no"> No - client paying in full</label>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h2 class="card-title">Bind Actions</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                    <button id="moveBackToQuotingBtn">Back to Quoting</button>
+                    <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload insurance binder (proof of coverage)">
+                    <button id="uploadBinderBtn">Upload Binder</button>
+                    <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload premium finance agreement">
+                    <button id="uploadFinanceBtn">Upload Finance Agreement</button>
+                    <button id="markBoundBtn" style="background: #059669; color: white; margin-left: auto;">Mark as Bound</button>
+                    <button id="generateExportBtn" style="background: #059669; color: white;">📤 Generate Export</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Binder / Finance Documents</h2>
+                </div>
+                <div id="bindDocsList" class="doc-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit to Market Modal -->
+    <div id="submitToMarketModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <h2 class="text-2xl font-bold mb-4">Email to these brokers:</h2>
+
+            <div id="brokersList" class="mb-6 space-y-2">
+                <!-- Brokers will be loaded here -->
+            </div>
+
+            <div id="noBrokersMessage" class="text-gray-500 text-sm mb-6">
+                No brokers configured. <a href="#" id="configureBrokersLink" class="text-blue-600 hover:underline">Configure brokers</a>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button id="cancelSubmitToMarket" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="sendToMarketsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Send
+                </button>
+            </div>
+        </div>
     </div>
 
     <div id="bugModalBackdrop" class="bug-modal-backdrop">
@@ -984,43 +1428,78 @@
         </div>
     </div>
 
+    <!-- AMS Export Modal -->
+    <div id="amsExportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden border border-gray-700 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-white">AMS Export Data</h2>
+                <button id="closeAmsExportModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <p class="text-gray-400 mb-4">Preview of data to be exported to AMS:</p>
+            
+            <!-- CSV Grid -->
+            <div id="exportGridContainer" class="flex-1 overflow-auto border border-gray-600 rounded bg-gray-900">
+                <table id="exportGrid" class="w-full text-sm">
+                    <thead class="bg-gray-700 sticky top-0">
+                        <tr id="exportGridHeader"></tr>
+                    </thead>
+                    <tbody id="exportGridBody" class="divide-y divide-gray-700"></tbody>
+                </table>
+            </div>
+            
+            <!-- Empty state -->
+            <div id="exportEmptyState" class="hidden text-center py-8 text-gray-500">
+                No chosen quote available for this submission.
+            </div>
+            
+            <div class="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
+                <div class="text-sm text-gray-400">
+                    <span id="exportRecordCount">0</span> records
+                </div>
+                <div class="flex gap-2">
+                    <button id="downloadCsvBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        📥 Download CSV
+                    </button>
+                    <button id="exportToAmsBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-not-allowed opacity-75" disabled>
+                        ☁️ Export to AMS
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
-        // Theme Management
+        // Theme Management - initialized from localStorage (set on kanban page)
         function initTheme() {
-            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-light';
+            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
-            const themeSelect = document.getElementById('themeSelect');
-            if (themeSelect) {
-                themeSelect.value = savedTheme;
-            }
-        }
-
-        function changeTheme(theme) {
-            document.documentElement.setAttribute('data-theme', theme);
-            localStorage.setItem('ipfs-mapper-theme', theme);
         }
 
         // Initialize theme on page load
         initTheme();
 
-        // Theme selector event listener
-        document.addEventListener('DOMContentLoaded', function() {
-            const themeSelect = document.getElementById('themeSelect');
-            if (themeSelect) {
-                themeSelect.addEventListener('change', function(e) {
-                    changeTheme(e.target.value);
-                });
-            }
-        });
+        // HTML escape function
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         Dropzone.autoDiscover = false;
 
         // Get submission ID from URL
         const submissionId = parseInt('{{ submission_id }}');
+        const initialStageKey = '{{ stage_key|default("quoting") }}';
         let submissionData = null;
         let quotes = [];
+        let submissionDocuments = [];
+        let quoteVisibilityById = {};
+        let displayedPolicyRows = [];
         const bugState = {
             activeTool: 'pen',
             annotations: [],
@@ -1039,6 +1518,192 @@
         const bugDescription = document.getElementById('bugDescription');
         const bugCaptureRoot = document.getElementById('bugCaptureRoot');
         const MAX_SCREENSHOT_DATA_URL_CHARS = 5_500_000;
+
+        function getDaysUntilRenewal(effectiveDate) {
+            if (!effectiveDate) return null;
+            const datePart = String(effectiveDate).slice(0, 10);
+            const parsed = new Date(`${datePart}T00:00:00`);
+            if (Number.isNaN(parsed.getTime())) return null;
+
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        function statusToStage(statusValue, effectiveDate) {
+            const normalized = (statusValue || '').toUpperCase();
+            if (normalized === 'RECEIVED') return 'submission';
+            if (normalized === 'IN_PROGRESS') return 'quoting';
+            return 'bind';
+        }
+
+        function setStageProgress(stageKey) {
+            const currentStage = stageKey;
+            const stageOrder = ['submission', 'quoting', 'bind'];
+            const currentIndex = stageOrder.indexOf(currentStage);
+            const steps = document.querySelectorAll('#stageProgress .stage-step');
+
+            steps.forEach((step) => {
+                const stage = step.dataset.stage;
+                const index = stageOrder.indexOf(stage);
+                const dot = step.querySelector('.stage-dot');
+                step.classList.remove('done', 'current-submission', 'current-quoting', 'current-bind');
+
+                if (index < currentIndex) {
+                    step.classList.add('done');
+                    if (dot) dot.textContent = '✓';
+                    return;
+                }
+
+                if (index === currentIndex) {
+                    step.classList.add(`current-${currentStage}`);
+                    if (dot) dot.textContent = String(index + 1);
+                    return;
+                }
+
+                if (dot) dot.textContent = String(index + 1);
+            });
+        }
+
+        function applyStageView(statusValue, effectiveDate) {
+            const stage = statusToStage(statusValue, effectiveDate || submissionData?.effective_date);
+            const stageProgress = document.getElementById('stageProgress');
+            if (stageProgress) {
+                stageProgress.style.display = stage === 'quoting' ? 'none' : 'flex';
+            }
+            document.getElementById('submissionStageSection').classList.toggle('active', stage === 'submission');
+            document.getElementById('quotingStageSection').classList.toggle('active', stage === 'quoting');
+            document.getElementById('bindStageSection').classList.toggle('active', stage === 'bind');
+            setStageProgress(stage);
+        }
+
+        function stageField(label, value) {
+            return `
+                <div class="stage-field">
+                    <div class="stage-field-label">${label}</div>
+                    <div class="stage-field-value">${value || 'null'}</div>
+                </div>
+            `;
+        }
+
+        function renderEyeIcon(isVisible) {
+            return isVisible
+                ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`
+                : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 20C5 20 1 12 1 12a21.77 21.77 0 0 1 5.06-6.94"></path><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a22.22 22.22 0 0 1-3.17 4.66"></path><path d="M1 1l22 22"></path></svg>`;
+        }
+
+        function getQuoteOutcomePayload() {
+            return quotes.map((quote) => {
+                const isVisible = quoteVisibilityById[quote.id] !== false;
+                return {
+                    quote_id: quote.id,
+                    outcome: isVisible ? 'WON' : 'LOST'
+                };
+            });
+        }
+
+        function areVisibleCoveragesUnique() {
+            const seen = new Set();
+            for (const row of displayedPolicyRows) {
+                const quoteId = row.quote_id;
+                const isVisible = quoteId ? quoteVisibilityById[quoteId] !== false : true;
+                if (!isVisible) continue;
+                const coverage = (row.coverage || '').trim().toLowerCase();
+                if (!coverage || coverage === 'null' || coverage === 'n/a') continue;
+                if (seen.has(coverage)) return false;
+                seen.add(coverage);
+            }
+            return true;
+        }
+
+        function updateMoveToBindButtonState() {
+            const btn = document.getElementById('moveToBindBtn');
+            if (!btn) return;
+            if (!quotes.length) {
+                btn.disabled = true;
+                btn.classList.remove('ready');
+                btn.title = 'No quotes to move';
+                return;
+            }
+
+            const unique = areVisibleCoveragesUnique();
+            btn.disabled = false;
+            btn.classList.toggle('ready', unique);
+            btn.title = unique
+                ? 'Ready: visible coverage types are unique'
+                : 'Not ready: duplicate visible coverage types remain';
+        }
+
+        function syncQuoteMutedRows() {
+            document.querySelectorAll('#quotesByBrokerBody tr[data-quote-id], #policyDetailsBody tr[data-quote-id]').forEach((row) => {
+                const quoteId = parseInt(row.dataset.quoteId, 10);
+                if (!quoteId) return;
+                const isVisible = quoteVisibilityById[quoteId] !== false;
+                row.classList.toggle('row-muted', !isVisible);
+            });
+            updateMoveToBindButtonState();
+        }
+
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/documents`);
+                const data = await response.json();
+                if (data.success) {
+                    submissionDocuments = data.documents || [];
+                    renderStageDocumentLists();
+                }
+            } catch (error) {
+                console.error('Error loading documents:', error);
+            }
+        }
+
+        function renderDocList(containerId, docs) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (!docs.length) {
+                container.innerHTML = '<div class="doc-item"><span>No documents</span></div>';
+                return;
+            }
+            container.innerHTML = docs.map((doc) => `
+                <div class="doc-item">
+                    <div>
+                        <div><strong>${doc.document_type}</strong> - ${doc.name || doc.original_filename || 'file'}</div>
+                        <div style="color:#64748b;">v${doc.version}${doc.carrier ? ` • ${doc.carrier}` : ''}${doc.term_key ? ` • ${doc.term_key}` : ''}</div>
+                    </div>
+                    <a href="${doc.download_url}" target="_blank" rel="noopener">Open</a>
+                </div>
+            `).join('');
+        }
+
+        function renderStageDocumentLists() {
+            const stage1Docs = submissionDocuments.filter((d) =>
+                ['Application', 'SOV', 'Loss Run', 'Other'].includes(d.document_type)
+            );
+            const bindDocs = submissionDocuments.filter((d) =>
+                ['Binder', 'Finance Agreement'].includes(d.document_type)
+            );
+            renderDocList('stage1DocsList', stage1Docs);
+            renderDocList('bindDocsList', bindDocs);
+        }
+
+        async function uploadSubmissionDocument(file, documentType, extra = {}) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('document_type', documentType);
+            Object.entries(extra).forEach(([k, v]) => {
+                if (v !== null && v !== undefined && v !== '') formData.append(k, v);
+            });
+
+            const response = await fetch(`/api/submission/${submissionId}/documents`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Upload failed');
+            }
+            return data.document;
+        }
 
         function getQuoteLabel(quote) {
             const filename = quote.raw_document_path ? quote.raw_document_path.split('/').pop() : `Quote ${quote.id}`;
@@ -1246,6 +1911,10 @@
                 if (data.success) {
                     submissionData = data.submission;
                     quotes = data.quotes;
+                    quoteVisibilityById = {};
+                    quotes.forEach((quote) => {
+                        quoteVisibilityById[quote.id] = quote.quote_outcome !== 'LOST';
+                    });
 
                     // Update title
                     document.getElementById('submissionTitle').textContent =
@@ -1255,6 +1924,7 @@
                     const statusDropdown = document.getElementById('statusDropdown');
                     statusDropdown.value = submissionData.status.toUpperCase().replace(/ /g, '_');
                     originalStatus = statusDropdown.value;
+                    applyStageView(statusDropdown.value, submissionData.effective_date);
 
                     // Display appetite score
                     displayAppetiteScore();
@@ -1264,6 +1934,7 @@
 
                     // Display existing quotes
                     displayQuotes();
+                    await loadDocuments();
                 }
             } catch (error) {
                 console.error('Error loading submission:', error);
@@ -1290,11 +1961,24 @@
                         colorClass = 'background: #dc2626;';
                     }
 
-                    badge.className = 'appetite-badge';
-                    badge.style = colorClass;
-                    badge.title = `PF Appetite: ${appetite.rating}\n\nPremium Size: ${appetite.breakdown.premium_size.score}/${appetite.breakdown.premium_size.max} (${appetite.breakdown.premium_size.label})\nDown Payment: ${appetite.breakdown.down_payment.score}/${appetite.breakdown.down_payment.max} (${appetite.breakdown.down_payment.label})\nState Risk: ${appetite.breakdown.state_risk.score}/${appetite.breakdown.state_risk.max} (${appetite.breakdown.state_risk.label})`;
-                    badge.textContent = `PF Appetite: ${appetite.total_score}/100`;
-                    badge.style.display = 'block';
+                    // Only show badge if premium_size is present and > 0
+                    if (appetite.breakdown.premium_size && appetite.breakdown.premium_size.value > 0) {
+                        badge.className = 'appetite-badge';
+                        badge.style = colorClass;
+                        let title = `PF Appetite: ${appetite.rating}\n\n`;
+                        title += `Premium Size: ${appetite.breakdown.premium_size.score}/${appetite.breakdown.premium_size.max} (${appetite.breakdown.premium_size.label})\n`;
+                        if (appetite.breakdown.down_payment && appetite.breakdown.down_payment.value) {
+                            title += `Down Payment: ${appetite.breakdown.down_payment.score}/${appetite.breakdown.down_payment.max} (${appetite.breakdown.down_payment.label})\n`;
+                        }
+                        if (appetite.breakdown.state_risk && appetite.breakdown.state_risk.value) {
+                            title += `State Risk: ${appetite.breakdown.state_risk.score}/${appetite.breakdown.state_risk.max} (${appetite.breakdown.state_risk.label})`;
+                        }
+                        badge.title = title;
+                        badge.textContent = `PF Appetite: ${appetite.total_score}/100`;
+                        badge.style.display = 'block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
                 }
             } catch (error) {
                 console.error('Error loading appetite score:', error);
@@ -1316,18 +2000,22 @@
                 const fileItem = document.createElement('div');
                 fileItem.className = `file-item ${colorClass}`;
                 fileItem.innerHTML = `
-                    <div class="delete-btn" onclick="deleteQuote(${quote.id}, '${filename}')">×</div>
+                    <div class="delete-btn" onclick="event.stopPropagation(); deleteQuote(${quote.id}, '${filename}')">×</div>
                     <svg class="file-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10,19L12,15H9V10H15V15L13,19H10Z"/>
                     </svg>
                     <span class="file-name" title="${originalFilename}">${originalFilename}</span>
                 `;
+                fileItem.style.cursor = 'pointer';
+                fileItem.onclick = () => {
+                    window.open(`/api/quote/${quote.id}/file`, '_blank');
+                };
                 filesList.appendChild(fileItem);
             });
         }
 
         async function deleteQuote(quoteId, filename) {
-            const confirmDelete = confirm(`Are you sure you want to delete "${filename}"?\n\n${quotes.length === 1 ? 'This is the only quote. The submission will also be deleted.' : ''}`);
+            const confirmDelete = confirm(`Are you sure you want to delete "${filename}"?`);
 
             if (!confirmDelete) {
                 return;
@@ -1340,13 +2028,8 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    if (data.submission_deleted) {
-                        alert('Quote and submission deleted successfully.');
-                        window.location.href = '/';
-                    } else {
-                        alert('Quote deleted successfully.');
-                        loadSubmission();
-                    }
+                    alert('Quote deleted successfully.');
+                    loadSubmission();
                 } else {
                     alert('Error deleting quote: ' + data.error);
                 }
@@ -1357,11 +2040,37 @@
         }
 
         function displayQuotes() {
+            const resultContainer = document.getElementById('result');
+            const basicInfoContent = document.getElementById('basicInfoContent');
+            const quotesByBrokerHeader = document.getElementById('quotesByBrokerHeader');
+            const quotesByBrokerBody = document.getElementById('quotesByBrokerBody');
+            const policyDetailsHeader = document.getElementById('policyDetailsHeader');
+            const policyDetailsBody = document.getElementById('policyDetailsBody');
+
+            let emptyState = document.getElementById('resultEmptyState');
+            if (!emptyState && resultContainer) {
+                emptyState = document.createElement('div');
+                emptyState.id = 'resultEmptyState';
+                emptyState.className = 'processing-msg';
+                emptyState.style.display = 'none';
+                emptyState.textContent = 'No quotes yet. Upload a quote to get started.';
+                resultContainer.insertBefore(emptyState, resultContainer.firstChild);
+            }
+
             if (quotes.length === 0) {
-                document.getElementById('result').innerHTML =
-                    '<div class="processing-msg">No quotes yet. Upload a quote to get started.</div>';
+                if (basicInfoContent) basicInfoContent.innerHTML = '';
+                if (quotesByBrokerHeader) quotesByBrokerHeader.innerHTML = '';
+                if (quotesByBrokerBody) quotesByBrokerBody.innerHTML = '';
+                if (policyDetailsHeader) policyDetailsHeader.innerHTML = '';
+                if (policyDetailsBody) policyDetailsBody.innerHTML = '';
+                if (emptyState) emptyState.style.display = 'block';
+                populateSubmissionStage([], []);
+                populateBindStage([]);
+                updateMoveToBindButtonState();
                 return;
             }
+
+            if (emptyState) emptyState.style.display = 'none';
 
             // Convert quotes to the format expected by displayResults
             const results = quotes.map((quote, index) => {
@@ -1459,11 +2168,21 @@
 
         function displayResults(results) {
             // Clear all content areas
-            document.getElementById('basicInfoContent').innerHTML = '';
-            document.getElementById('quotesByBrokerHeader').innerHTML = '';
-            document.getElementById('quotesByBrokerBody').innerHTML = '';
-            document.getElementById('policyDetailsHeader').innerHTML = '';
-            document.getElementById('policyDetailsBody').innerHTML = '';
+            const basicInfoContent = document.getElementById('basicInfoContent');
+            const quotesByBrokerHeader = document.getElementById('quotesByBrokerHeader');
+            const quotesByBrokerBody = document.getElementById('quotesByBrokerBody');
+            const policyDetailsHeader = document.getElementById('policyDetailsHeader');
+            const policyDetailsBody = document.getElementById('policyDetailsBody');
+            if (!basicInfoContent || !quotesByBrokerHeader || !quotesByBrokerBody || !policyDetailsHeader || !policyDetailsBody) {
+                console.error('Quote result containers are missing from the DOM.');
+                return;
+            }
+
+            basicInfoContent.innerHTML = '';
+            quotesByBrokerHeader.innerHTML = '';
+            quotesByBrokerBody.innerHTML = '';
+            policyDetailsHeader.innerHTML = '';
+            policyDetailsBody.innerHTML = '';
 
             // Collect all data for tables
             let allPDFInfo = [];
@@ -1477,7 +2196,8 @@
                     const data = JSON.parse(jsonString);
                     allPDFInfo.push({
                         data: data,
-                        quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex
+                        quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex,
+                        quoteId: result.quote_id || null
                     });
 
                     // Process policies
@@ -1537,6 +2257,9 @@
             populateBasicInfoLabels(allPDFInfo);
             populateQuotesByBrokerTable(allPDFInfo);
             populatePolicyDetailsTable(allQuotes);
+            populateSubmissionStage(allPDFInfo, allQuotes);
+            populateBindStage(allQuotes);
+            syncQuoteMutedRows();
         }
 
         function populateBasicInfoLabels(allPDFInfo) {
@@ -1600,7 +2323,7 @@
             if (allPDFInfo.length === 0) return;
 
             // Create headers
-            const headers = ['MGA / Wholesale Broker', 'Quote #', 'Grand Total', '% Min Earned', 'Deposit', 'Amount Financed'];
+            const headers = ['View', 'MGA / Wholesale Broker', 'Quote #', 'Grand Total', '% Min Earned', 'Deposit', 'Amount Financed'];
             headers.forEach(headerText => {
                 const th = document.createElement('th');
                 th.textContent = headerText;
@@ -1611,11 +2334,40 @@
             allPDFInfo.forEach((PDFInfo) => {
                 const data = PDFInfo.data;
                 const quoteIndex = PDFInfo.quoteIndex;
+                const quoteId = PDFInfo.quoteId;
                 const totals = data.totals;
 
                 const row = document.createElement('tr');
                 const colorClass = `quote-color-${quoteIndex % 8}`;
                 row.className = colorClass;
+                if (quoteId) {
+                    row.dataset.quoteId = String(quoteId);
+                }
+                const isVisible = quoteId ? quoteVisibilityById[quoteId] !== false : true;
+                if (!isVisible) {
+                    row.classList.add('row-muted');
+                }
+
+                const eyeCell = document.createElement('td');
+                eyeCell.style.width = '52px';
+                if (quoteId) {
+                    const eyeBtn = document.createElement('button');
+                    eyeBtn.className = 'eye-toggle-btn';
+                    eyeBtn.innerHTML = renderEyeIcon(isVisible);
+                    eyeBtn.title = isVisible ? 'Mark as lost' : 'Restore quote';
+                    eyeBtn.onclick = (event) => {
+                        event.stopPropagation();
+                        const currentlyVisible = quoteVisibilityById[quoteId] !== false;
+                        quoteVisibilityById[quoteId] = !currentlyVisible;
+                        eyeBtn.innerHTML = renderEyeIcon(!currentlyVisible);
+                        eyeBtn.title = !currentlyVisible ? 'Mark as lost' : 'Restore quote';
+                        syncQuoteMutedRows();
+                    };
+                    eyeCell.appendChild(eyeBtn);
+                } else {
+                    eyeCell.innerHTML = '<span class="text-gray-400">-</span>';
+                }
+                row.appendChild(eyeCell);
 
                 // Calculate min earned percentage (average across all policies if multiple)
                 let minEarnedPercent = null;
@@ -1653,6 +2405,7 @@
         function populatePolicyDetailsTable(quotes) {
             const header = document.getElementById('policyDetailsHeader');
             const tbody = document.getElementById('policyDetailsBody');
+            displayedPolicyRows = quotes.map((q) => ({ quote_id: q.quote_id, coverage: q.coverage }));
 
             // Create headers
             const headers = ['Coverage', 'Carrier', 'Policy #', 'Effective', 'Expiration', 'Term', 'Base Premium', 'Tax', 'Fee', 'Broker Fee'];
@@ -1667,6 +2420,13 @@
                 const row = document.createElement('tr');
                 const colorClass = `quote-color-${quote.quoteIndex % 8}`;
                 row.className = colorClass;
+                if (quote.quote_id) {
+                    row.dataset.quoteId = String(quote.quote_id);
+                    const isVisible = quoteVisibilityById[quote.quote_id] !== false;
+                    if (!isVisible) {
+                        row.classList.add('row-muted');
+                    }
+                }
 
                 const values = [
                     quote.coverage,
@@ -1693,63 +2453,347 @@
             });
         }
 
+        function toNumber(value) {
+            if (value === null || value === undefined) return null;
+            const raw = String(value).replace(/[^0-9.-]/g, '');
+            if (!raw) return null;
+            const parsed = parseFloat(raw);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function formatMoney(value) {
+            const num = toNumber(value);
+            if (num === null) return 'null';
+            return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function populateSubmissionStage(allPDFInfo, allQuotes) {
+            const container = document.getElementById('submissionStageInfo');
+            if (!container) return;
+
+            let data = null;
+            if (allPDFInfo.length) {
+                data = allPDFInfo[0].data;
+            } else if (submissionData && submissionData.submission_intake) {
+                data = submissionData.submission_intake;
+            } else {
+                container.innerHTML = stageField('Status', 'No submission info yet');
+                return;
+            }
+
+            const address = data.insured?.address
+                ? [data.insured.address.street, data.insured.address.city, data.insured.address.state, data.insured.address.zip].filter(Boolean).join(', ')
+                : null;
+            let coverages = [...new Set(allQuotes.map(q => q.coverage).filter(Boolean))].join(', ') || null;
+            if (!coverages && Array.isArray(data.coverage_types)) {
+                coverages = data.coverage_types.join(', ') || null;
+            }
+
+            container.innerHTML = [
+                stageField('Insured Name', data.insured?.name),
+                stageField('Submission Date', submissionData?.created_at ? new Date(submissionData.created_at).toLocaleDateString() : null),
+                stageField('Address', address),
+                stageField('Agency', data.retail_agent?.name),
+                stageField('Agency Phone', data.retail_agent?.phone),
+                stageField('Coverage Type(s) Needed', coverages),
+                stageField('Effective Date', submissionData?.effective_date || data.effective_date)
+            ].join('');
+
+            const checkItems = document.querySelectorAll('#submissionStageSection .stage-check-item');
+            if (checkItems.length > 0) {
+                const source = data.source || (allPDFInfo.length ? 'quote' : 'manual');
+                checkItems[0].innerHTML = source === 'application'
+                    ? '<span class="stage-check-icon ok">✓</span>Application uploaded'
+                    : '<span class="stage-check-icon ok">✓</span>Insured captured';
+            }
+        }
+
+        function populateBindStage(allQuotes) {
+            const container = document.getElementById('bindStageInfo');
+            const selectedQuoteBody = document.getElementById('bindSelectedQuoteBody');
+            if (!container) return;
+
+            if (!allQuotes.length) {
+                container.innerHTML = stageField('Selected Quote', 'No quote available');
+                if (selectedQuoteBody) {
+                    selectedQuoteBody.innerHTML = '<tr><td colspan="8">No quote available</td></tr>';
+                }
+                return;
+            }
+
+            const wonQuoteIds = new Set(
+                quotes.filter(q => q.quote_outcome === 'WON').map(q => q.id)
+            );
+            const candidateQuotes = wonQuoteIds.size
+                ? allQuotes.filter(q => wonQuoteIds.has(q.quote_id))
+                : allQuotes;
+
+            const sortedByPremium = [...candidateQuotes].sort((a, b) => {
+                const pa = toNumber(a.premium);
+                const pb = toNumber(b.premium);
+                if (pa === null && pb === null) return 0;
+                if (pa === null) return 1;
+                if (pb === null) return -1;
+                return pa - pb;
+            });
+            const selected = sortedByPremium[0];
+            const total = [selected.premium, selected.tax, selected.fee].map(toNumber).filter(v => v !== null).reduce((a, b) => a + b, 0);
+
+            if (selectedQuoteBody) {
+                selectedQuoteBody.innerHTML = `
+                    <tr>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.coverage || 'null')).replace(/'/g, "\\'")}', this)">${selected.coverage || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.carrier || 'null')).replace(/'/g, "\\'")}', this)">${selected.carrier || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.policyNumber || 'pending')).replace(/'/g, "\\'")}', this)">${selected.policyNumber || 'pending'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.effective || 'null')).replace(/'/g, "\\'")}', this)">${selected.effective || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(selected.expiration || 'null')).replace(/'/g, "\\'")}', this)">${selected.expiration || 'null'}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.premium))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.premium)}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.tax))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.tax)}</td>
+                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.fee))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.fee)}</td>
+                    </tr>
+                `;
+            }
+
+            const grandTotalValue = total ? formatMoney(total) : 'null';
+            container.innerHTML = [
+                `<div class="stage-field" style="cursor: pointer;" onclick="copyToClipboard('${escapeHtml(grandTotalValue).replace(/'/g, "\\'")}', this.querySelector('.stage-field-value'))">
+                    <div class="stage-field-label">Grand Total</div>
+                    <div class="stage-field-value">${grandTotalValue}</div>
+                </div>`
+            ].join('');
+        }
+
 
 
         // Track original status
         let originalStatus = null;
+        let statusSaveTimeout = null;
 
-        // Status dropdown change handler
-        document.getElementById('statusDropdown').addEventListener('change', function(e) {
-            const saveBtn = document.getElementById('saveBtn');
-            if (e.target.value !== originalStatus) {
-                saveBtn.disabled = false;
-            } else {
-                saveBtn.disabled = true;
+        // Menu toggle handler
+        document.getElementById('menuToggleBtn').addEventListener('click', function() {
+            const menu = document.getElementById('headerMenu');
+            menu.classList.toggle('active');
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('headerMenu');
+            const menuBtn = document.getElementById('menuToggleBtn');
+            if (!menu.contains(e.target) && !menuBtn.contains(e.target)) {
+                menu.classList.remove('active');
             }
         });
 
-        // Save button handler
-        document.getElementById('saveBtn').addEventListener('click', async function() {
-            const statusDropdown = document.getElementById('statusDropdown');
-            const newStatus = statusDropdown.value;
-            const saveBtn = document.getElementById('saveBtn');
-            const cancelBtn = document.getElementById('cancelBtn');
+        // Status dropdown change handler with autosave
+        document.getElementById('statusDropdown').addEventListener('change', function(e) {
+            const newStatus = e.target.value;
+            applyStageView(newStatus, submissionData?.effective_date);
+
+            // Clear any pending save
+            if (statusSaveTimeout) {
+                clearTimeout(statusSaveTimeout);
+            }
+
+            // Autosave after 500ms of no changes
+            statusSaveTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/submission/${submissionId}/status`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+
+                    const data = await response.json();
+
+                    if (!data.success) {
+                        console.error('Error updating status:', data.error);
+                        alert('Error updating status: ' + data.error);
+                    }
+                } catch (error) {
+                    console.error('Error updating status:', error);
+                    alert('Error updating status');
+                }
+            }, 500);
+        });
+
+        // Submit to Market Modal
+        let selectedBrokerIds = [];
+
+        document.getElementById('submitToMarketBtn').addEventListener('click', async function() {
+            await loadBrokersForSubmission();
+            document.getElementById('submitToMarketModal').classList.remove('hidden');
+        });
+
+        document.getElementById('cancelSubmitToMarket').addEventListener('click', () => {
+            document.getElementById('submitToMarketModal').classList.add('hidden');
+            selectedBrokerIds = [];
+        });
+
+        async function loadBrokersForSubmission() {
+            try {
+                const response = await fetch('/api/brokers');
+                const data = await response.json();
+
+                if (data.success) {
+                    renderBrokersForSubmission(data.brokers);
+                }
+            } catch (error) {
+                console.error('Error loading brokers:', error);
+                alert('Error loading brokers');
+            }
+        }
+
+        function renderBrokersForSubmission(brokers) {
+            const list = document.getElementById('brokersList');
+            const noBrokersMsg = document.getElementById('noBrokersMessage');
+
+            if (brokers.length === 0) {
+                list.innerHTML = '';
+                noBrokersMsg.style.display = 'block';
+                document.getElementById('sendToMarketsBtn').disabled = true;
+                return;
+            }
+
+            noBrokersMsg.style.display = 'none';
+            document.getElementById('sendToMarketsBtn').disabled = false;
+
+            list.innerHTML = brokers.map(broker => {
+                const brokerInfo = broker.is_portal
+                    ? `Portal: ${escapeHtml(broker.portal_name || 'Unknown')}`
+                    : `Email: ${escapeHtml(broker.email || 'No email')}`;
+                return `
+                <label class="flex items-center gap-3 p-3 border border-gray-200 rounded bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <input type="checkbox" class="broker-checkbox" data-broker-id="${broker.id}" checked>
+                    <div>
+                        <div class="font-semibold text-sm">${escapeHtml(broker.name || 'Unnamed Broker')}</div>
+                        <div class="text-xs text-gray-500">${brokerInfo}</div>
+                    </div>
+                </label>
+            `;
+            }).join('');
+
+            // Update selected brokers when checkboxes change
+            document.querySelectorAll('.broker-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    selectedBrokerIds = Array.from(document.querySelectorAll('.broker-checkbox:checked'))
+                        .map(cb => parseInt(cb.dataset.brokerId));
+                });
+            });
+
+            // Initialize selected brokers
+            selectedBrokerIds = brokers.map(b => b.id);
+        }
+
+        document.getElementById('sendToMarketsBtn').addEventListener('click', async function() {
+            if (selectedBrokerIds.length === 0) {
+                alert('Please select at least one broker');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            const previousText = btn.textContent;
+            btn.textContent = 'Sending...';
 
             try {
-                saveBtn.disabled = true;
-                cancelBtn.disabled = true;
-
-                const response = await fetch(`/api/submission/${submissionId}/status`, {
+                // First, update submission status to IN_PROGRESS
+                const statusResponse = await fetch(`/api/submission/${submissionId}/status`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ status: newStatus })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'IN_PROGRESS' })
+                });
+
+                const statusData = await statusResponse.json();
+                if (!statusData.success) {
+                    throw new Error(statusData.error || 'Failed to update submission status');
+                }
+
+                // Then, submit to selected brokers
+                const submitResponse = await fetch(`/api/submission/${submissionId}/submit_to_market`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ broker_ids: selectedBrokerIds })
+                });
+
+                const submitData = await submitResponse.json();
+                if (!submitData.success) {
+                    throw new Error(submitData.error || 'Failed to submit to market');
+                }
+
+                // Handle portal downloads
+                const results = submitData.results;
+                if (results.portal_downloads && results.portal_downloads.length > 0) {
+                    alert(`Emails sent to ${results.emails_sent.length} brokers.\n\nPortal downloads ready for: ${results.portal_downloads.map(p => p.broker_name).join(', ')}`);
+
+                    // Download portal zips
+                    for (const portal of results.portal_downloads) {
+                        const brokerId = selectedBrokerIds.find(id => {
+                            // Find broker by name (this is a workaround, ideally we'd have broker_id in response)
+                            return true;
+                        });
+                        // Trigger download
+                        window.location.href = `/api/submission/${submissionId}/download_broker_zip/${portal.broker_id || selectedBrokerIds[0]}`;
+                    }
+                } else {
+                    alert(`Submission sent to ${results.emails_sent.length} brokers!`);
+                }
+
+                // Close modal and switch to quoting screen
+                document.getElementById('submitToMarketModal').classList.add('hidden');
+                
+                // Update status dropdown and switch to quoting view
+                const statusDropdown = document.getElementById('statusDropdown');
+                statusDropdown.value = 'IN_PROGRESS';
+                applyStageView('IN_PROGRESS', submissionData?.effective_date);
+                setStageProgress('quoting');
+                
+                // Show the quoting stage section explicitly
+                document.getElementById('submissionStageSection').classList.remove('active');
+                document.getElementById('quotingStageSection').classList.add('active');
+                document.getElementById('bindStageSection').classList.remove('active');
+            } catch (error) {
+                console.error('Error submitting to market:', error);
+                alert(error.message || 'Error submitting to market');
+                btn.disabled = false;
+                btn.textContent = previousText;
+            }
+        });
+
+
+
+        // Delete submission handler
+        document.getElementById('deleteSubmissionBtn').addEventListener('click', async function() {
+            const confirmDelete = confirm(
+                `Are you sure you want to delete this submission?\n\n` +
+                `Submission ID: ${submissionId}\n` +
+                `Insured: ${submissionData?.insured_name || 'Unknown'}\n\n` +
+                `This will permanently delete the submission and all associated quotes. This action cannot be undone.`
+            );
+
+            if (!confirmDelete) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/submission/${submissionId}`, {
+                    method: 'DELETE'
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
+                    alert('Submission deleted successfully.');
                     window.location.href = '/';
                 } else {
-                    alert('Error updating status: ' + data.error);
-                    saveBtn.disabled = false;
-                    cancelBtn.disabled = false;
+                    alert('Error deleting submission: ' + data.error);
                 }
             } catch (error) {
-                console.error('Error updating status:', error);
-                alert('Error updating status');
-                saveBtn.disabled = false;
-                cancelBtn.disabled = false;
+                console.error('Error deleting submission:', error);
+                alert('Error deleting submission.');
             }
         });
-
-        // Cancel button handler
-        document.getElementById('cancelBtn').addEventListener('click', function() {
-            window.location.href = '/';
-        });
-
-
 
         // Report bug handlers
         document.getElementById('reportBugBtn').addEventListener('click', function() {
@@ -1906,7 +2950,395 @@
             }
         });
 
+        document.getElementById('markBoundBtn').addEventListener('click', function() {
+            document.getElementById('statusDropdown').value = 'SENT_TO_FINANCE';
+            document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+        });
+
+        document.getElementById('moveBackToQuotingBtn').addEventListener('click', function() {
+            document.getElementById('statusDropdown').value = 'IN_PROGRESS';
+            document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+        });
+
+        document.getElementById('uploadStage1DocBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('stage1DocFile');
+            const docType = document.getElementById('stage1DocType').value;
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Select a document file.');
+                return;
+            }
+            try {
+                await uploadSubmissionDocument(file, docType, { term_key: submissionData?.effective_date });
+                fileInput.value = '';
+                await loadDocuments();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        document.getElementById('uploadBinderBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('binderDocFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Select binder document first.');
+                return;
+            }
+            try {
+                await uploadSubmissionDocument(file, 'BINDER', { term_key: submissionData?.effective_date });
+                fileInput.value = '';
+                await loadSubmission();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        document.getElementById('uploadFinanceBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('financeDocFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Select finance agreement file first.');
+                return;
+            }
+            try {
+                await uploadSubmissionDocument(file, 'FINANCE_AGREEMENT', { term_key: submissionData?.effective_date });
+                fileInput.value = '';
+                await loadDocuments();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        document.getElementById('moveToBindBtn').addEventListener('click', async function() {
+            if (!quotes.length) {
+                alert('No quotes to move.');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            const previousText = btn.textContent;
+            btn.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/move_to_bind`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        quote_outcomes: getQuoteOutcomePayload()
+                    })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to move submission to bind');
+                }
+
+                // Reload submission and show bind section
+                await loadSubmission();
+                
+                // Force show bind section
+                const newStatus = document.getElementById('statusDropdown').value;
+                applyStageView(newStatus, submissionData?.effective_date);
+                
+                // Also update stage progress manually to ensure it shows
+                setStageProgress('bind');
+                
+                // Show bind section explicitly
+                document.getElementById('submissionStageSection').classList.remove('active');
+                document.getElementById('quotingStageSection').classList.remove('active');
+                document.getElementById('bindStageSection').classList.add('active');
+                
+                // Update stage progress bar
+                document.querySelectorAll('.stage-step').forEach(step => {
+                    step.classList.remove('done', 'current-submission', 'current-quoting', 'current-bind');
+                });
+                const bindStep = document.querySelector('.stage-step[data-stage="bind"]');
+                if (bindStep) {
+                    bindStep.classList.add('current-bind');
+                    const dot = bindStep.querySelector('.stage-dot');
+                    if (dot) dot.textContent = '3';
+                }
+                
+            } catch (error) {
+                console.error('Error moving to bind:', error);
+                alert(error.message || 'Error moving to bind');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = previousText;
+            }
+        });
+
         applyBugToolButtonState();
+        applyStageView(
+            initialStageKey === 'submission'
+                ? 'RECEIVED'
+                : initialStageKey === 'bind'
+                    ? 'CHOSEN'
+                    : 'IN_PROGRESS'
+        );
+
+        // ============================================================================
+        // AMS EXPORT FUNCTIONALITY
+        // ============================================================================
+        
+        let exportData = [];
+        
+        // Open AMS Export Modal
+        document.getElementById('generateExportBtn').addEventListener('click', async function() {
+            await generateExportData();
+            document.getElementById('amsExportModal').classList.remove('hidden');
+        });
+        
+        // Close AMS Export Modal
+        document.getElementById('closeAmsExportModal').addEventListener('click', function() {
+            document.getElementById('amsExportModal').classList.add('hidden');
+        });
+        
+        // Generate export data from current submission's quotes
+        async function generateExportData() {
+            try {
+                // Use the already loaded submission data and quotes
+                if (!submissionData || !quotes || quotes.length === 0) {
+                    exportData = [];
+                    renderExportGrid();
+                    return;
+                }
+                
+                exportData = [];
+                
+                // Filter to only include WON (chosen) quotes
+                const wonQuotes = quotes.filter(q => q.quote_outcome === 'WON');
+                
+                // Process each won quote
+                for (const quote of wonQuotes) {
+                    let parsedData = {};
+                    if (quote.extracted_json) {
+                        try {
+                            // Handle both string and object formats
+                            const jsonStr = typeof quote.extracted_json === 'string' 
+                                ? quote.extracted_json 
+                                : JSON.stringify(quote.extracted_json);
+                            parsedData = JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.error('Failed to parse quote JSON:', e);
+                        }
+                    }
+                    
+                    const policies = parsedData.policies || [];
+                    const totals = parsedData.totals || {};
+                    const financing = parsedData.financing || {};
+                    const insured = parsedData.insured || {};
+                    const retailAgent = parsedData.retail_agent || {};
+                    
+                    // If there are policies, create a row for each
+                    if (policies.length > 0) {
+                        for (const policy of policies) {
+                            exportData.push({
+                                submission_id: submissionData.id,
+                                insured_name: insured.name || submissionData.insured_name || '',
+                                insured_address: insured.address ? `${insured.address.street || ''} ${insured.address.city || ''} ${insured.address.state || ''} ${insured.address.zip || ''}`.trim() : '',
+                                state: submissionData.state || '',
+                                effective_date: policy.effective_date || submissionData.effective_date || '',
+                                expiration_date: policy.expiration_date || '',
+                                policy_term: policy.policy_term || '',
+                                coverage_type: policy.coverage_type || '',
+                                carrier: policy.carrier || quote.carrier_name || '',
+                                policy_number: policy.policy_number || '',
+                                quote_number: parsedData.quote_number || '',
+                                account_number: parsedData.account_number || '',
+                                annual_premium: policy.annual_premium || null,
+                                tax: policy.tax || null,
+                                fee: policy.fee || null,
+                                broker_fee: policy.broker_fee || null,
+                                total_premium: totals.total_premium || null,
+                                total_tax: totals.total_tax || null,
+                                total_fee: totals.total_fee || null,
+                                grand_total: totals.grand_total || null,
+                                down_payment: financing.down_payment || null,
+                                amount_financed: financing.amount_financed || null,
+                                retail_agent_name: retailAgent.name || '',
+                                retail_agent_code: retailAgent.code || '',
+                                quote_outcome: quote.quote_outcome || ''
+                            });
+                        }
+                    } else {
+                        // No policies - create a row with quote-level data only
+                        exportData.push({
+                            submission_id: submissionData.id,
+                            insured_name: insured.name || submissionData.insured_name || '',
+                            insured_address: insured.address ? `${insured.address.street || ''} ${insured.address.city || ''} ${insured.address.state || ''} ${insured.address.zip || ''}`.trim() : '',
+                            state: submissionData.state || '',
+                            effective_date: submissionData.effective_date || '',
+                            expiration_date: '',
+                            policy_term: '',
+                            coverage_type: '',
+                            carrier: quote.carrier_name || '',
+                            policy_number: '',
+                            quote_number: parsedData.quote_number || '',
+                            account_number: parsedData.account_number || '',
+                            annual_premium: null,
+                            tax: null,
+                            fee: null,
+                            broker_fee: null,
+                            total_premium: totals.total_premium || null,
+                            total_tax: totals.total_tax || null,
+                            total_fee: totals.total_fee || null,
+                            grand_total: totals.grand_total || null,
+                            down_payment: financing.down_payment || null,
+                            amount_financed: financing.amount_financed || null,
+                            retail_agent_name: retailAgent.name || '',
+                            retail_agent_code: retailAgent.code || '',
+                            quote_outcome: quote.quote_outcome || ''
+                        });
+                    }
+                }
+                
+                renderExportGrid();
+                
+            } catch (error) {
+                console.error('Error generating export data:', error);
+                alert('Error generating export data: ' + error.message);
+            }
+        }
+        
+        // Render the export data in a grid
+        function renderExportGrid() {
+            const headerRow = document.getElementById('exportGridHeader');
+            const body = document.getElementById('exportGridBody');
+            const container = document.getElementById('exportGridContainer');
+            const emptyState = document.getElementById('exportEmptyState');
+            const recordCount = document.getElementById('exportRecordCount');
+            
+            recordCount.textContent = exportData.length;
+            
+            if (exportData.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            container.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            
+            // Get columns for display
+            const columns = [
+                'insured_name', 'state', 'effective_date', 'expiration_date',
+                'coverage_type', 'carrier', 'policy_number', 'quote_number',
+                'annual_premium', 'total_premium', 'grand_total', 'down_payment',
+                'retail_agent_name', 'quote_outcome'
+            ];
+            
+            // Build header
+            const headerLabels = {
+                insured_name: 'Insured Name',
+                state: 'State',
+                effective_date: 'Effective Date',
+                expiration_date: 'Expiration Date',
+                coverage_type: 'Coverage Type',
+                carrier: 'Carrier',
+                policy_number: 'Policy #',
+                quote_number: 'Quote #',
+                annual_premium: 'Annual Premium',
+                total_premium: 'Total Premium',
+                grand_total: 'Grand Total',
+                down_payment: 'Down Payment',
+                retail_agent_name: 'Retail Agent',
+                quote_outcome: 'Outcome'
+            };
+            
+            headerRow.innerHTML = columns.map(col => 
+                `<th class="px-3 py-2 text-left text-gray-200 font-semibold">${headerLabels[col] || col}</th>`
+            ).join('');
+            
+            // Build body with click-to-copy functionality
+            body.innerHTML = exportData.map(row => 
+                `<tr class="hover:bg-gray-800">` + 
+                columns.map(col => {
+                    let value = row[col];
+                    if (value === null || value === undefined) value = '';
+                    if (typeof value === 'number') value = value.toLocaleString('en-US', {style: 'currency', currency: 'USD'});
+                    const cellValue = value === '' ? '<span class="text-gray-500">null</span>' : escapeHtml(String(value));
+                    return `<td class="px-3 py-2 text-gray-300 whitespace-nowrap cursor-pointer hover:text-blue-400" onclick="copyToClipboard('${escapeHtml(String(value)).replace(/'/g, "\\'")}', this)">${cellValue}</td>`;
+                }).join('') +
+                `</tr>`
+            ).join('');
+        }
+        
+        // Download CSV
+        document.getElementById('downloadCsvBtn').addEventListener('click', function() {
+            if (exportData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            const columns = [
+                'insured_name', 'insured_address', 'state', 'effective_date', 'expiration_date',
+                'policy_term', 'coverage_type', 'carrier', 'policy_number', 'quote_number',
+                'account_number', 'annual_premium', 'tax', 'fee', 'broker_fee',
+                'total_premium', 'total_tax', 'total_fee', 'grand_total',
+                'down_payment', 'amount_financed', 'retail_agent_name', 'retail_agent_code', 'quote_outcome'
+            ];
+            
+            const headerLabels = {
+                insured_name: 'Insured Name',
+                insured_address: 'Insured Address',
+                state: 'State',
+                effective_date: 'Effective Date',
+                expiration_date: 'Expiration Date',
+                policy_term: 'Policy Term',
+                coverage_type: 'Coverage Type',
+                carrier: 'Carrier',
+                policy_number: 'Policy Number',
+                quote_number: 'Quote Number',
+                account_number: 'Account Number',
+                annual_premium: 'Annual Premium',
+                tax: 'Tax',
+                fee: 'Fee',
+                broker_fee: 'Broker Fee',
+                total_premium: 'Total Premium',
+                total_tax: 'Total Tax',
+                total_fee: 'Total Fee',
+                grand_total: 'Grand Total',
+                down_payment: 'Down Payment',
+                amount_financed: 'Amount Financed',
+                retail_agent_name: 'Retail Agent Name',
+                retail_agent_code: 'Retail Agent Code',
+                quote_outcome: 'Quote Outcome'
+            };
+            
+            // Build CSV header
+            let csv = columns.map(col => `"${headerLabels[col] || col}"`).join(',');
+            
+            // Build CSV rows
+            for (const row of exportData) {
+                const csvRow = columns.map(col => {
+                    let value = row[col];
+                    if (value === null || value === undefined) value = '';
+                    // Escape quotes and wrap in quotes
+                    value = String(value).replace(/"/g, '""');
+                    return `"${value}"`;
+                }).join(',');
+                csv += '\n' + csvRow;
+            }
+            
+            // Download file
+            const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ams_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        });
+        
+        // Export to AMS (non-working button)
+        document.getElementById('exportToAmsBtn').addEventListener('click', function() {
+            alert('AMS export functionality is not yet implemented. Please use Download CSV for now.');
+        });
 
         // Load submission data on page load
         loadSubmission();

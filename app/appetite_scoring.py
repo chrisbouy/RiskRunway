@@ -79,6 +79,7 @@ def calculate_appetite_score(submission_data, quotes_data):
                 premium_label = range_def['label']
                 break
 
+    # Always include premium_size in breakdown, even if 0/null
     if 'premium_size' in max_scores:
         score_breakdown['premium_size'] = {
             'score': premium_score,

@@ -5,6 +5,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from werkzeug.security import generate_password_hash, check_password_hash
 import enum
+import json
 
 Base = declarative_base()
 
@@ -28,6 +29,28 @@ class QuoteStatus(enum.Enum):
     CHOSEN = "Chosen"
 
 
+class EmailProvider(enum.Enum):
+    GMAIL = "gmail"
+    OUTLOOK = "outlook"
+
+
+class ConnectedAccountStatus(enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+    ERROR = "error"
+
+
+class DocumentType(enum.Enum):
+    APPLICATION = "Application"
+    SOV = "SOV"
+    LOSS_RUN = "Loss Run"
+    QUOTE = "Quote"
+    BINDER = "Binder"
+    FINANCE_AGREEMENT = "Finance Agreement"
+    OTHER = "Other"
+
+
 class User(Base):
     """
     Represents a user with authentication and role-based access.
@@ -44,6 +67,7 @@ class User(Base):
 
     # Relationships
     assigned_submissions = relationship("Submission", back_populates="assigned_user")
+    brokers = relationship("Broker", back_populates="user", cascade="all, delete-orphan")
 
     def set_password(self, password):
         """Hash and set the user's password"""
@@ -81,11 +105,13 @@ class Submission(Base):
     state = Column(String(2), nullable=True)  # Two-letter state code
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(Enum(SubmissionStatus), default=SubmissionStatus.RECEIVED, nullable=False)
+    status_label = Column(String(255), nullable=True)
     appetite_score = Column(Integer, nullable=True)  # PF appetite score 0-100
     assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)  # User assignment
 
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="submission", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="submission", cascade="all, delete-orphan")
     assigned_user = relationship("User", back_populates="assigned_submissions")
 
@@ -94,6 +120,16 @@ class Submission(Base):
 
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
+        # Determine api_status for frontend compatibility
+        status_name = self.status.name if self.status else None
+        api_status_map = {
+            'RECEIVED': 'submission',
+            'IN_PROGRESS': 'in_progress',
+            'CHOSEN': 'chosen',
+            'SENT_TO_FINANCE': 'bound'
+        }
+        api_status = api_status_map.get(status_name, 'submission')
+        
         return {
             'id': self.id,
             'insured_name': self.insured_name,
@@ -101,6 +137,8 @@ class Submission(Base):
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'status': self.status.value if self.status else None,
+            'api_status': api_status,
+            'status_label': self.status_label,
             'quote_count': len(self.quotes) if self.quotes else 0,
             'appetite_score': self.appetite_score,
             'assigned_to': self.assigned_to,
@@ -128,10 +166,12 @@ class Quote(Base):
     # comparison_group = Column(String(100), nullable=True)  # Quick access: GL, WC, Auto, etc.
 
     status = Column(Enum(QuoteStatus), default=QuoteStatus.RECEIVED, nullable=False)
+    quote_outcome = Column(String(20), nullable=True)  # WON or LOST (set when moving to bind)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
     submission = relationship("Submission", back_populates="quotes")
+    documents = relationship("Document", back_populates="quote", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="quote", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -150,6 +190,7 @@ class Quote(Base):
             # 'quote_intent': self.quote_intent,
             # 'comparison_group': self.comparison_group,
             'status': self.status.value if self.status else None,
+            'quote_outcome': self.quote_outcome,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -192,6 +233,53 @@ class AuditLog(Base):
             'details': self.details
         }
 
+
+class Document(Base):
+    """
+    Generic document metadata linked to a submission (and optionally a quote).
+    Supports versioning and active/inactive binder state by term.
+    """
+    __tablename__ = 'documents'
+
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False, index=True)
+    quote_id = Column(Integer, ForeignKey('quotes.id'), nullable=True, index=True)
+    document_type = Column(Enum(DocumentType), nullable=False, index=True)
+    carrier = Column(String(255), nullable=True, index=True)
+    term_key = Column(String(50), nullable=True, index=True)  # e.g. 2026-02-10_2027-02-10
+    version = Column(Integer, nullable=False, default=1)
+    is_active = Column(Boolean, nullable=False, default=True)
+    storage_provider = Column(String(20), nullable=False, default='local')  # local|s3
+    storage_key = Column(String(1024), nullable=False)  # object key/path
+    original_filename = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    uploaded_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    submission = relationship("Submission", back_populates="documents")
+    quote = relationship("Quote", back_populates="documents")
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'submission_id': self.submission_id,
+            'quote_id': self.quote_id,
+            'document_type': self.document_type.value if self.document_type else None,
+            'carrier': self.carrier,
+            'term_key': self.term_key,
+            'version': self.version,
+            'is_active': self.is_active,
+            'storage_provider': self.storage_provider,
+            'storage_key': self.storage_key,
+            'original_filename': self.original_filename,
+            'content_type': self.content_type,
+            'size_bytes': self.size_bytes,
+            'uploaded_by': self.uploaded_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
 class AppetiteRule(Base):
     """
     Stores configurable PF appetite scoring rules.
@@ -221,3 +309,203 @@ class AppetiteRule(Base):
         }
 
 
+class Broker(Base):
+    """
+    Represents a broker that an agent can send submissions to.
+    Each user can configure their own list of brokers.
+    Brokers can be email-based or portal-based.
+    """
+    __tablename__ = 'brokers'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    name = Column(String(255), nullable=True)  # Optional broker name
+    email = Column(String(255), nullable=True)  # Email address (for email brokers)
+    portal_name = Column(String(255), nullable=True)  # Portal site name (for portal brokers)
+    is_portal = Column(Boolean, default=False, nullable=False)  # True if portal-based, False if email-based
+    is_enabled = Column(Boolean, default=True, nullable=False)  # Whether this broker is active
+    letterhead = Column(Text, nullable=True)  # Custom letterhead/signature for emails
+    email_body = Column(Text, nullable=True)  # Custom email body template
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="brokers")
+
+    def __repr__(self):
+        broker_type = "Portal" if self.is_portal else "Email"
+        return f"<Broker(id={self.id}, user_id={self.user_id}, name='{self.name}', type='{broker_type}')>"
+
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'email': self.email,
+            'portal_name': self.portal_name,
+            'is_portal': self.is_portal,
+            'is_enabled': self.is_enabled,
+            'letterhead': self.letterhead,
+            'email_body': self.email_body,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class ConnectedAccount(Base):
+    """
+    Represents an OAuth-connected email account (Gmail or Outlook).
+    Tokens are stored encrypted for security.
+    """
+    __tablename__ = 'connected_accounts'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    provider = Column(Enum(EmailProvider), nullable=False, index=True)
+    email_address = Column(String(255), nullable=False)
+    
+    # Encrypted token storage (JSON blob containing access_token, refresh_token, etc.)
+    # Stored encrypted using cryptography library
+    encrypted_tokens = Column(Text, nullable=False)
+    
+    # Token metadata
+    token_type = Column(String(50), nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    scope = Column(String(500), nullable=True)
+    
+    # Status tracking
+    status = Column(Enum(ConnectedAccountStatus), default=ConnectedAccountStatus.ACTIVE, nullable=False)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    
+    # Metadata
+    connected_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    disconnected_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship('User', backref='connected_accounts')
+    email_messages = relationship('EmailMessage', back_populates='connected_account', cascade='all, delete-orphan')
+    
+    def to_dict(self, include_tokens=False):
+        """Convert to dictionary for JSON serialization"""
+        result = {
+            'id': self.id,
+            'user_id': self.user_id,
+            'provider': self.provider.value if self.provider else None,
+            'email_address': self.email_address,
+            'status': self.status.value if self.status else None,
+            'last_sync_at': self.last_sync_at.isoformat() if self.last_sync_at else None,
+            'last_error': self.last_error,
+            'connected_at': self.connected_at.isoformat() if self.connected_at else None,
+            'disconnected_at': self.disconnected_at.isoformat() if self.disconnected_at else None
+        }
+        if include_tokens:
+            result['tokens'] = self.get_decrypted_tokens()
+        return result
+    
+    def get_decrypted_tokens(self):
+        """Decrypt and return tokens (for OAuth refresh)"""
+        from app.oauth_services import decrypt_token
+        return decrypt_token(self.encrypted_tokens)
+    
+    def set_encrypted_tokens(self, tokens: dict):
+        """Encrypt and store tokens"""
+        from app.oauth_services import encrypt_token
+        self.encrypted_tokens = encrypt_token(tokens)
+        
+        # Store additional metadata
+        if 'token_type' in tokens:
+            self.token_type = tokens.get('token_type')
+        if 'expires_in' in tokens:
+            from datetime import timedelta
+            self.expires_at = datetime.utcnow() + timedelta(seconds=tokens.get('expires_in', 3600))
+        if 'scope' in tokens:
+            self.scope = tokens.get('scope')
+    
+    def __repr__(self):
+        return f"<ConnectedAccount(id={self.id}, provider='{self.provider.value}', email='{self.email_address}')>"
+
+
+class EmailMessage(Base):
+    """
+    Represents an email message scraped from IMAP that matches a submission.
+    """
+    __tablename__ = 'email_messages'
+
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=True, index=True)
+    connected_account_id = Column(Integer, ForeignKey('connected_accounts.id'), nullable=True, index=True)
+    message_id = Column(String(500), unique=True, nullable=False, index=True)  # Email Message-ID header
+    from_email = Column(String(255), nullable=False)
+    from_name = Column(String(255), nullable=True)
+    to_email = Column(String(255), nullable=True)
+    subject = Column(String(1000), nullable=True)
+    body_text = Column(Text, nullable=True)
+    body_html = Column(Text, nullable=True)
+    received_date = Column(DateTime, nullable=False, index=True)
+    has_attachments = Column(Boolean, default=False, nullable=False)
+    attachment_count = Column(Integer, default=0, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)  # Mark as deleted so won't reappear on scrape
+    matched_insured_name = Column(Boolean, default=False, nullable=False)
+    matched_quote_attachment = Column(Boolean, default=False, nullable=False)
+    matched_keywords = Column(String(500), nullable=True)  # Comma-separated keywords that matched
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    submission = relationship('Submission', backref='emails')
+    connected_account = relationship('ConnectedAccount', back_populates='email_messages')
+    attachments = relationship('EmailAttachment', back_populates='email', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'submission_id': self.submission_id,
+            'message_id': self.message_id,
+            'from_email': self.from_email,
+            'from_name': self.from_name,
+            'to_email': self.to_email,
+            'subject': self.subject,
+            'body_text': self.body_text,
+            'body_html': self.body_html,
+            'received_date': self.received_date.isoformat() if self.received_date else None,
+            'has_attachments': self.has_attachments,
+            'attachment_count': self.attachment_count,
+            'is_read': self.is_read,
+            'is_deleted': self.is_deleted,
+            'matched_insured_name': self.matched_insured_name,
+            'matched_quote_attachment': self.matched_quote_attachment,
+            'matched_keywords': self.matched_keywords,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'attachments': [att.to_dict() for att in self.attachments] if self.attachments else []
+        }
+
+
+class EmailAttachment(Base):
+    """
+    Represents an attachment from an email message.
+    """
+    __tablename__ = 'email_attachments'
+
+    id = Column(Integer, primary_key=True)
+    email_id = Column(Integer, ForeignKey('email_messages.id'), nullable=False, index=True)
+    filename = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    file_path = Column(String(1000), nullable=True)  # Path to saved file on disk
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    email = relationship('EmailMessage', back_populates='attachments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email_id': self.email_id,
+            'filename': self.filename,
+            'content_type': self.content_type,
+            'size_bytes': self.size_bytes,
+            'file_path': self.file_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }

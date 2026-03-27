@@ -6,205 +6,648 @@
     <title>PF Converge - Submissions</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" type="text/css" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /* Theme Variables */
         :root {
-            --bg-color: #f9fafb;
-            --card-bg: white;
-            --text-primary: #1f2937;
-            --text-secondary: #6b7280;
-            --border-color: #e5e7eb;
-            --header-bg: white;
+            --blue:   #4a9eff;
+            --orange: #ff9f40;
+            --green:  #4ade80;
 
-            /* Typography */
-            --font-weight-normal: 400;
-            --font-weight-medium: 500;
-            --font-weight-semibold: 600;
-            --font-weight-bold: 700;
-            --letter-spacing-normal: -0.025em;
+            --bg:          #0a0a0a;
+            --surface:     #1a1a1a;
+            --border:      #2a2a2a;
+            --border-soft: #222222;
+            --text:        #e5e5e5;
+            --text-muted:  #a0a0a0;
+            --text-xmuted: #707070;
 
-            /* Button styles */
-            --button-border-width: 0px;
-            --button-border-radius: 0.375rem;
+            /* Updated rail colors to match submission detail pages */
+            --rail-bg:     #334155;
+            --rail-text:   #f1f5f9;
+            --rail-muted:  #94a3b8;
+            --rail-border: #475569;
+            --rail-hover:  #475569;
+            --rail-section-bg: #2d3a4d;
+
+            --runway-light: #d4a574;
         }
 
-        /* Traditional Dark Theme */
-        [data-theme="traditional-dark"] {
-            --bg-color: #1f2937;
-            --card-bg: #374151;
-            --text-primary: #f9fafb;
-            --text-secondary: #d1d5db;
-            --border-color: #4b5563;
-            --header-bg: #111827;
-        }
+        *, *::before, *::after { box-sizing: border-box; }
 
-        /* Modern Light Theme */
-        [data-theme="modern-light"] {
-            --font-weight-normal: 300;
-            --font-weight-medium: 400;
-            --font-weight-semibold: 500;
-            --font-weight-bold: 600;
-            --letter-spacing-normal: 0.01em;
-            --button-border-width: 0px;
-            --button-border-radius: 0.5rem;
-        }
-
-        /* Modern Dark Theme */
-        [data-theme="modern-dark"] {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --border-color: #334155;
-            --header-bg: #020617;
-            --font-weight-normal: 300;
-            --font-weight-medium: 400;
-            --font-weight-semibold: 500;
-            --font-weight-bold: 600;
-            --letter-spacing-normal: 0.01em;
-            --button-border-width: 0px;
-            --button-border-radius: 0.5rem;
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            font-size: 13px;
         }
 
         body {
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            font-weight: var(--font-weight-normal);
-            letter-spacing: var(--letter-spacing-normal);
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
         }
 
-        .submission-card {
-            transition: all 0.2s;
-            cursor: move;
-            background-color: var(--card-bg);
-            color: var(--text-primary);
-            border-color: var(--border-color);
+        .page-layout {
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 168px 1fr;
         }
-        .submission-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+
+        /* ── LEFT RAIL ── */
+        .left-rail {
+            background: var(--rail-bg);
+            border-right: 1px solid var(--rail-border);
+            padding: 14px 10px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .left-title {
+            font-size: 16px;
+            font-weight: 300;
+            letter-spacing: 0.02em;
+            color: var(--rail-text);
+            padding: 12px 8px 8px;
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+        .left-title .title-risk {
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        .left-title .title-runway {
+            font-weight: 300;
+            color: var(--rail-text);
+        }
+
+        .left-divider {
+            height: 1px;
+            background: var(--rail-border);
+            margin: 4px 0;
+        }
+
+        .left-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--rail-text);
+            padding: 6px 8px;
+            margin-top: 2px;
+            background: var(--rail-section-bg);
+            border-radius: 4px;
+        }
+
+        .left-control {
+            width: 100%;
+            font-size: 11px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-weight: 500;
+            padding: 6px 8px;
+            border: 1px solid var(--rail-border);
+            border-radius: 4px;
+            background: var(--rail-section-bg);
+            color: var(--rail-text);
+            line-height: 1.3;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .left-control:hover {
+            border-color: var(--blue);
+            background: #3d4a5f;
+        }
+
+        .left-control:focus {
+            outline: none;
+            border-color: var(--blue);
+            background: #3d4a5f;
+        }
+
+        .left-control option { background: #2d3a4d; color: var(--rail-text); }
+
+        #databaseSelect {
+            font-weight: 600;
+            border-color: var(--blue);
+        }
+
+        .left-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--rail-text);
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            background: var(--rail-section-bg);
+        }
+        .left-checkbox-row:hover { background: #3d4a5f; }
+        .left-checkbox-row input { accent-color: var(--blue); }
+
+        .stage-count {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            font-family: 'IBM Plex Sans', sans-serif;
+            padding: 6px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.01em;
+            background: var(--rail-section-bg);
+            color: var(--rail-text);
+        }
+        .stage-count::before {
+            content: '';
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        #count-submission::before { background: var(--blue); }
+        #count-quoting::before    { background: var(--orange); }
+        #count-bind::before       { background: var(--green); }
+
+        .left-btn {
+            width: 100%;
+            text-align: left;
+            font-size: 11px;
+            font-family: inherit;
+            font-weight: 500;
+            padding: 5px 8px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            line-height: 1.3;
+        }
+        .left-btn:hover {
+            filter: brightness(1.15);
+            transform: translateX(2px);
+        }
+
+        .btn-config  {
+            background: var(--rail-section-bg);
+            color: var(--rail-text);
+            border: 1px solid var(--rail-border);
+            font-size: 11px;
+            font-weight: 500;
+            padding: 6px 8px;
+        }
+        .btn-config:hover {
+            background: #3d4a5f;
+            border-color: var(--blue);
+        }
+        .btn-new     {
+            background: linear-gradient(135deg, #e6ecf4 0%, #9496a6 100%) !important;
+            color: #2d2416 !important;
+            font-weight: 600;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
+            border: 1px solid #6d5f4d !important;
+            text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+        }
+        .btn-new:hover {
+            background: linear-gradient(135deg, #a1a7ae 0%, #9496a6 100%) 100%) !important;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.5) !important;
+            transform: translateY(-1px) !important;
+            filter: none !important;
+        }
+        .btn-logout  {
+            background: rgba(200,60,60,0.25);
+            color: #f07070;
+            border: 1px solid rgba(200,60,60,0.3);
+        }
+        .btn-logout:hover {
+            background: rgba(220,60,60,0.35);
+            color: #ff8080;
+        }
+
+        .user-block {
+            padding: 8px 6px 4px;
+            border-top: 1px solid var(--rail-border);
+        }
+        .user-label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--rail-muted); }
+        .user-name  { font-size: 11px; font-weight: 600; color: var(--rail-text); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-role  { display: inline-block; margin-top: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; background: rgba(74,114,196,0.3); color: #92a8d8; padding: 1px 5px; border-radius: 3px; }
+
+        /* ── BOARD ── */
+        .board-panel {
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* Subtle lens flares overlay */
+        .board-panel::before,
+        .board-panel::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0.15;
+            animation: flare-pulse 8s ease-in-out infinite;
+        }
+
+        .board-panel::before {
+            width: 800px;
+            height: 800px;
+            top: -300px;
+            right: -200px;
+            background: radial-gradient(circle, rgba(96, 165, 250, 0.5) 0%, rgba(96, 165, 250, 0.2) 30%, transparent 60%);
+            animation-delay: 0s;
+        }
+
+        .board-panel::after {
+            width: 1000px;
+            height: 1000px;
+            bottom: -400px;
+            left: -300px;
+            background: radial-gradient(circle, rgba(147, 197, 253, 0.4) 0%, rgba(147, 197, 253, 0.15) 25%, transparent 50%);
+            animation-delay: 4s;
+        }
+
+        @keyframes flare-pulse {
+            0%, 100% {
+                opacity: 0.15;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.25;
+                transform: scale(1.08);
+            }
+        }
+
+        .runway-board {
+            background: var(--surface);
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .runway-header {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            background: var(--rail-bg);
+            border-bottom: 2px solid var(--rail-border);
+            min-height: 38px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 2;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .runway-header-cell {
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            gap: 7px;
+            border-right: 1px solid var(--rail-border);
+            color: var(--rail-text);
+        }
+        .runway-header-cell:last-child { border-right: none; }
+        .runway-header-cell .stage-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .header-text {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            line-height: 1.1;
+        }
+        .header-window {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: none;
+            color: var(--text-xmuted);
+        }
+        .dot-sub  { background: var(--blue); }
+        .dot-quot { background: var(--orange); }
+        .dot-bind { background: var(--green); }
+        .header-label-sub  { color: var(--blue); }
+        .header-label-quot { color: var(--orange); }
+        .header-label-bind { color: var(--green); }
+
+        #runwayRows {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Ensure runway rows container can hold absolutely positioned lights */
+        .runway-board {
+            position: relative;
+        }
+
+        .runway-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            border-bottom: 1px solid var(--border-soft);
+            min-height: 100px;
+            position: relative;
+        }
+        .runway-row:hover { background: #252525; }
+
+        .runway-lane {
+            display: flex;
+            align-items: center;
+            padding: 4px 6px;
+            border-right: 1px solid var(--border-soft);
+            min-height: 100px;
+            position: relative;
+        }
+        .runway-lane:last-child { border-right: none; }
+
+        /* Runway lights container - spans entire row width */
+        .runway-lights {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Ensure submission card is above lights */
+        .submission-card {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Lane tints when active */
+        .runway-lane.active-sub  { background: rgba(74, 158, 255, 0.08); }
+        .runway-lane.active-quot { background: rgba(255, 159, 64, 0.08); }
+        .runway-lane.active-bind { background: rgba(74, 222, 128, 0.08); }
+
+        /* ── SUBMISSION CARD ── */
+        .submission-card {
+            width: 100%;
+            cursor: grab;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            border-radius: 4px;
+            padding: 6px 8px;
+        }
+        .submission-card:active {
+            cursor: grabbing;
+        }
+
+        .card-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+            text-align: center;
+        }
+
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .card-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+            flex-shrink: 0;
+        }
+
+        .status-label-input {
+            font-size: 10px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-muted);
+            border: 1px solid transparent;
+            border-radius: 3px;
+            padding: 2px 4px;
+            background: transparent;
+            line-height: 1.2;
+            transition: border-color 0.15s, background 0.15s;
+            text-align: left;
+            min-width: 120px;
+        }
+        .status-label-input:hover,
+        .status-label-input:focus {
+            border-color: var(--border);
+            background: var(--bg);
+            outline: none;
+            color: var(--text);
+        }
+
+        .card-status {
+            font-size: 10px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-muted);
+            text-align: right;
+            line-height: 1.2;
+        }
+
+        .card-quotes-count {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-align: right;
+            line-height: 1.2;
+        }
+
+        .documents-select {
+            font-size: 10px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 2px 4px;
+            line-height: 1.2;
+            cursor: pointer;
+            min-width: 100px;
+        }
+
+        .documents-select:hover {
+            border-color: var(--text-muted);
+        }
+        .status-label-input::placeholder { color: var(--text-xmuted); }
+
+        .card-control {
+            font-size: 10px;
+            font-family: 'IBM Plex Sans', inherit;
+            color: var(--text-muted);
+            border: 1px solid var(--border-soft);
+            border-radius: 3px;
+            padding: 2px 5px;
+            background: #f9f8f6;
+            width: 100%;
+            line-height: 1.3;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .card-control:hover, .card-control:focus { border-color: var(--border); outline: none; }
+        .card-control option { font-size: 11px; }
+
+        .renewal-meta {
+            font-size: 9px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-xmuted);
+            text-align: center;
+            line-height: 1.2;
+            padding: 0 2px;
+        }
+
+        .quote-meta {
+            font-size: 9px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-muted);
+            text-align: center;
+            line-height: 1.2;
+            padding: 0 2px;
+        }
+
+        .runway-lane.drag-over {
+            outline: 2px dashed #7b9fd4;
+            outline-offset: -2px;
         }
         .submission-card.dragging {
-            opacity: 0.5;
+            opacity: 0.55;
         }
-        .kanban-column {
-            transition: background-color 0.2s;
-            background-color: var(--card-bg);
-            border-color: var(--border-color);
-        }
-        .kanban-column.drag-over {
-            background-color: var(--bg-color);
-            border: 2px dashed #3b82f6;
-        }
-        .status-badge {
-            font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
-            border-radius: var(--button-border-radius);
-            font-weight: var(--font-weight-medium);
-        }
-        .status-received { background-color: #e0e7ff; color: #4338ca; }
-        .status-in-progress { background-color: #fef3c7; color: #92400e; }
-        .status-chosen { background-color: #d1fae5; color: #065f46; }
-        .status-sent-to-finance { background-color: #dbeafe; color: #1e40af; }
     </style>
 </head>
 <body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-6">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm" style="background-color: var(--header-bg);">
-            <h1 class="text-3xl font-bold" style="color: var(--text-primary); font-weight: var(--font-weight-bold);">Submissions</h1>
-            <div class="flex items-center gap-3">
-                <!-- Theme Selector -->
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg border" style="background-color: var(--card-bg); border-color: var(--border-color);">
-                    <label for="themeSelect" class="text-sm font-semibold" style="color: var(--text-primary); font-weight: var(--font-weight-semibold);">Theme:</label>
-                    <select id="themeSelect" class="text-sm px-2 py-1 rounded border" style="background-color: var(--bg-color); color: var(--text-primary); border-color: var(--border-color); border-radius: var(--button-border-radius);">
-                        <option value="traditional-light">Traditional Light</option>
-                        <option value="traditional-dark">Traditional Dark</option>
-                        <option value="modern-light">Modern Light</option>
-                        <option value="modern-dark">Modern Dark</option>
-                    </select>
-                </div>
-                <!-- Filter Toggle -->
-                <div class="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="filterMyCards" class="rounded">
-                        <span class="text-sm font-medium text-gray-700">My Cards Only</span>
-                    </label>
-                </div>
-
-                <!-- User Info -->
-                <div class="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
-                    <span class="text-sm text-gray-600">👤</span>
-                    <span id="currentUserName" class="text-sm font-medium text-gray-800"></span>
-                    <span id="currentUserRole" class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800"></span>
-                </div>
-
-                <button id="rulesBtn" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                    ⚙️ Appetite Rules
-                </button>
-                <button id="newSubmissionBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                    + New Submission
-                </button>
-                <button id="logoutBtn" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">
-                    Logout
-                </button>
+    <div class="page-layout">
+        <aside class="left-rail">
+            <div class="left-title">
+                <span class="title-risk">Risk</span><span class="title-runway">Runway</span>
             </div>
-        </div>
+            <div class="left-divider"></div>
 
-        <!-- Kanban Board -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <!-- Received Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Received</span>
-                    <span id="count-received" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-received" class="kanban-column space-y-3 min-h-[200px]" data-status="RECEIVED">
-                    <!-- Cards will be inserted here -->
-                </div>
-            </div>
+            <span id="count-submission" class="stage-count">Submission: 0</span>
+            <span id="count-quoting" class="stage-count">Quoting: 0</span>
+            <span id="count-bind" class="stage-count">Bound: 0</span>
+            <div class="left-divider"></div>
 
-            <!-- In Progress Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>In Progress</span>
-                    <span id="count-in-progress" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-in-progress" class="kanban-column space-y-3 min-h-[200px]" data-status="IN_PROGRESS">
-                    <!-- Cards will be inserted here -->
-                </div>
-            </div>
+            <button id="newSubmissionBtn" class="left-btn btn-new">+ New Submission</button>
 
-            <!-- Chosen Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Chosen</span>
-                    <span id="count-chosen" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-chosen" class="kanban-column space-y-3 min-h-[200px]" data-status="CHOSEN">
-                    <!-- Cards will be inserted here -->
-                </div>
-            </div>
+            <!-- Email Scraping Section -->
+            <div class="left-divider" style="margin-top: 8px;"></div>
+            <button id="checkEmailsBtn" class="left-btn btn-config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+                Check Emails Now
+            </button>
 
-            <!-- Sent to Finance Column -->
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center justify-between">
-                    <span>Sent to Finance</span>
-                    <span id="count-sent-to-finance" class="text-sm bg-gray-200 px-2 py-1 rounded">0</span>
-                </h2>
-                <div id="column-sent-to-finance" class="kanban-column space-y-3 min-h-[200px]" data-status="SENT_TO_FINANCE">
-                    <!-- Cards will be inserted here -->
-                </div>
+            <!-- Email Account Connection Section -->
+            <div class="left-divider" style="margin-top: 8px;"></div>
+            <button id="connectEmailAccountBtn" class="left-btn btn-config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+                Connect Email Account
+            </button>
+            <button id="newMessagesBtn" class="left-btn btn-config">
+                📬 New Messages (<span id="newMessageCount">0</span>)
+            </button>
+
+            <!-- Config Section -->
+            <div class="left-divider" style="margin-top: 8px;"></div>
+            <label class="left-checkbox-row">
+                <input type="checkbox" id="filterMyCards">
+                <span>My Cards Only</span>
+            </label>
+            <button id="configureBrokersBtn" class="left-btn btn-config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m0 6l4.2 4.2M23 12h-6m-6 0H1m18.2-5.2l-4.2 4.2m0 6l4.2 4.2"></path>
+                </svg>
+                Configure Brokers
+            </button>
+            <button id="rulesBtn" class="left-btn btn-config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m0 6l4.2 4.2M23 12h-6m-6 0H1m18.2-5.2l-4.2 4.2m0 6l4.2 4.2"></path>
+                </svg>
+                Appetite Rules
+            </button>
+
+            <!-- Spacer to push bottom items down -->
+            <div style="flex: 1;"></div>
+
+            <!-- Database & User Section at Bottom -->
+            <div class="left-divider"></div>
+            <select id="databaseSelect" class="left-control" style="margin-bottom: 8px;">
+                <option value="production">Production DB</option>
+                <option value="use_cases">Use Cases DB</option>
+                <option value="test">Test DB</option>
+            </select>
+
+            <div class="user-block">
+                <div class="user-label">Logged in as</div>
+                <div id="currentUserName" class="user-name"></div>
+                <div id="currentUserRole" class="user-role"></div>
             </div>
-        </div>
+            <button id="logoutBtn" class="left-btn btn-logout" style="margin-top:6px;">Logout</button>
+        </aside>
+
+        <main class="board-panel">
+            <div class="runway-board">
+                <div class="runway-header">
+                    <div class="runway-header-cell">
+                        <span class="stage-dot dot-sub"></span>
+                        <span class="header-text">
+                            <span class="header-label-sub">Submission</span>
+                        </span>
+                    </div>
+                    <div class="runway-header-cell">
+                        <span class="stage-dot dot-quot"></span>
+                        <span class="header-text">
+                            <span class="header-label-quot">Quoting</span>
+                        </span>
+                    </div>
+                    <div class="runway-header-cell">
+                        <span class="stage-dot dot-bind"></span>
+                        <span class="header-text">
+                            <span class="header-label-bind">Binding</span>
+                        </span>
+                    </div>
+                </div>
+                <div id="runwayRows"></div>
+            </div>
+        </main>
     </div>
 
     <!-- Rules Management Modal -->
-    <div id="rulesModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div id="rulesModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-2xl font-bold">PF Appetite Scoring Rules</h2>
-                <button id="closeRulesModal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                <h2 class="text-2xl font-bold text-white">PF Appetite Scoring Rules</h2>
+                <button id="closeRulesModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
             </div>
 
             <p class="text-gray-600 mb-6">Configure the rules used to calculate Premium Finance appetite scores (0-100 points total)</p>
@@ -225,15 +668,23 @@
     </div>
 
     <!-- New Submission Modal -->
-    <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
-            <h2 class="text-2xl font-bold mb-4">Upload First Quote</h2>
-            <p class="text-gray-600 mb-4">Drop a quote PDF to create a new submission</p>
-            
-            <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-8 text-center min-h-[200px]">
+    <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl border border-gray-700">
+            <h2 class="text-2xl font-bold mb-3 text-white">Create Submission</h2>
+            <p class="text-gray-600 mb-4">Enter insured name, or drop an application to prefill client/submission info.</p>
+
+            <div class="mb-4">
+                <label for="insuredNameInput" class="block text-sm font-semibold text-gray-300 mb-1">Insured Name</label>
+                <input id="insuredNameInput"
+                       type="text"
+                       class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
+                       placeholder="Type insured name (optional if uploading application)">
+            </div>
+
+            <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-6 text-center min-h-[160px]">
                 <div class="dz-message" data-dz-message>
-                    <p class="text-gray-600">Drag & drop a quote PDF here or click to browse</p>
-                    <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG</p>
+                    <p class="text-gray-600">Drag & drop application here or click to browse</p>
+                    <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG (optional)</p>
                 </div>
             </form>
 
@@ -241,15 +692,193 @@
                 <button id="cancelNewSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
                     Cancel
                 </button>
+                <button id="createSubmissionBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Create Submission
+                </button>
             </div>
         </div>
     </div>
+
+    <!-- Connect Email Account Modal -->
+    <div id="connectEmailAccountModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+            <h2 class="text-xl font-bold mb-4 text-white">Connect Email Account</h2>
+            <p class="text-gray-400 mb-4 text-sm">Enter an email address to check. If it's an Outlook account, you'll be redirected to sign in. Otherwise, IMAP configuration will be used.</p>
+            
+            <div class="mb-4">
+                <label for="emailAccountInput" class="block text-sm font-semibold text-gray-300 mb-1">Email Address</label>
+                <input id="emailAccountInput" type="email" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="your.email@example.com">
+            </div>
+            
+            <div class="flex justify-end gap-2">
+                <button id="cancelConnectEmail" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="confirmConnectEmail" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure Brokers Modal -->
+    <div id="configureBrokersModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-white">Configure Brokers</h2>
+
+            <div id="brokersList" class="mb-6 space-y-3">
+                <!-- Brokers will be loaded here -->
+            </div>
+
+            <div class="border-t pt-4 mb-4">
+                <h3 class="text-lg font-semibold mb-3">Add New Broker</h3>
+
+                <div class="mb-3">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Broker Type</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center gap-2">
+                            <input type="radio" id="brokerTypeEmail" name="brokerType" value="email" checked>
+                            <span>Email</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" id="brokerTypePortal" name="brokerType" value="portal">
+                            <span>Portal</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="brokerName" class="block text-sm font-semibold text-gray-300 mb-1">Broker Name (optional)</label>
+                    <input id="brokerName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="Leave blank to auto-generate from email/portal">
+                </div>
+
+                <div id="emailSection" class="mb-3">
+                    <label for="brokerEmail" class="block text-sm font-semibold text-gray-300 mb-1">Email Address</label>
+                    <input id="brokerEmail" type="email" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="broker@example.com">
+                </div>
+
+                <div id="portalSection" class="mb-3 hidden">
+                    <label for="brokerPortalName" class="block text-sm font-semibold text-gray-300 mb-1">Portal Site Name</label>
+                    <input id="brokerPortalName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="e.g., Carrier Portal, XYZ Broker Portal">
+                </div>
+
+                <div class="mb-3">
+                    <label for="brokerEmailBody" class="block text-sm font-semibold text-gray-300 mb-1">Email Body (optional)</label>
+                    <textarea id="brokerEmailBody" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="4" placeholder="Custom email message. Leave blank for default message."></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="brokerLetterhead" class="block text-sm font-semibold text-gray-300 mb-1">Letterhead/Signature (optional)</label>
+                    <textarea id="brokerLetterhead" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="3" placeholder="Your signature or letterhead to append to emails"></textarea>
+                </div>
+
+                <button id="addBrokerBtn" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                    Add Broker
+                </button>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button id="closeBrokersModal" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Broker Modal -->
+    <div id="editBrokerModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-white">Edit Broker</h2>
+
+            <div class="mb-3">
+                <label for="editBrokerName" class="block text-sm font-semibold text-gray-300 mb-1">Broker Name</label>
+                <input id="editBrokerName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" readonly>
+            </div>
+
+            <div class="mb-3">
+                <label for="editBrokerContact" class="block text-sm font-semibold text-gray-300 mb-1">Contact</label>
+                <input id="editBrokerContact" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" readonly>
+            </div>
+
+            <div class="mb-3">
+                <label for="editBrokerEmailBody" class="block text-sm font-semibold text-gray-300 mb-1">Email Body (optional)</label>
+                <textarea id="editBrokerEmailBody" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="4" placeholder="Custom email message. Leave blank for default message."></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label for="editBrokerLetterhead" class="block text-sm font-semibold text-gray-300 mb-1">Letterhead/Signature (optional)</label>
+                <textarea id="editBrokerLetterhead" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="3" placeholder="Your signature or letterhead to append to emails"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button id="closeEditBrokerModal" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+                <button id="saveEditBrokerBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Messages Modal -->
+    <div id="newMessagesModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold text-white">📬 New Messages</h2>
+                <button id="closeNewMessagesModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <div id="emailListContainer" class="space-y-3">
+                <!-- Emails will be loaded here -->
+            </div>
+            <div id="noEmailsMessage" class="text-gray-500 text-center py-8 hidden">
+                No new messages
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button id="closeNewMessagesBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Select Submission Modal -->
+    <div id="selectSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold text-white" id="selectSubmissionTitle">Select Submission</h2>
+                <button id="closeSelectSubmissionModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <p class="text-gray-400 mb-4" id="selectSubmissionDescription">Select a submission to attach this quote to:</p>
+            <div id="submissionsList" class="space-y-2 max-h-96 overflow-y-auto">
+                <!-- Submissions will be loaded here -->
+            </div>
+            
+            <!-- Loading Overlay for OCR Processing -->
+            <div id="ocrLoadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10000]">
+                <div class="bg-gray-800 rounded-lg p-8 border border-gray-600 text-center">
+                    <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <h3 class="text-xl font-bold text-white mb-2">Processing Quote</h3>
+                    <p class="text-gray-400 mb-2">Running OCR on the quote document...</p>
+                    <p class="text-sm text-gray-500">This may take a few moments</p>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-2 mt-6">
+                <button id="cancelSelectSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+
 
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script>
         // Theme Management
         function initTheme() {
-            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-light';
+            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
             const themeSelect = document.getElementById('themeSelect');
             if (themeSelect) {
@@ -281,6 +910,17 @@
         let allUsers = [];
         let currentUser = null;
         let filterMyCards = false;
+        const STAGE_COLUMNS = [
+            { key: 'submission', statuses: ['Received'], apiStatus: 'RECEIVED', label: 'Submission', countId: 'count-submission' },
+            { key: 'quoting', statuses: ['In Progress'], apiStatus: 'IN_PROGRESS', label: 'Quoting', countId: 'count-quoting' },
+            { key: 'bind', statuses: ['Chosen', 'Sent to Finance'], apiStatus: 'CHOSEN', label: 'Bound', countId: 'count-bind' }
+        ];
+        const STAGE_BY_KEY = STAGE_COLUMNS.reduce((acc, item) => {
+            acc[item.key] = item;
+            return acc;
+        }, {});
+        let draggedSubmissionId = null;
+        let suppressCardClick = false;
 
         // Load current user info
         async function loadCurrentUser() {
@@ -297,6 +937,50 @@
                 console.error('Error loading users:', error);
             }
         }
+
+        // Database switching
+        async function loadCurrentDatabase() {
+            try {
+                const response = await fetch('/api/database/current');
+                const data = await response.json();
+
+                if (data.success) {
+                    const dbSelect = document.getElementById('databaseSelect');
+                    dbSelect.value = data.current_database;
+                }
+            } catch (error) {
+                console.error('Error loading current database:', error);
+            }
+        }
+
+        async function switchDatabase(dbName) {
+            try {
+                const response = await fetch('/api/database/switch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ database: dbName })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    console.log(`Switched to ${dbName} database`);
+                    // Reload submissions from new database
+                    await loadSubmissions();
+                } else {
+                    alert(`Error switching database: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error switching database:', error);
+                alert('Error switching database');
+            }
+        }
+
+        // Database select handler
+        document.getElementById('databaseSelect').addEventListener('change', async function(e) {
+            const dbName = e.target.value;
+            await switchDatabase(dbName);
+        });
 
         // Load submissions on page load
         async function loadSubmissions() {
@@ -336,211 +1020,410 @@
         });
 
         function renderKanban() {
-            // Clear all columns
-            const statuses = ['received', 'in-progress', 'chosen', 'sent-to-finance'];
-            statuses.forEach(status => {
-                document.getElementById(`column-${status}`).innerHTML = '';
-                document.getElementById(`count-${status}`).textContent = '0';
-            });
+            const rows = document.getElementById('runwayRows');
+            rows.innerHTML = '';
 
-            // Group submissions by status
-            const grouped = {
-                'Received': [],
-                'In Progress': [],
-                'Chosen': [],
-                'Sent to Finance': []
-            };
+            // Clear old canvases from tracking array
+            runwayLightsCanvases.length = 0;
 
+            const grouped = { submission: 0, quoting: 0, bind: 0 };
             submissions.forEach(sub => {
-                if (grouped[sub.status]) {
-                    grouped[sub.status].push(sub);
+                const stageKey = getStageKey(sub);
+                grouped[stageKey] += 1;
+                rows.appendChild(createRunwayRow(sub));
+            });
+
+            document.getElementById('count-submission').textContent = `Submission: ${grouped.submission}`;
+            document.getElementById('count-quoting').textContent = `Quoting: ${grouped.quoting}`;
+            document.getElementById('count-bind').textContent = `Bound: ${grouped.bind}`;
+
+            // Start animation after rendering
+            startRunwayLightsAnimation();
+        }
+
+        async function updateSubmissionStage(submissionId, newStatus) {
+            const response = await fetch(`/api/submission/${submissionId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to update stage');
+            }
+        }
+
+        async function updateSubmissionStatusLabel(submissionId, statusLabel) {
+            const response = await fetch(`/api/submission/${submissionId}/status_label`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status_label: statusLabel })
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to update status label');
+            }
+            return data.status_label;
+        }
+
+        function normalizeStatus(status) {
+            return String(status || '').trim().toUpperCase().replace(/\s+/g, '_');
+        }
+
+        function isBoundStatus(status) {
+            const normalized = normalizeStatus(status);
+            return normalized === 'CHOSEN' || normalized === 'SENT_TO_FINANCE';
+        }
+
+        function getStageKey(submissionOrStatus, maybeEffectiveDate) {
+            const submission = typeof submissionOrStatus === 'object' && submissionOrStatus !== null
+                ? submissionOrStatus
+                : { status: submissionOrStatus, effective_date: maybeEffectiveDate };
+            const normalized = normalizeStatus(submission.status);
+            if (normalized === 'RECEIVED') return 'submission';
+            if (normalized === 'IN_PROGRESS') return 'quoting';
+            return 'bind';
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getDaysUntilRenewal(effectiveDate) {
+            if (!effectiveDate) return null;
+            const datePart = String(effectiveDate).slice(0, 10);
+            const parsed = new Date(`${datePart}T00:00:00`);
+            if (Number.isNaN(parsed.getTime())) return null;
+
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        function getRenewalCountdown(submission, stageKey, daysUntilRenewal) {
+            // Only show renewal countdown when bound
+            const isBound = isBoundStatus(submission.status);
+
+            // If not bound, don't show renewal countdown
+            if (!isBound) return '';
+
+            // If no renewal date, don't show anything
+            if (daysUntilRenewal === null) return '';
+
+            // Show renewal countdown for all bound submissions
+            if (daysUntilRenewal < 0) {
+                return 'Countdown till renewal: lapsed';
+            }
+            return `Countdown till renewal: T-${daysUntilRenewal}d`;
+        }
+
+        // ============================================================================
+        // RUNWAY LIGHTS ANIMATION
+        // ============================================================================
+
+        const runwayLightsCanvases = [];
+        let animationFrameId = null;
+        let animationStartTime = Date.now();
+
+        function createRunwayLights() {
+            const canvas = document.createElement('canvas');
+            canvas.className = 'runway-lights';
+            canvas.width = 800; // Will be adjusted dynamically
+            canvas.height = 100; // Wider runway height
+
+            runwayLightsCanvases.push(canvas);
+
+            return canvas;
+        }
+
+        function animateRunwayLights() {
+            const currentTime = (Date.now() - animationStartTime) / 1000; // Convert to seconds
+
+            runwayLightsCanvases.forEach(canvas => {
+                if (!canvas.parentElement) {
+                    // Canvas has been removed from DOM
+                    return;
+                }
+
+                const parent = canvas.parentElement;
+                const rect = parent.getBoundingClientRect();
+
+                // Update canvas size if parent size changed
+                if (canvas.width !== rect.width) {
+                    canvas.width = rect.width;
+                }
+                if (canvas.height !== rect.height) {
+                    canvas.height = rect.height;
+                }
+
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Runway light configuration - tiny lights running horizontally
+                const lightRadius = 1.5;
+                const numLights = 60; // About 60 lights across the runway
+                const lightSpacing = canvas.width / (numLights + 1); // Evenly distribute horizontally
+                const runwayHeight = 100; // Height between the two lines of lights (much wider runway)
+                const centerY = canvas.height / 2;
+
+                // Animation parameters
+                const speed = 1.7;
+                const offset = 0.23;
+
+                // Draw lights in pairs (top and bottom of runway) - running horizontally
+                for (let i = 0; i < numLights; i++) {
+                    const x = lightSpacing * (i + 1);
+
+                    // Calculate shimmer using sine wave
+                    const shimmer = 0.8 + Math.sin(currentTime * speed + i * offset) * 0.2;
+
+                    // Draw top light (top edge of runway)
+                    drawRunwayLight(ctx, x, centerY - runwayHeight / 2, lightRadius, shimmer);
+
+                    // Draw bottom light (bottom edge of runway)
+                    drawRunwayLight(ctx, x, centerY + runwayHeight / 2, lightRadius, shimmer);
                 }
             });
 
-            // Render cards in each column
-            Object.keys(grouped).forEach(status => {
-                const columnId = status.toLowerCase().replace(/ /g, '-');
-                const column = document.getElementById(`column-${columnId}`);
-                const count = document.getElementById(`count-${columnId}`);
+            animationFrameId = requestAnimationFrame(animateRunwayLights);
+        }
 
-                count.textContent = grouped[status].length;
+        function drawRunwayLight(ctx, x, y, radius, opacity) {
+            // More subtle amber color - reduced brightness
+            const subtleOpacity = opacity * 0.4; // Reduce overall opacity by 60%
+            const color = 'rgba(212, 165, 116, ' + subtleOpacity + ')';
 
-                grouped[status].forEach(sub => {
-                    const card = createSubmissionCard(sub);
-                    column.appendChild(card);
+            // Draw glow (more subtle)
+            const glowRadius = radius * 3.5; // Reduced glow radius
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(0.3, 'rgba(212, 165, 116, ' + (subtleOpacity * 0.3) + ')');
+            gradient.addColorStop(1, 'rgba(212, 165, 116, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x - glowRadius, y - glowRadius, glowRadius * 2, glowRadius * 2);
+
+            // Draw core light (subtle center)
+            ctx.fillStyle = 'rgba(212, 165, 116, ' + subtleOpacity + ')';
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Start animation when page loads
+        function startRunwayLightsAnimation() {
+            if (animationFrameId === null) {
+                animationStartTime = Date.now();
+                animateRunwayLights();
+            }
+        }
+
+        // Stop animation (for cleanup)
+        function stopRunwayLightsAnimation() {
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        function createRunwayRow(submission) {
+            const row = document.createElement('div');
+            row.className = 'runway-row';
+            row.dataset.submissionId = submission.id;
+
+            const stageKey = getStageKey(submission);
+
+            // Add runway lights canvas that spans the entire row
+            const lightsCanvas = createRunwayLights();
+            row.appendChild(lightsCanvas);
+
+            ['submission', 'quoting', 'bind'].forEach((laneKey) => {
+                const lane = document.createElement('div');
+                const tint = laneKey === 'submission' ? 'active-sub' : laneKey === 'quoting' ? 'active-quot' : 'active-bind';
+                lane.className = 'runway-lane' + (laneKey === stageKey ? ' ' + tint : '');
+                lane.dataset.lane = laneKey;
+                lane.dataset.apiStatus = STAGE_BY_KEY[laneKey].apiStatus;
+
+                if (laneKey === stageKey) {
+                    lane.appendChild(createSubmissionCard(submission, stageKey));
+                }
+
+                lane.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    lane.classList.add('drag-over');
                 });
-            });
-
-            // Setup drop zones
-            setupDropZones();
-        }
-
-        function setupDropZones() {
-            const columns = document.querySelectorAll('.kanban-column');
-            columns.forEach(column => {
-                column.addEventListener('dragover', handleDragOver);
-                column.addEventListener('drop', handleDrop);
-                column.addEventListener('dragleave', handleDragLeave);
-            });
-        }
-
-        let draggedCard = null;
-
-        function handleDragStart(e) {
-            draggedCard = e.target;
-            e.target.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-        }
-
-        function handleDragEnd(e) {
-            e.target.classList.remove('dragging');
-        }
-
-        function handleDragOver(e) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
-            e.dataTransfer.dropEffect = 'move';
-            e.currentTarget.classList.add('drag-over');
-            return false;
-        }
-
-        function handleDragLeave(e) {
-            e.currentTarget.classList.remove('drag-over');
-        }
-
-        async function handleDrop(e) {
-            if (e.stopPropagation) {
-                e.stopPropagation();
-            }
-            e.preventDefault();
-
-            const column = e.currentTarget;
-            column.classList.remove('drag-over');
-
-            if (draggedCard) {
-                const submissionId = draggedCard.dataset.submissionId;
-                const newStatus = column.dataset.status;
-
-                try {
-                    const response = await fetch(`/api/submission/${submissionId}/status`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ status: newStatus })
-                    });
-
-                    const data = await response.json();
-
-                    if (data.success) {
-                        // Reload submissions to update the board
-                        loadSubmissions();
-                    } else {
-                        alert('Error updating status: ' + data.error);
+                lane.addEventListener('dragleave', () => {
+                    lane.classList.remove('drag-over');
+                });
+                lane.addEventListener('drop', async (e) => {
+                    console.log('🎯 DROP EVENT FIRED - Lane:', laneKey, 'API Status:', lane.dataset.apiStatus);
+                    e.preventDefault();
+                    lane.classList.remove('drag-over');
+                    if (!draggedSubmissionId) {
+                        console.log('❌ No draggedSubmissionId');
+                        return;
                     }
-                } catch (error) {
-                    console.error('Error updating status:', error);
-                    alert('Error updating status');
-                }
-            }
 
-            return false;
+                    // Allow dropping into any lane, including the same one
+                    const currentCard = document.querySelector(`.submission-card[data-submission-id="${draggedSubmissionId}"]`);
+                    const currentLane = currentCard?.closest('.runway-lane');
+                    const currentApiStatus = currentLane?.dataset.apiStatus;
+
+                    console.log('📍 Current status:', currentApiStatus, '→ Target status:', lane.dataset.apiStatus);
+
+                    // Only update if moving to a different stage
+                    if (currentApiStatus === lane.dataset.apiStatus) {
+                        console.log('⏭️ Same lane, skipping');
+                        return; // Same lane, no API call needed
+                    }
+
+                    console.log('🚀 Calling API to update status...');
+                    try {
+                        await updateSubmissionStage(draggedSubmissionId, lane.dataset.apiStatus);
+                        await loadSubmissions();
+                        console.log('✅ Update successful');
+                    } catch (error) {
+                        console.error('❌ Error updating status:', error);
+                        alert('Failed to move submission to new stage.');
+                    }
+                });
+                row.appendChild(lane);
+            });
+
+            return row;
         }
 
-        function createSubmissionCard(submission) {
+        function createSubmissionCard(submission, stageKey) {
             const card = document.createElement('div');
-            card.className = 'submission-card bg-gray-50 rounded-lg p-4 cursor-pointer border border-gray-200';
-            card.draggable = true;
+            card.className = 'submission-card';
             card.dataset.submissionId = submission.id;
+            card.draggable = true;
 
-            const statusClass = `status-${submission.status.toLowerCase().replace(/ /g, '-')}`;
+            const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
+            const displayLabel = (submission.status_label || '').trim();
+            const quoteReceivedCount = Number(submission.quote_count || 0);
+            const quoteSentCount = Number(submission.quotes_sent_count || 0);
+            
+            // Get email counts
+            const emailCounts = submission.email_counts || {sent: 0, received: 0};
+            const emailReceivedCount = emailCounts.received;
+            const emailSentCount = emailCounts.sent;
 
-            // Determine appetite score badge color
-            let appetiteClass = 'bg-gray-400';
-            let appetiteLabel = 'N/A';
-
-            if (submission.appetite_score !== null && submission.appetite_score !== undefined) {
-                appetiteLabel = submission.appetite_score;
-                if (submission.appetite_score >= 80) {
-                    appetiteClass = 'bg-green-600';
-                } else if (submission.appetite_score >= 60) {
-                    appetiteClass = 'bg-blue-600';
-                } else if (submission.appetite_score >= 40) {
-                    appetiteClass = 'bg-yellow-600';
-                } else {
-                    appetiteClass = 'bg-red-600';
-                }
+            // Determine status based on stage
+            let status = '';
+            if (stageKey === 'submission') {
+                status = submission.api_status === 'submission' ? 'application in progress' : 'application sent';
+            } else if (stageKey === 'quoting') {
+                status = 'waiting on quotes';
+            } else if (stageKey === 'bind') {
+                // For bound, show "Bound, waiting on quotes X/Y"
+                status = `Bound, waiting on quotes ${quoteReceivedCount}/${quoteSentCount}`;
             }
 
-            // Build assigned user dropdown options
-            let assignedOptions = '<option value="">Unassigned</option>';
-            allUsers.forEach(user => {
-                const selected = submission.assigned_to === user.id ? 'selected' : '';
-                assignedOptions += `<option value="${user.id}" ${selected}>${user.full_name}</option>`;
-            });
+            const docOptions = (submission.documents || []).map((doc) => {
+                const label = `${doc.document_type}: ${doc.name}`;
+                return `<option value="${doc.id}">${escapeHtml(label)}</option>`;
+            }).join('');
 
             card.innerHTML = `
-                <div class="flex items-start justify-between mb-2">
-                    <h3 class="font-semibold text-gray-800 text-sm">${submission.insured_name}</h3>
-                    <span class="status-badge ${statusClass}">${submission.quote_count} quote${submission.quote_count !== 1 ? 's' : ''}</span>
+                <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
+                <div class="card-row">
+                    <div class="card-left">
+                        ${docOptions ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="">Documents</option>${docOptions}</select>` : ''}
+                    </div>
+                    <div class="card-right">
+                        <div class="card-status">${escapeHtml(status)}</div>
+                        ${stageKey === 'bind' ? (() => {
+                            const renewalCountdown = getRenewalCountdown(submission, stageKey, daysUntilRenewal);
+                            return renewalCountdown ? `<div class="card-quotes-count">${renewalCountdown}</div>` : '';
+                        })() : ''}
+                    </div>
                 </div>
-                <p class="text-xs text-gray-600 mb-1">Effective: ${submission.effective_date}</p>
-                ${submission.state ? `<p class="text-xs text-gray-500 mb-1">State: ${submission.state}</p>` : ''}
-
-                <div class="mb-2">
-                    <label class="text-xs text-gray-500 block mb-1">Assigned to:</label>
-                    <select class="assigned-to-select text-xs border border-gray-300 rounded px-2 py-1 w-full"
-                            data-submission-id="${submission.id}"
-                            onclick="event.stopPropagation()">
-                        ${assignedOptions}
-                    </select>
-                </div>
-
-                <div class="flex items-center justify-between mt-2">
-                    <p class="text-xs text-gray-400">Created: ${new Date(submission.created_at).toLocaleDateString()}</p>
-                    <span class="${appetiteClass} text-white text-xs px-2 py-1 rounded font-semibold" title="PF Appetite Score">
-                        ${appetiteLabel}
-                    </span>
+                <div class="card-row">
+                    <input class="status-label-input"
+                           type="text"
+                           maxlength="255"
+                           placeholder="Add status note…"
+                           value="${escapeHtml(displayLabel)}">
                 </div>
             `;
 
-            // Add drag event listeners
-            card.addEventListener('dragstart', handleDragStart);
-            card.addEventListener('dragend', handleDragEnd);
             card.addEventListener('click', (e) => {
-                if (!card.classList.contains('dragging')) {
-                    window.location.href = `/submission/${submission.id}`;
+                if (suppressCardClick) {
+                    suppressCardClick = false;
+                    return;
                 }
+                window.location.href = `/submission/${submission.id}`;
             });
 
-            // Add assigned-to dropdown handler
-            const assignedSelect = card.querySelector('.assigned-to-select');
-            if (assignedSelect) {
-                assignedSelect.addEventListener('change', async function(e) {
+            card.addEventListener('dragstart', (e) => {
+                draggedSubmissionId = submission.id;
+                suppressCardClick = true;
+                card.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(submission.id));
+                }
+            });
+            card.addEventListener('dragend', () => {
+                draggedSubmissionId = null;
+                setTimeout(() => {
+                    suppressCardClick = false;
+                }, 0);
+                card.classList.remove('dragging');
+                document.querySelectorAll('.runway-lane.drag-over').forEach((lane) => lane.classList.remove('drag-over'));
+            });
+
+            const stopPropagationControls = card.querySelectorAll('input, select');
+            stopPropagationControls.forEach((el) => {
+                el.addEventListener('click', (e) => e.stopPropagation());
+            });
+
+            const docSelect = card.querySelector('.documents-select');
+            if (docSelect) {
+                docSelect.addEventListener('change', async function(e) {
                     e.stopPropagation();
-                    const submissionId = this.dataset.submissionId;
-                    const userId = this.value ? parseInt(this.value) : null;
+                    const docId = this.value;
+                    if (!docId) return;
+                    window.open(`/api/documents/${docId}/download`, '_blank');
+                    this.value = '';
+                });
+            }
 
+            const statusLabelInput = card.querySelector('.status-label-input');
+            if (statusLabelInput) {
+                statusLabelInput.dataset.lastSaved = displayLabel;
+
+                const saveStatusLabel = async () => {
+                    const nextValue = statusLabelInput.value.trim();
+                    if (nextValue === statusLabelInput.dataset.lastSaved) {
+                        return;
+                    }
                     try {
-                        const response = await fetch(`/api/submission/${submissionId}/assign`, {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ user_id: userId })
-                        });
-
-                        const data = await response.json();
-                        if (data.success) {
-                            // Reload submissions to update the board
-                            loadSubmissions();
-                        } else {
-                            alert('Error assigning submission: ' + data.error);
+                        const savedValue = await updateSubmissionStatusLabel(submission.id, nextValue);
+                        const normalizedSaved = (savedValue || '').trim();
+                        statusLabelInput.dataset.lastSaved = normalizedSaved;
+                        const currentSubmission = submissions.find((s) => s.id === submission.id);
+                        if (currentSubmission) {
+                            currentSubmission.status_label = normalizedSaved;
                         }
                     } catch (error) {
-                        console.error('Error assigning submission:', error);
-                        alert('Error assigning submission');
+                        console.error('Error updating status label:', error);
+                        alert('Error updating status label');
+                        statusLabelInput.value = statusLabelInput.dataset.lastSaved || '';
+                    }
+                };
+
+                statusLabelInput.addEventListener('blur', saveStatusLabel);
+                statusLabelInput.addEventListener('keydown', async (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        statusLabelInput.blur();
                     }
                 });
             }
@@ -555,62 +1438,521 @@
 
         document.getElementById('cancelNewSubmission').addEventListener('click', () => {
             document.getElementById('newSubmissionModal').classList.add('hidden');
+            document.getElementById('insuredNameInput').value = '';
+            newSubmissionDropzone.removeAllFiles(true);
         });
 
         // Dropzone for new submission
         const newSubmissionDropzone = new Dropzone("#newSubmissionForm", {
-            url: "/api/upload_quote",
+            url: "/api/submission/create",
             autoProcessQueue: false,
             acceptedFiles: ".pdf,.png,.jpg,.jpeg",
             maxFiles: 1,
             addRemoveLinks: true
         });
 
-        newSubmissionDropzone.on("addedfile", function(file) {
-            // Start timer
-            const uploadStartTime = performance.now();
-            console.log(`⏱️  Upload started: ${file.name}`);
+        newSubmissionDropzone.on("maxfilesexceeded", function(file) {
+            this.removeAllFiles();
+            this.addFile(file);
+        });
 
-            // Auto-upload when file is added
+        document.getElementById('createSubmissionBtn').addEventListener('click', async function() {
+            const insuredName = document.getElementById('insuredNameInput').value.trim();
+            const file = newSubmissionDropzone.files[0];
+
+            if (!insuredName && !file) {
+                alert('Enter insured name or upload an application.');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
             const formData = new FormData();
-            formData.append('file', file);
+            if (insuredName) {
+                formData.append('insured_name', insuredName);
+            }
+            if (file) {
+                formData.append('file', file);
+            }
 
-            document.getElementById('newSubmissionForm').innerHTML = '<div class="text-center text-gray-500 py-8">Processing...</div>';
+            try {
+                const response = await fetch('/api/submission/create', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
 
-            fetch('/api/upload_quote', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                const uploadEndTime = performance.now();
-                const uploadDuration = ((uploadEndTime - uploadStartTime) / 1000).toFixed(2);
-                console.log(`⏱️  Server processing complete: ${uploadDuration}s`);
-                return response.json();
-            })
-            .then(data => {
                 if (data.success) {
-                    const totalEndTime = performance.now();
-                    const totalDuration = ((totalEndTime - uploadStartTime) / 1000).toFixed(2);
-                    console.log(`⏱️  Total time (upload → redirect): ${totalDuration}s`);
-                    console.log(`✅ Redirecting to submission page...`);
-
-                    // Redirect to the new submission
                     window.location.href = `/submission/${data.submission_id}`;
                 } else {
                     alert('Error: ' + data.error);
-                    document.getElementById('newSubmissionModal').classList.add('hidden');
-                    newSubmissionDropzone.removeAllFiles();
                 }
-            })
-            .catch(error => {
-                const errorTime = performance.now();
-                const errorDuration = ((errorTime - uploadStartTime) / 1000).toFixed(2);
-                console.error(`❌ Upload failed after ${errorDuration}s:`, error);
-                alert('Upload failed');
-                document.getElementById('newSubmissionModal').classList.add('hidden');
-                newSubmissionDropzone.removeAllFiles();
-            });
+            } catch (error) {
+                console.error('Submission create failed:', error);
+                alert('Failed to create submission.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Create Submission';
+            }
         });
+
+        // ============================================================================
+        // EMAIL ACCOUNT CONNECTION
+        // ============================================================================
+
+        // Open Connect Email Account Modal
+        document.getElementById('connectEmailAccountBtn').addEventListener('click', function() {
+            const connectedEmail = this.dataset.connectedEmail;
+            document.getElementById('emailAccountInput').value = connectedEmail || '';
+            document.getElementById('connectEmailAccountModal').classList.remove('hidden');
+            document.getElementById('emailAccountInput').focus();
+        });
+
+        // Close modal
+        document.getElementById('cancelConnectEmail').addEventListener('click', function() {
+            document.getElementById('connectEmailAccountModal').classList.add('hidden');
+        });
+
+        // Handle email connection
+        document.getElementById('confirmConnectEmail').addEventListener('click', async function() {
+            const email = document.getElementById('emailAccountInput').value.trim();
+            
+            if (!email) {
+                alert('Please enter an email address');
+                return;
+            }
+
+            // Basic email validation
+            if (!email.includes('@')) {
+                alert('Please enter a valid email address');
+                return;
+            }
+
+            const emailDomain = email.split('@')[1].toLowerCase();
+            
+            // Check if it's an Outlook-related domain
+            const outlookDomains = ['outlook.com', 'hotmail.com', 'live.com', 'msn.com'];
+            const isOutlook = outlookDomains.some(domain => emailDomain === domain || emailDomain.endsWith('.' + domain));
+
+            if (isOutlook) {
+                // For Outlook, trigger OAuth flow
+                document.getElementById('connectEmailAccountModal').classList.add('hidden');
+                
+                try {
+                    // Call the API to get OAuth URL for outlook
+                    const response = await fetch('/api/oauth/connect/outlook');
+                    const data = await response.json();
+                    
+                    if (data.success && data.authorization_url) {
+                        // Redirect to OAuth consent screen
+                        window.location.href = data.authorization_url;
+                    } else {
+                        alert('Failed to start Outlook sign-in: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error connecting to Outlook:', error);
+                    alert('Error connecting to Outlook: ' + error.message);
+                }
+            } else {
+                // For non-Outlook, use IMAP - close modal and trigger email check
+                document.getElementById('connectEmailAccountModal').classList.add('hidden');
+                
+                // Store the email for IMAP configuration (will be used by checkEmailsBtn)
+                sessionStorage.setItem('pendingImapEmail', email);
+                
+                // Trigger the existing email check functionality
+                document.getElementById('checkEmailsBtn').click();
+            }
+        });
+
+        // Close modal on outside click
+        document.getElementById('connectEmailAccountModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.add('hidden');
+            }
+        });
+
+        // Handle Enter key in email input
+        document.getElementById('emailAccountInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('confirmConnectEmail').click();
+            }
+        });
+
+        // ============================================================================
+        // EMAIL SCRAPING
+        // ============================================================================
+
+        // Load email scraping status on page load
+        async function loadEmailStatus() {
+            try {
+                const response = await fetch('/api/email/status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const status = data.status;
+                    // Just log the status, no UI element to update since emailStatusText was removed
+                    console.log('Email status:', status);
+                }
+            } catch (error) {
+                console.error('Failed to load email status:', error);
+            }
+        }
+
+        // Load connected email accounts on page load
+        async function loadConnectedAccounts() {
+            try {
+                const response = await fetch('/api/oauth/accounts');
+                const data = await response.json();
+                
+                if (data.success && data.accounts && data.accounts.length > 0) {
+                    const activeAccount = data.accounts.find(acc => acc.status === 'active');
+                    if (activeAccount) {
+                        const btn = document.getElementById('connectEmailAccountBtn');
+                        btn.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                <polyline points="22,6 12,13 2,6"></polyline>
+                            </svg>
+                            ${activeAccount.email_address}
+                        `;
+                        btn.dataset.connectedEmail = activeAccount.email_address;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load connected accounts:', error);
+            }
+        }
+
+        // Check emails button handler
+        document.getElementById('checkEmailsBtn').addEventListener('click', async function() {
+            const btn = this;
+            const originalText = btn.textContent;
+
+            btn.disabled = true;
+            btn.textContent = '🔄 Checking...';
+
+            try {
+                const response = await fetch('/api/email/scrape', { method: 'POST' });
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Email sync failed');
+                }
+
+                const processed = data.processed  || 0;
+                const matched   = data.matched     || 0;
+                const newEmails = data.new_emails  || 0;
+
+                btn.textContent = '✅ Done!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+
+                setTimeout(() => {
+                    loadSubmissions();
+                    loadEmailStatus();
+                    loadUnreadEmailCount();
+                }, 1000);
+
+                if (newEmails > 0) {
+                    document.getElementById('newMessagesModal').classList.remove('hidden');
+                    await loadUnreadEmails();
+                } else {
+                    const source = data.source === 'IMAP' ? ' (IMAP)' : ' (OAuth)';
+                    alert(`Email sync completed${source}:\n• ${processed} emails processed\n• ${matched} matched to submissions\n• ${newEmails} new emails saved`);
+                }
+
+            } catch (error) {
+                console.error('Email check failed:', error);
+                btn.textContent = '❌ Failed';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+                alert('Error: ' + error.message);
+            }
+        });
+
+        // Load email status on page load
+        loadEmailStatus();
+        loadUnreadEmailCount();
+        loadConnectedAccounts();
+
+        // ============================================================================
+        // NEW MESSAGES FUNCTIONALITY
+        // ============================================================================
+
+        let currentEmailId = null;
+        let currentEmailAction = null;
+
+        // Load unread email count and show button if there are unread emails
+        async function loadUnreadEmailCount() {
+            try {
+                const response = await fetch('/api/email/unread');
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('newMessageCount').textContent = data.count || 0;
+                }
+            } catch (error) {
+                console.error('Failed to load unread email count:', error);
+            }
+        }
+
+        // Open new messages modal
+        document.getElementById('newMessagesBtn').addEventListener('click', async function() {
+            document.getElementById('newMessagesModal').classList.remove('hidden');
+            await loadUnreadEmails();
+        });
+
+        // Close new messages modal
+        document.getElementById('closeNewMessagesModal').addEventListener('click', function() {
+            document.getElementById('newMessagesModal').classList.add('hidden');
+        });
+
+        document.getElementById('closeNewMessagesBtn').addEventListener('click', function() {
+            document.getElementById('newMessagesModal').classList.add('hidden');
+        });
+
+        // Load unread emails into the modal
+        async function loadUnreadEmails() {
+            const container = document.getElementById('emailListContainer');
+            const noEmailsMsg = document.getElementById('noEmailsMessage');
+            
+            try {
+                const response = await fetch('/api/email/unread');
+                const data = await response.json();
+                
+                if (data.success && data.emails && data.emails.length > 0) {
+                    container.innerHTML = '';
+                    noEmailsMsg.classList.add('hidden');
+                    
+                    for (const email of data.emails) {
+                        const emailDiv = document.createElement('div');
+                        emailDiv.className = 'border border-gray-600 rounded-lg p-4 bg-gray-700';
+                        
+                        const hasQuote = email.matched_quote_attachment || (email.attachments && email.attachments.some(a => a.filename.toLowerCase().endsWith('.pdf')));
+                        const attachmentsList = email.attachments ? email.attachments.map(a => 
+                            `<span class="inline-block bg-gray-600 text-gray-200 text-xs px-2 py-1 rounded mr-1 mb-1">${escapeHtml(a.filename)}</span>`
+                        ).join('') : '';
+                        
+                        const receivedDate = email.received_date ? new Date(email.received_date).toLocaleString() : 'Unknown';
+                        
+                        emailDiv.innerHTML = `
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <div class="font-semibold text-white">${escapeHtml(email.subject || '(No Subject)')}</div>
+                                    <div class="text-sm text-gray-400">From: ${escapeHtml(email.from_name || email.from_email)} &bull; ${receivedDate}</div>
+                                    <div class="text-sm text-gray-500">Matched to: ${escapeHtml(email.submission_name || 'Unknown')}</div>
+                                </div>
+                            </div>
+                            ${attachmentsList ? `<div class="mb-2">${attachmentsList}</div>` : ''}
+                            <div class="flex gap-2 mt-2">
+                                ${hasQuote ? `<button class="ingest-quote-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-email-id="${email.id}">📄 Ingest Quote</button>` : ''}
+                                <button class="add-correspondence-btn px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700" data-email-id="${email.id}">💬 Add as Correspondence</button>
+                                <button class="delete-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-email-id="${email.id}">🗑️ Delete</button>
+                            </div>
+                        `;
+                        
+                        container.appendChild(emailDiv);
+                    }
+                    
+                    // Add event listeners to buttons
+                    document.querySelectorAll('.ingest-quote-btn').forEach(btn => {
+                        btn.addEventListener('click', async function() {
+                            const emailId = parseInt(this.dataset.emailId);
+                            await openSubmissionSelector(emailId, 'quote');
+                        });
+                    });
+                    
+                    document.querySelectorAll('.add-correspondence-btn').forEach(btn => {
+                        btn.addEventListener('click', async function() {
+                            const emailId = parseInt(this.dataset.emailId);
+                            await openSubmissionSelector(emailId, 'correspondence');
+                        });
+                    });
+                    
+                    document.querySelectorAll('.delete-email-btn').forEach(btn => {
+                        btn.addEventListener('click', async function() {
+                            const emailId = parseInt(this.dataset.emailId);
+                            if (confirm('Are you sure you want to delete this email?')) {
+                                await deleteEmail(emailId);
+                            }
+                        });
+                    });
+                    
+                } else {
+                    container.innerHTML = '';
+                    noEmailsMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to load unread emails:', error);
+                container.innerHTML = '<div class="text-red-500">Failed to load emails</div>';
+            }
+        }
+
+        // Open submission selector modal
+        async function openSubmissionSelector(emailId, action) {
+            currentEmailId = emailId;
+            currentEmailAction = action;
+            
+            const title = document.getElementById('selectSubmissionTitle');
+            const description = document.getElementById('selectSubmissionDescription');
+            
+            if (action === 'quote') {
+                title.textContent = 'Select Submission for Quote';
+                description.textContent = 'Select a submission in Quoting stage to attach this quote to:';
+            } else {
+                title.textContent = 'Select Submission for Correspondence';
+                description.textContent = 'Select a submission to add this email as correspondence:';
+            }
+            
+            document.getElementById('selectSubmissionModal').classList.remove('hidden');
+            await loadSubmissionsForSelector();
+        }
+
+        // Close submission selector modal
+        document.getElementById('closeSelectSubmissionModal').addEventListener('click', function() {
+            document.getElementById('selectSubmissionModal').classList.add('hidden');
+        });
+
+        document.getElementById('cancelSelectSubmission').addEventListener('click', function() {
+            document.getElementById('selectSubmissionModal').classList.add('hidden');
+        });
+
+        // Load submissions for the selector
+        async function loadSubmissionsForSelector() {
+            const container = document.getElementById('submissionsList');
+            
+            try {
+                const response = await fetch('/api/submissions');
+                const data = await response.json();
+                
+                if (data.success && data.submissions) {
+                    // Filter to show submissions in Quoting stage (or all if adding correspondence)
+                    const quotingSubmissions = data.submissions.filter(sub => {
+                        if (currentEmailAction === 'quote') {
+                            return sub.status === 'In Progress' || sub.status === 'in_progress' || sub.api_status === 'in_progress';
+                        }
+                        return true; // Show all for correspondence
+                    });
+                    
+                    if (quotingSubmissions.length === 0) {
+                        container.innerHTML = '<div class="text-gray-500 text-center py-4">No submissions available</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = quotingSubmissions.map(sub => `
+                        <div class="flex items-center justify-between p-3 border border-gray-600 rounded bg-gray-700 hover:bg-gray-600 cursor-pointer select-submission-btn" data-submission-id="${sub.id}">
+                            <div>
+                                <div class="font-semibold text-white">${escapeHtml(sub.insured_name)}</div>
+                                <div class="text-sm text-gray-400">Effective: ${sub.effective_date || 'N/A'} &bull; Status: ${sub.status}</div>
+                            </div>
+                            <div class="text-gray-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    // Add click handlers
+                    document.querySelectorAll('.select-submission-btn').forEach(btn => {
+                        btn.addEventListener('click', async function() {
+                            const submissionId = parseInt(this.dataset.submissionId);
+                            await handleEmailAction(submissionId);
+                        });
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load submissions:', error);
+                container.innerHTML = '<div class="text-red-500">Failed to load submissions</div>';
+            }
+        }
+
+        // Handle email action (ingest quote or add correspondence)
+        async function handleEmailAction(submissionId) {
+            const loadingOverlay = document.getElementById('ocrLoadingOverlay');
+            const selectSubmissionBtns = document.querySelectorAll('.select-submission-btn');
+            const cancelBtn = document.getElementById('cancelSelectSubmission');
+            const closeBtn = document.getElementById('closeSelectSubmissionModal');
+            
+            try {
+                // Show loading spinner for quote ingestion
+                if (currentEmailAction === 'quote') {
+                    loadingOverlay.classList.remove('hidden');
+                    // Disable interaction buttons
+                    selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
+                    cancelBtn.disabled = true;
+                    closeBtn.disabled = true;
+                }
+                
+                let response;
+                
+                if (currentEmailAction === 'quote') {
+                    response = await fetch(`/api/email/${currentEmailId}/ingest_quote/${submissionId}`, {
+                        method: 'POST'
+                    });
+                } else {
+                    response = await fetch(`/api/email/${currentEmailId}/add_correspondence/${submissionId}`, {
+                        method: 'POST'
+                    });
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (currentEmailAction === 'quote') {
+                        alert('Quote ingested successfully!');
+                    } else {
+                        alert('Correspondence added successfully!');
+                    }
+                    document.getElementById('selectSubmissionModal').classList.add('hidden');
+                    document.getElementById('newMessagesModal').classList.add('hidden');
+                    
+                    // Refresh submissions and unread count
+                    await loadSubmissions();
+                    await loadUnreadEmailCount();
+                    await loadEmailStatus();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to process email action:', error);
+                alert('Failed to process email. Check console for details.');
+            } finally {
+                // Hide loading spinner
+                loadingOverlay.classList.add('hidden');
+                // Re-enable buttons
+                selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'auto');
+                cancelBtn.disabled = false;
+                closeBtn.disabled = false;
+            }
+        }
+
+        // Delete email
+        async function deleteEmail(emailId) {
+            try {
+                const response = await fetch(`/api/email/${emailId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadUnreadEmails();
+                    await loadUnreadEmailCount();
+                    await loadEmailStatus();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to delete email:', error);
+                alert('Failed to delete email. Check console for details.');
+            }
+        }
 
         // ============================================================================
         // RULES MANAGEMENT
@@ -933,7 +2275,10 @@
 
         // Initialize page
         async function initializePage() {
-            // Load users first
+            // Load current database first
+            await loadCurrentDatabase();
+
+            // Load users
             try {
                 const response = await fetch('/api/users');
                 const data = await response.json();
@@ -956,9 +2301,242 @@
             await loadSubmissions();
         }
 
+        // ============================================================================
+        // BROKER MANAGEMENT
+        // ============================================================================
+
+        let brokers = [];
+
+        // Configure Brokers Modal
+        document.getElementById('configureBrokersBtn').addEventListener('click', async () => {
+            await loadBrokers();
+            document.getElementById('configureBrokersModal').classList.remove('hidden');
+        });
+
+        document.getElementById('closeBrokersModal').addEventListener('click', () => {
+            document.getElementById('configureBrokersModal').classList.add('hidden');
+        });
+
+        // Broker type toggle
+        document.querySelectorAll('input[name="brokerType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const isPortal = e.target.value === 'portal';
+                document.getElementById('emailSection').classList.toggle('hidden', isPortal);
+                document.getElementById('portalSection').classList.toggle('hidden', !isPortal);
+            });
+        });
+
+        async function loadBrokers() {
+            try {
+                const response = await fetch('/api/brokers');
+                const data = await response.json();
+
+                if (data.success) {
+                    brokers = data.brokers;
+                    renderBrokersList();
+                }
+            } catch (error) {
+                console.error('Error loading brokers:', error);
+                alert('Error loading brokers');
+            }
+        }
+
+        function renderBrokersList() {
+            const list = document.getElementById('brokersList');
+
+            if (brokers.length === 0) {
+                list.innerHTML = '<p class="text-gray-500 text-sm">No brokers configured yet.</p>';
+                return;
+            }
+
+            list.innerHTML = brokers.map(broker => `
+                <div class="flex items-center justify-between p-3 border border-gray-200 rounded bg-gray-50">
+                    <div class="flex items-center gap-3 flex-1">
+                        <input type="checkbox" class="broker-checkbox" data-broker-id="${broker.id}" ${broker.is_enabled ? 'checked' : ''}>
+                        <div>
+                            <div class="font-semibold text-sm">${escapeHtml(broker.name)}</div>
+                            <div class="text-xs text-gray-500">
+                                ${broker.is_portal ? `Portal: ${escapeHtml(broker.portal_name)}` : `Email: ${escapeHtml(broker.email)}`}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="edit-broker-btn px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600" data-broker-id="${broker.id}">
+                            Edit
+                        </button>
+                        <button class="delete-broker-btn px-3 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600" data-broker-id="${broker.id}">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Add event listeners
+            document.querySelectorAll('.broker-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', async (e) => {
+                    const brokerId = parseInt(e.target.dataset.brokerId);
+                    const broker = brokers.find(b => b.id === brokerId);
+                    if (broker) {
+                        await updateBroker(brokerId, { is_enabled: e.target.checked });
+                    }
+                });
+            });
+
+            document.querySelectorAll('.edit-broker-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const brokerId = parseInt(e.target.dataset.brokerId);
+                    const broker = brokers.find(b => b.id === brokerId);
+                    if (broker) {
+                        openEditBrokerModal(broker);
+                    }
+                });
+            });
+
+            document.querySelectorAll('.delete-broker-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const brokerId = parseInt(e.target.dataset.brokerId);
+                    if (confirm('Delete this broker?')) {
+                        await deleteBroker(brokerId);
+                    }
+                });
+            });
+        }
+
+        document.getElementById('addBrokerBtn').addEventListener('click', async () => {
+            const brokerType = document.querySelector('input[name="brokerType"]:checked').value;
+            const name = document.getElementById('brokerName').value.trim();
+            const email = document.getElementById('brokerEmail').value.trim();
+            const portalName = document.getElementById('brokerPortalName').value.trim();
+            const emailBody = document.getElementById('brokerEmailBody').value.trim();
+            const letterhead = document.getElementById('brokerLetterhead').value.trim();
+
+            if (brokerType === 'email' && !email) {
+                alert('Email is required for email brokers');
+                return;
+            }
+
+            if (brokerType === 'portal' && !portalName) {
+                alert('Portal name is required for portal brokers');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/brokers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        email: brokerType === 'email' ? email : '',
+                        portal_name: brokerType === 'portal' ? portalName : '',
+                        is_portal: brokerType === 'portal',
+                        email_body: emailBody,
+                        letterhead: letterhead
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    brokers.push(data.broker);
+                    renderBrokersList();
+
+                    // Clear form
+                    document.getElementById('brokerName').value = '';
+                    document.getElementById('brokerEmail').value = '';
+                    document.getElementById('brokerPortalName').value = '';
+                    document.getElementById('brokerEmailBody').value = '';
+                    document.getElementById('brokerLetterhead').value = '';
+                    document.getElementById('brokerTypeEmail').checked = true;
+                    document.getElementById('emailSection').classList.remove('hidden');
+                    document.getElementById('portalSection').classList.add('hidden');
+                } else {
+                    alert('Error adding broker: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error adding broker:', error);
+                alert('Error adding broker');
+            }
+        });
+
+        async function updateBroker(brokerId, updates) {
+            try {
+                const response = await fetch(`/api/brokers/${brokerId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const broker = brokers.find(b => b.id === brokerId);
+                    if (broker) {
+                        Object.assign(broker, data.broker);
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating broker:', error);
+            }
+        }
+
+        async function deleteBroker(brokerId) {
+            try {
+                const response = await fetch(`/api/brokers/${brokerId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    brokers = brokers.filter(b => b.id !== brokerId);
+                    renderBrokersList();
+                } else {
+                    alert('Error deleting broker: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting broker:', error);
+                alert('Error deleting broker');
+            }
+        }
+
+        let currentEditingBrokerId = null;
+
+        function openEditBrokerModal(broker) {
+            currentEditingBrokerId = broker.id;
+            document.getElementById('editBrokerName').value = broker.name || '';
+            document.getElementById('editBrokerContact').value = broker.is_portal
+                ? `Portal: ${broker.portal_name}`
+                : `Email: ${broker.email}`;
+            document.getElementById('editBrokerEmailBody').value = broker.email_body || '';
+            document.getElementById('editBrokerLetterhead').value = broker.letterhead || '';
+            document.getElementById('editBrokerModal').classList.remove('hidden');
+        }
+
+        document.getElementById('closeEditBrokerModal').addEventListener('click', () => {
+            document.getElementById('editBrokerModal').classList.add('hidden');
+            currentEditingBrokerId = null;
+        });
+
+        document.getElementById('saveEditBrokerBtn').addEventListener('click', async () => {
+            if (!currentEditingBrokerId) return;
+
+            const emailBody = document.getElementById('editBrokerEmailBody').value.trim();
+            const letterhead = document.getElementById('editBrokerLetterhead').value.trim();
+
+            try {
+                await updateBroker(currentEditingBrokerId, {
+                    email_body: emailBody,
+                    letterhead: letterhead
+                });
+
+                document.getElementById('editBrokerModal').classList.add('hidden');
+                renderBrokersList();
+                alert('Broker updated successfully!');
+            } catch (error) {
+                console.error('Error saving broker:', error);
+                alert('Error saving broker');
+            }
+        });
+
         // Run initialization on page load
         initializePage();
     </script>
 </body>
 </html>
-

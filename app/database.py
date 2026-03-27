@@ -1,7 +1,8 @@
 # app/database.py
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
-from app.models import Base, Submission, Quote, AuditLog, AppetiteRule
+from sqlalchemy.pool import NullPool
+from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment, ConnectedAccount
 import os
 
 
@@ -24,8 +25,14 @@ class Database:
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir)
         
-        # Create engine
-        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
+        # Create engine with NullPool for SQLite to avoid connection exhaustion
+        # NullPool disables connection pooling - each connection is closed immediately after use
+        self.engine = create_engine(
+            f'sqlite:///{db_path}',
+            echo=False,
+            poolclass=NullPool,
+            connect_args={'check_same_thread': False}  # SQLite allows cross-thread access
+        )
         
         # Create session factory
         self.Session = scoped_session(sessionmaker(bind=self.engine))
@@ -33,6 +40,7 @@ class Database:
     def init_db(self):
         """Create all tables in the database"""
         Base.metadata.create_all(self.engine)
+        _ensure_schema_updates(self.engine)
         print(f"Database initialized successfully")
     
     def drop_all(self):
@@ -49,22 +57,105 @@ class Database:
         self.Session.remove()
 
 
-# Global database instance
+# Global database instances
 _db = None
+_current_db_name = 'production'  # Default database
+_db_instances = {}  # Cache for database instances
+
+
+def get_current_db_name():
+    """Get the name of the currently active database"""
+    return _current_db_name
+
+
+def set_current_db(db_name):
+    """
+    Switch to a different database.
+
+    Args:
+        db_name: Name of the database ('production', 'use_cases', 'test')
+
+    Returns:
+        bool: True if successful, False if database name is invalid
+    """
+    global _current_db_name, _db
+    from config import Config
+
+    if db_name not in Config.DATABASES:
+        return False
+
+    _current_db_name = db_name
+
+    # Get or create database instance
+    if db_name not in _db_instances:
+        _db_instances[db_name] = Database(db_path=Config.DATABASES[db_name])
+        _db_instances[db_name].init_db()  # Ensure tables exist
+
+    _db = _db_instances[db_name]
+    return True
 
 
 def get_db():
-    """Get the global database instance"""
+    """Get the current database instance"""
     global _db
     if _db is None:
-        _db = Database()
+        # Initialize with default database
+        set_current_db(_current_db_name)
     return _db
+
+
+def get_available_databases():
+    """Get list of available database names"""
+    from config import Config
+    return list(Config.DATABASES.keys())
 
 
 def init_db():
     """Initialize the database (create tables)"""
     db = get_db()
     db.init_db()
+    _ensure_schema_updates(db.engine)
+
+
+def _ensure_schema_updates(engine):
+    """Apply lightweight schema updates for existing SQLite DBs."""
+    with engine.begin() as conn:
+        quote_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(quotes)").fetchall()]
+        if 'quote_outcome' not in quote_columns:
+            conn.exec_driver_sql("ALTER TABLE quotes ADD COLUMN quote_outcome VARCHAR(20)")
+            print("Applied schema update: added quotes.quote_outcome")
+
+        submission_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(submissions)").fetchall()]
+        if 'status_label' not in submission_columns:
+            conn.exec_driver_sql("ALTER TABLE submissions ADD COLUMN status_label VARCHAR(255)")
+            print("Applied schema update: added submissions.status_label")
+
+        broker_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(brokers)").fetchall()]
+        if 'letterhead' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN letterhead TEXT")
+            print("Applied schema update: added brokers.letterhead")
+        if 'email_body' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN email_body TEXT")
+            print("Applied schema update: added brokers.email_body")
+        if 'created_at' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+            print("Applied schema update: added brokers.created_at")
+        if 'updated_at' not in broker_columns:
+            conn.exec_driver_sql("ALTER TABLE brokers ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+            print("Applied schema update: added brokers.updated_at")
+
+        # Add is_deleted column to email_messages table
+        try:
+            email_columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(email_messages)").fetchall()]
+            if 'is_deleted' not in email_columns:
+                conn.exec_driver_sql("ALTER TABLE email_messages ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
+                print("Applied schema update: added email_messages.is_deleted")
+            if 'connected_account_id' not in email_columns:
+                conn.exec_driver_sql("ALTER TABLE email_messages ADD COLUMN connected_account_id INTEGER")
+                print("Applied schema update: added email_messages.connected_account_id")
+        except Exception as e:
+            print(f"Error updating email_messages schema: {e}")
+            pass  # Table might not exist yet
 
 
 def get_session():
@@ -74,7 +165,7 @@ def get_session():
 
 
 # Helper functions for common operations
-def create_submission(insured_name, effective_date, state=None, user=None):
+def create_submission(insured_name, effective_date, state=None, user=None, assigned_to=None):
     """
     Create a new submission and log the action.
 
@@ -89,7 +180,8 @@ def create_submission(insured_name, effective_date, state=None, user=None):
             insured_name=insured_name,
             effective_date=effective_date,
             state=state,
-            status=SubmissionStatus.RECEIVED
+            status=SubmissionStatus.RECEIVED,
+            assigned_to=assigned_to
         )
         session.add(submission)
         session.flush()  # Get the ID
@@ -210,7 +302,7 @@ def log_action(entity_type, entity_id, action, user=None, details=None, submissi
 
 
 def get_all_submissions():
-    """Get all submissions with quote counts (only returns submissions with at least 1 quote)"""
+    """Get all submissions with quote counts."""
     from sqlalchemy.orm import joinedload
 
     session = get_session()
@@ -219,14 +311,7 @@ def get_all_submissions():
             joinedload(Submission.quotes)
         ).order_by(Submission.created_at.desc()).all()
 
-        # Only return submissions that have at least one quote
-        result = []
-        for s in submissions:
-            s_dict = s.to_dict()
-            if s_dict['quote_count'] > 0:
-                result.append(s_dict)
-
-        return result
+        return [s.to_dict() for s in submissions]
     finally:
         session.close()
 
@@ -294,4 +379,3 @@ def update_submission_appetite_score(submission_id):
         print(f"Error updating appetite score: {e}")
     finally:
         session.close()
-

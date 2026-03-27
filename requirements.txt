@@ -11,7 +11,17 @@ python-dotenv
 flask
 flask-wtf
 flask-cors
+flask-login
 werkzeug
 sqlalchemy
 gunicorn
 sendgrid
+boto3
+apscheduler
+# OAuth and API clients
+google-api-python-client
+google-auth
+google-auth-oauthlib
+msal
+cryptography
+PyJWT
