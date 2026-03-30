@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AMS Pro — Policy Entry</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #181c27;
+    --border:    #2a2f3f;
+    --accent:    #4f8ef7;
+    --accent2:   #2ecc8a;
+    --text:      #d4daf0;
+    --muted:     #5a6180;
+    --label:     #8892b0;
+    --input-bg:  #111520;
+    --danger:    #e05c6a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  /* ── Top Bar ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 42px;
+  }
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .logo span { color: var(--accent2); }
+  .nav-tabs {
+    display: flex;
+    gap: 0;
+    height: 42px;
+  }
+  .nav-tab {
+    padding: 0 16px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    background: var(--accent2);
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: calc(100vh - 42px);
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+  }
+  .sidebar-section {
+    padding: 8px 16px 4px;
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .sidebar-item {
+    padding: 7px 16px;
+    color: var(--label);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.1s;
+  }
+  .sidebar-item:hover { background: rgba(79,142,247,0.07); color: var(--text); }
+  .sidebar-item.active {
+    background: rgba(79,142,247,0.12);
+    color: var(--accent);
+    border-right: 2px solid var(--accent);
+  }
+  .sidebar-icon { width: 14px; opacity: 0.7; }
+
+  /* ── Main content ── */
+  .main {
+    padding: 24px 32px;
+    overflow-y: auto;
+  }
+
+  /* ── Page header ── */
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .page-subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  /* ── Buttons ── */
+  .btn {
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--label);
+  }
+  .btn-ghost:hover { border-color: var(--muted); color: var(--text); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .btn-primary:hover { background: #3a7ee8; }
+  .btn-success {
+    background: var(--accent2);
+    color: #0f1117;
+    border-color: var(--accent2);
+    font-weight: 600;
+  }
+  .btn-success:hover { background: #27b87a; }
+
+  /* ── Cards / Sections ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
+  .card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .card-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(79,142,247,0.15);
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .card-body { padding: 16px; }
+
+  /* ── Form Grid ── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .form-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .span-2 { grid-column: span 2; }
+  .span-3 { grid-column: span 3; }
+  .span-4 { grid-column: span 4; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 11px;
+    color: var(--label);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(79,142,247,0.12);
+  }
+  .field input::placeholder { color: var(--muted); }
+  .field select { cursor: pointer; }
+  .field textarea { resize: vertical; min-height: 70px; }
+
+  /* highlight fields that got filled by agent */
+  .field input.filled,
+  .field select.filled,
+  .field textarea.filled {
+    border-color: var(--accent2);
+    background: rgba(46,204,138,0.06);
+  }
+
+  /* ── Divider ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 4px 0 16px;
+  }
+
+  /* ── Status bar ── */
+  .statusbar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 26px;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #fff;
+    z-index: 100;
+  }
+  .statusbar span { opacity: 0.75; }
+  .statusbar span.hi { opacity: 1; font-weight: 600; }
+
+  /* ── Required marker ── */
+  .req { color: var(--danger); margin-left: 2px; }
+
+  /* ── Agent status banner ── */
+  #agent-banner {
+    display: none;
+    background: rgba(46,204,138,0.12);
+    border: 1px solid var(--accent2);
+    border-radius: 5px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--accent2);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">AMS<span>pro</span></div>
+    <div class="nav-tabs">
+      <div class="nav-tab">Dashboard</div>
+      <div class="nav-tab">Accounts</div>
+      <div class="nav-tab active">Policy Entry</div>
+      <div class="nav-tab">Claims</div>
+      <div class="nav-tab">Reports</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="status-dot"></span>
+    <span>Connected</span>
+    <span style="color:var(--border)">|</span>
+    <span>User: agent_test</span>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">Policies</div>
+    <div class="sidebar-item active">
+      <svg class="sidebar-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h8a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V3a2 2 0 012-2zm0 1a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V3a1 1 0 00-1-1H4z"/><path d="M5 5h6M5 7h6M5 9h4" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+      New Policy
+    </div>
+    <div class="sidebar-item">
+      <svg class="sidebar-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      Renewals
+    </div>
+    <div class="sidebar-item">
+      <svg class="sidebar-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2z" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M5 7h6M5 9h4" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+      Endorsements
+    </div>
+    <div class="sidebar-section" style="margin-top:12px">Account</div>
+    <div class="sidebar-item">Clients</div>
+    <div class="sidebar-item">Carriers</div>
+    <div class="sidebar-item">Brokers</div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <div id="agent-banner">⚡ Agent is writing to this form...</div>
+
+    <div class="page-header">
+      <div>
+        <div class="page-title">New Policy Entry</div>
+        <div class="page-subtitle">POL-2026-##### &nbsp;·&nbsp; Draft</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+        <button class="btn btn-ghost">Save Draft</button>
+        <button class="btn btn-success" onclick="submitForm()">Bind Policy</button>
+      </div>
+    </div>
+
+    <!-- Insured Information -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Insured Information</span>
+        <span class="card-badge">REQUIRED</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field span-2">
+            <label>Insured Name <span class="req">*</span></label>
+            <input type="text" id="insured_name" name="insured_name" placeholder="Legal entity name">
+          </div>
+          <div class="field">
+            <label>DBA / Trade Name</label>
+            <input type="text" id="dba" name="dba" placeholder="Doing business as">
+          </div>
+          <div class="field span-2">
+            <label>Mailing Address <span class="req">*</span></label>
+            <input type="text" id="address" name="address" placeholder="Street address">
+          </div>
+          <div class="field">
+            <label>State <span class="req">*</span></label>
+            <select id="state" name="state">
+              <option value="">Select state</option>
+              <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+              <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+              <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+              <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+              <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+              <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+              <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+              <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+              <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+              <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+              <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+              <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+              <option>WI</option><option>WY</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>City</label>
+            <input type="text" id="city" name="city" placeholder="City">
+          </div>
+          <div class="field">
+            <label>ZIP</label>
+            <input type="text" id="zip" name="zip" placeholder="ZIP code">
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <input type="text" id="phone" name="phone" placeholder="(555) 000-0000">
+          </div>
+          <div class="field span-2">
+            <label>Email</label>
+            <input type="text" id="email" name="email" placeholder="contact@insured.com">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Policy Details -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Policy Details</span>
+        <span class="card-badge">COVERAGE</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid-4">
+          <div class="field">
+            <label>Line of Business <span class="req">*</span></label>
+            <select id="line_of_business" name="line_of_business">
+              <option value="">Select LOB</option>
+              <option>General Liability</option>
+              <option>Commercial Auto</option>
+              <option>Workers Compensation</option>
+              <option>Commercial Property</option>
+              <option>Umbrella / Excess</option>
+              <option>Professional Liability</option>
+              <option>Cyber Liability</option>
+              <option>D&O</option>
+              <option>E&O</option>
+              <option>BOP</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Carrier <span class="req">*</span></label>
+            <input type="text" id="carrier" name="carrier" placeholder="Carrier name">
+          </div>
+          <div class="field">
+            <label>Policy Number</label>
+            <input type="text" id="policy_number" name="policy_number" placeholder="POL-XXXXXXXX">
+          </div>
+          <div class="field">
+            <label>Broker</label>
+            <input type="text" id="broker" name="broker" placeholder="Broker name">
+          </div>
+          <div class="field">
+            <label>Effective Date <span class="req">*</span></label>
+            <input type="text" id="effective_date" name="effective_date" placeholder="MM/DD/YYYY">
+          </div>
+          <div class="field">
+            <label>Expiration Date <span class="req">*</span></label>
+            <input type="text" id="expiration_date" name="expiration_date" placeholder="MM/DD/YYYY">
+          </div>
+          <div class="field">
+            <label>Annual Premium <span class="req">*</span></label>
+            <input type="text" id="premium" name="premium" placeholder="$0.00">
+          </div>
+          <div class="field">
+            <label>Payment Plan</label>
+            <select id="payment_plan" name="payment_plan">
+              <option value="">Select</option>
+              <option>Annual</option>
+              <option>Semi-Annual</option>
+              <option>Quarterly</option>
+              <option>Monthly</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coverage Limits -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Coverage Limits</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid-4">
+          <div class="field">
+            <label>Per Occurrence</label>
+            <input type="text" id="per_occurrence" name="per_occurrence" placeholder="$1,000,000">
+          </div>
+          <div class="field">
+            <label>General Aggregate</label>
+            <input type="text" id="general_aggregate" name="general_aggregate" placeholder="$2,000,000">
+          </div>
+          <div class="field">
+            <label>Products / Comp Ops</label>
+            <input type="text" id="products_comp_ops" name="products_comp_ops" placeholder="$2,000,000">
+          </div>
+          <div class="field">
+            <label>Deductible</label>
+            <input type="text" id="deductible" name="deductible" placeholder="$0">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk / Underwriting -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Risk &amp; Underwriting</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field">
+            <label>SIC Code</label>
+            <input type="text" id="sic_code" name="sic_code" placeholder="0000">
+          </div>
+          <div class="field">
+            <label>NAICS Code</label>
+            <input type="text" id="naics_code" name="naics_code" placeholder="000000">
+          </div>
+          <div class="field">
+            <label>Years in Business</label>
+            <input type="text" id="years_in_business" name="years_in_business" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Annual Revenue</label>
+            <input type="text" id="annual_revenue" name="annual_revenue" placeholder="$0">
+          </div>
+          <div class="field">
+            <label>No. of Employees</label>
+            <input type="text" id="num_employees" name="num_employees" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Payroll</label>
+            <input type="text" id="payroll" name="payroll" placeholder="$0">
+          </div>
+          <div class="field span-3">
+            <label>Description of Operations</label>
+            <textarea id="description" name="description" placeholder="Describe the insured's primary business operations..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Notes &amp; Comments</span>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <textarea id="notes" name="notes" style="min-height:80px" placeholder="Internal notes for this policy..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div style="height: 40px;"></div>
+
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="statusbar">
+  <span class="hi">AMSpro v4.2.1</span>
+  <span>·</span>
+  <span>Policy Entry Module</span>
+  <span>·</span>
+  <span id="status-msg">Ready</span>
+</div>
+
+<script>
+  // Highlight filled fields
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    el.addEventListener('input', () => {
+      if (el.value.trim()) {
+        el.classList.add('filled');
+      } else {
+        el.classList.remove('filled');
+      }
+    });
+    el.addEventListener('change', () => {
+      if (el.value.trim()) {
+        el.classList.add('filled');
+      } else {
+        el.classList.remove('filled');
+      }
+    });
+  });
+
+  function clearForm() {
+    document.querySelectorAll('input, textarea').forEach(el => {
+      el.value = '';
+      el.classList.remove('filled');
+    });
+    document.querySelectorAll('select').forEach(el => {
+      el.selectedIndex = 0;
+      el.classList.remove('filled');
+    });
+    document.getElementById('status-msg').textContent = 'Form cleared';
+    document.getElementById('agent-banner').style.display = 'none';
+  }
+
+  function submitForm() {
+    const required = ['insured_name', 'state', 'line_of_business', 'carrier', 'effective_date', 'expiration_date', 'premium'];
+    const missing = required.filter(id => !document.getElementById(id).value.trim());
+    if (missing.length) {
+      document.getElementById('status-msg').textContent = `Missing required fields: ${missing.join(', ')}`;
+      return;
+    }
+    document.getElementById('status-msg').textContent = '✓ Policy bound successfully — POL-2026-' + Math.floor(10000 + Math.random()*90000);
+  }
+
+  // Show agent banner when a field is programmatically filled
+  // (MutationObserver watches for value changes from outside JS)
+  const observer = new MutationObserver(() => {
+    document.getElementById('agent-banner').style.display = 'block';
+  });
+  document.querySelectorAll('input, textarea').forEach(el => {
+    observer.observe(el, { attributes: true, attributeFilter: ['value'] });
+  });
+
+  // Clock in status bar
+  function updateClock() {
+    const now = new Date();
+    const t = now.toLocaleTimeString('en-US', {hour12: false});
+    document.querySelector('.topbar-right span:last-child').textContent = 'User: agent_test  ' + t;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+</script>
+</body>
+</html>

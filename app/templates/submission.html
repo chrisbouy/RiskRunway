@@ -1460,7 +1460,7 @@
                     <button id="downloadCsvBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                         📥 Download CSV
                     </button>
-                    <button id="exportToAmsBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-not-allowed opacity-75" disabled>
+                    <button id="exportToAmsBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
                         ☁️ Export to AMS
                     </button>
                 </div>
@@ -3335,9 +3335,77 @@
             URL.revokeObjectURL(url);
         });
         
-        // Export to AMS (non-working button)
-        document.getElementById('exportToAmsBtn').addEventListener('click', function() {
-            alert('AMS export functionality is not yet implemented. Please use Download CSV for now.');
+        // Export to AMS - Create job and poll for status
+        let amsExportJobId = null;
+        let amsExportPollInterval = null;
+        
+        document.getElementById('exportToAmsBtn').addEventListener('click', async function() {
+            if (exportData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+            
+            try {
+                // Create the AMS export job
+                const response = await fetch('/api/ams-export/jobs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        submission_id: submissionId,
+                        quote_id: null  // Will export all chosen quotes
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to create AMS export job');
+                }
+                
+                amsExportJobId = data.job.id;
+                btn.textContent = 'Waiting for agent...';
+                
+                // Poll for job completion
+                amsExportPollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`/api/ams-export/jobs/${amsExportJobId}`);
+                        const statusData = await statusResponse.json();
+                        
+                        if (statusData.success && statusData.job) {
+                            const job = statusData.job;
+                            
+                            if (job.status === 'completed') {
+                                clearInterval(amsExportPollInterval);
+                                btn.textContent = '✓ Exported!';
+                                alert('AMS export completed successfully!');
+                                setTimeout(() => {
+                                    btn.disabled = false;
+                                    btn.textContent = '☁️ Export to AMS';
+                                }, 2000);
+                            } else if (job.status === 'failed') {
+                                clearInterval(amsExportPollInterval);
+                                btn.disabled = false;
+                                btn.textContent = '☁️ Export to AMS';
+                                alert('AMS export failed: ' + (job.error_message || 'Unknown error'));
+                            } else {
+                                btn.textContent = 'Processing... (' + job.attempt_count + '/' + job.max_attempts + ')';
+                            }
+                        }
+                    } catch (pollError) {
+                        console.error('Error polling job status:', pollError);
+                    }
+                }, 3000);  // Poll every 3 seconds
+                
+            } catch (error) {
+                console.error('Error starting AMS export:', error);
+                alert('Error starting AMS export: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = '☁️ Export to AMS';
+            }
         });
 
         // Load submission data on page load

@@ -19,6 +19,7 @@ class Config:
 
     # Database settings
     DATABASE_PATH = os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
+    SQLALCHEMY_EXPIRE_ON_COMMIT = False
 
     # Multiple database support
     DATABASES = {

@@ -509,3 +509,61 @@ class EmailAttachment(Base):
             'file_path': self.file_path,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+
+class AmsExportJob(Base):
+    """
+    Tracks AMS export jobs for computer use automation.
+    """
+    __tablename__ = 'ams_export_jobs'
+
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False, index=True)
+    quote_id = Column(Integer, ForeignKey('quotes.id'), nullable=True, index=True)
+
+    # Job data
+    json_data = Column(Text, nullable=False)  # The extracted quote data to enter into AMS
+    instructions = Column(Text, nullable=True)  # Optional custom instructions
+
+    # Status tracking
+    status = Column(String(20), default='pending', nullable=False)  # pending, in_progress, completed, failed
+    attempt_count = Column(Integer, default=0, nullable=False)
+    max_attempts = Column(Integer, default=3, nullable=False)
+    error_message = Column(Text, nullable=True)
+
+    # Agent info
+    agent_id = Column(String(100), nullable=True)  # Identifies which local agent picked up the job
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # User who initiated
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+
+    # Relationships
+    submission = relationship("Submission", backref='ams_export_jobs')
+    quote = relationship("Quote", backref='ams_export_jobs')
+    user = relationship("User", backref='ams_export_jobs')
+
+    def __repr__(self):
+        return f"<AmsExportJob(id={self.id}, submission_id={self.submission_id}, status='{self.status}')>"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'submission_id': self.submission_id,
+            'quote_id': self.quote_id,
+            'json_data': self.json_data,
+            'instructions': self.instructions,
+            'status': self.status,
+            'attempt_count': self.attempt_count,
+            'max_attempts': self.max_attempts,
+            'error_message': self.error_message,
+            'agent_id': self.agent_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'user_id': self.user_id
+        }

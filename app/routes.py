@@ -25,7 +25,7 @@ from app.database import (
     set_current_db,
     get_available_databases
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus, AmsExportJob
 from app.email_scraper import EmailScraper  # IMAP-based scraping (active)
 from app.email_client import EmailClient, create_email_client  # OAuth (future)
 from app.oauth_services import get_oauth_service
@@ -3228,6 +3228,269 @@ def delete_broker(broker_id):
             db_session.commit()
 
             return jsonify({'success': True})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# AMS EXPORT JOBS
+# ============================================================================
+
+@bp.route('/api/ams-export/jobs', methods=['POST'])
+@login_required
+def create_ams_export_job():
+    """
+    Create a new AMS export job when user clicks 'Export to AMS' button.
+    """
+    try:
+        data = request.get_json() or {}
+        submission_id = data.get('submission_id')
+        quote_id = data.get('quote_id')  # Optional: specific quote
+        
+        if not submission_id:
+            return jsonify({'success': False, 'error': 'submission_id is required'}), 400
+        
+        db_session = get_session()
+        try:
+            # Verify submission exists
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+            
+            # Get quote data if quote_id provided, otherwise get all quotes for submission
+            json_data = {}
+            if quote_id:
+                quote = db_session.query(Quote).filter_by(id=quote_id, submission_id=submission_id).first()
+                if not quote:
+                    return jsonify({'success': False, 'error': 'Quote not found'}), 404
+                if quote.extracted_json:
+                    json_data = json.loads(quote.extracted_json)
+            else:
+                # Get all quotes for this submission
+                quotes = db_session.query(Quote).filter_by(submission_id=submission_id).all()
+                json_data = {
+                    'submission': submission.to_dict(),
+                    'quotes': [json.loads(q.extracted_json) for q in quotes if q.extracted_json]
+                }
+            
+            # Create the job
+            job = AmsExportJob(
+                submission_id=submission_id,
+                quote_id=quote_id,
+                json_data=json.dumps(json_data),
+                instructions='Enter this policy data into the highlighted form fields.',
+                status='pending',
+                attempt_count=0,
+                max_attempts=3,
+                user_id=session.get('user_id')
+            )
+            db_session.add(job)
+            db_session.commit()
+            db_session.refresh(job)
+            job_id   = job.id
+            job_dict = job.to_dict()             
+            # Log the action
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='ams_export_job_created',
+                user=session.get('username'),
+                submission_id=submission_id,
+                details=json.dumps({'job_id': job.id})
+            )
+  # ← serialize while session is still open
+            return jsonify({
+                'success': True,
+                'job': job_dict
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams-export/jobs/<int:job_id>', methods=['GET'])
+@login_required
+def get_ams_export_job(job_id):
+    """
+    Get the status of an AMS export job.
+    """
+    try:
+        db_session = get_session()
+        try:
+            job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+            if not job:
+                return jsonify({'success': False, 'error': 'Job not found'}), 404
+            
+            return jsonify({
+                'success': True,
+                'job': job.to_dict()
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# AMS EXPORT JOBS - Agent Polling Endpoints (no login required)
+# ============================================================================
+
+@bp.route('/api/ams/jobs/next', methods=['GET'])
+def get_next_ams_export_job():
+    """
+    Get the next pending job for the local agent to poll.
+    Returns a single job or null if no pending jobs.
+    No login required - this is called by the local agent.
+    """
+    try:
+        db_session = get_session()
+        try:
+            # Get the oldest pending job (not picked up yet)
+            job = db_session.query(AmsExportJob).filter(
+                AmsExportJob.status == 'pending'
+            ).order_by(AmsExportJob.created_at.asc()).first()
+            
+            if not job:
+                return jsonify({'success': True, 'job': None})
+            
+            return jsonify({
+                'success': True,
+                'job': job.to_dict()
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams/jobs/<int:job_id>/status', methods=['PATCH'])
+def update_ams_export_job_status(job_id):
+    """
+    Update an AMS export job status (called by local agent).
+    Expects payload: { "status": "in_progress|completed|failed", "message": "optional message" }
+    """
+    try:
+        data = request.get_json() or {}
+        new_status = data.get('status')
+        message = data.get('message')  # This is the error_message or success message
+        
+        # Map 'complete' to 'completed' for consistency
+        if new_status == 'complete':
+            new_status = 'completed'
+        
+        valid_statuses = ['pending', 'in_progress', 'completed', 'failed']
+        if new_status not in valid_statuses:
+            return jsonify({'success': False, 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
+        
+        db_session = get_session()
+        try:
+            job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+            if not job:
+                return jsonify({'success': False, 'error': 'Job not found'}), 404
+            
+            job.status = new_status
+            
+            if new_status == 'in_progress' and not job.started_at:
+                job.started_at = datetime.utcnow()
+                job.attempt_count += 1
+            
+            if new_status == 'completed':
+                job.completed_at = datetime.utcnow()
+            
+            # Use message as error_message if status is failed
+            if new_status == 'failed' and message:
+                job.error_message = message
+            
+            # If failed and attempts remaining, reset to pending for retry
+            if new_status == 'failed' and job.attempt_count < job.max_attempts:
+                job.status = 'pending'
+            
+            db_session.commit()
+            
+            return jsonify({
+                'success': True,
+                'job': job.to_dict()
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Keep the old endpoints for frontend compatibility
+@bp.route('/api/ams-export/jobs/pending', methods=['GET'])
+def get_pending_ams_export_jobs():
+    """
+    Get pending jobs for the local agent to poll.
+    No login required - this is called by the local agent.
+    """
+    try:
+        db_session = get_session()
+        try:
+            # Get jobs that are pending (not picked up yet)
+            pending_jobs = db_session.query(AmsExportJob).filter(
+                AmsExportJob.status == 'pending'
+            ).order_by(AmsExportJob.created_at.asc()).all()
+            
+            return jsonify({
+                'success': True,
+                'jobs': [job.to_dict() for job in pending_jobs]
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams-export/jobs/<int:job_id>', methods=['PATCH'])
+def update_ams_export_job(job_id):
+    """
+    Update an AMS export job status (called by local agent).
+    """
+    try:
+        data = request.get_json() or {}
+        new_status = data.get('status')
+        agent_id = data.get('agent_id')
+        error_message = data.get('error_message')
+        
+        valid_statuses = ['pending', 'in_progress', 'completed', 'failed']
+        if new_status not in valid_statuses:
+            return jsonify({'success': False, 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
+        
+        db_session = get_session()
+        try:
+            job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+            if not job:
+                return jsonify({'success': False, 'error': 'Job not found'}), 404
+            
+            job.status = new_status
+            
+            if agent_id:
+                job.agent_id = agent_id
+            
+            if new_status == 'in_progress' and not job.started_at:
+                job.started_at = datetime.utcnow()
+                job.attempt_count += 1
+            
+            if new_status == 'completed':
+                job.completed_at = datetime.utcnow()
+            
+            if error_message:
+                job.error_message = error_message
+            
+            # If failed and attempts remaining, reset to pending for retry
+            if new_status == 'failed' and job.attempt_count < job.max_attempts:
+                job.status = 'pending'
+            
+            db_session.commit()
+            
+            return jsonify({
+                'success': True,
+                'job': job.to_dict()
+            })
         finally:
             db_session.close()
     except Exception as e:

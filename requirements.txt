@@ -25,3 +25,8 @@ google-auth-oauthlib
 msal
 cryptography
 PyJWT
+pyautogui
+pynput
+pyperclip
+requests
+mss
