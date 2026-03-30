@@ -11,8 +11,6 @@ Usage:
 
 import json
 import time
-from urllib import response
-from urllib import response
 import uuid
 import logging
 import argparse
@@ -20,12 +18,23 @@ import tempfile
 import threading
 import queue
 import sys
+import io
 from pathlib import Path
 
 import boto3
+import pyperclip
 import requests
 import pyautogui
-from PIL import ImageGrab
+
+# ── mss replaces PIL ImageGrab — handles negative y on multi-monitor macOS ──
+try:
+    import mss
+    import mss.tools
+    from PIL import Image
+    USE_MSS = True
+except ImportError:
+    from PIL import ImageGrab, Image
+    USE_MSS = False
 
 # ─────────────────────────────────────────────
 # Configuration
@@ -47,6 +56,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+if USE_MSS:
+    logger.info("Screenshot backend: mss (multi-monitor safe)")
+else:
+    logger.warning("mss not installed — falling back to PIL ImageGrab (may fail on second monitor)")
+    logger.warning("Fix: pip install mss")
+
 # Global queue — polling thread puts jobs here, main thread processes them
 job_queue = queue.Queue()
 
@@ -63,25 +78,26 @@ def flash_screen():
     try:
         import tkinter as tk
         root = tk.Tk()
-        
+
         # Get full virtual desktop size (spans all monitors)
         total_w = root.winfo_screenwidth()
         total_h = root.winfo_screenheight()
-        
+
         root.geometry(f"{total_w}x{total_h}+0+0")
         root.attributes('-topmost', True)
         root.attributes('-alpha', 0.4)
         root.configure(bg='white')
         root.overrideredirect(True)  # No title bar
         root.update()
-        
+
         # Force close after 150ms — don't rely on mainloop
         root.after(150, lambda: root.quit())
         root.mainloop()
         root.destroy()
-        
+
     except Exception as e:
         logger.warning(f"Screen flash failed: {e}")
+
 
 # ─────────────────────────────────────────────
 # Overlay Widget — draggable "Push Data Here"
@@ -332,26 +348,70 @@ def _get_full_screen_region():
 # ─────────────────────────────────────────────
 
 def take_screenshot(region=None):
+    """
+    Capture a screenshot of the given region and return raw PNG bytes.
+
+    Uses mss when available — it handles negative y coordinates correctly
+    on macOS multi-monitor setups (e.g. a second monitor positioned above
+    the primary where y origin is negative).
+
+    Falls back to PIL ImageGrab if mss is not installed.
+    """
+    if USE_MSS:
+        raw_bytes = _screenshot_mss(region)
+    else:
+        raw_bytes = _screenshot_pil(region)
+
+    # ── Debug: save a copy so we can inspect what Claude sees ──
+    debug_path = Path(tempfile.gettempdir()) / "ams_debug_last.png"
+    debug_path.write_bytes(raw_bytes)
+
+    # Log dimensions by re-opening (cheap — just reads header)
+    img = Image.open(io.BytesIO(raw_bytes))
+    logger.info(f"Screenshot saved for inspection: {debug_path} ({img.width}x{img.height})")
+
+    return raw_bytes
+
+
+def _screenshot_mss(region=None):
+    """Capture using mss — handles negative coords on macOS multi-monitor."""
+    with mss.mss() as sct:
+        if region:
+            monitor = {
+                "left":   region["x"],
+                "top":    region["y"],      # mss handles negative y correctly
+                "width":  region["width"],
+                "height": region["height"],
+            }
+        else:
+            # Full virtual desktop (all monitors combined)
+            monitor = sct.monitors[0]
+
+        shot = sct.grab(monitor)
+
+        # mss returns BGRA — convert to RGB for PIL, then encode as PNG
+        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+
+def _screenshot_pil(region=None):
+    """Fallback capture using PIL ImageGrab (may fail on negative-y monitors)."""
     if region:
         bbox = (
             region["x"],
-            region["y"],           # PIL handles negative y on macOS
+            region["y"],
             region["x"] + region["width"],
-            region["y"] + region["height"]
+            region["y"] + region["height"],
         )
-        img = ImageGrab.grab(bbox=bbox, all_screens=True)  # ← add all_screens=True
+        img = ImageGrab.grab(bbox=bbox, all_screens=True)
     else:
         img = ImageGrab.grab(all_screens=True)
-    
 
-    img.save(str(SCREENSHOT_PATH), format="PNG")
-    # ── Debug: save a copy so we can inspect what Claude sees ──
-    debug_path = Path(tempfile.gettempdir()) / "ams_debug_last.png"
-    img.save(str(debug_path), format="PNG")
-    logger.info(f"Screenshot saved for inspection: {debug_path} ({img.size[0]}x{img.size[1]})")
-
-    with open(SCREENSHOT_PATH, "rb") as f:
-        return f.read()
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 # ─────────────────────────────────────────────
@@ -361,98 +421,103 @@ def take_screenshot(region=None):
 def execute_action(action, region=None):
     """
     Execute a single Computer Use action using pyautogui.
-    Coordinates are offset by region's top-left corner if provided.
+    Coordinates from Claude are relative to the region's top-left corner.
+    We offset them to get absolute screen coordinates.
     """
     action_type = action.get("action", "")
     offset_x    = region["x"] if region else 0
     offset_y    = region["y"] if region else 0
 
-    if action_type in ("left_click", "click"):
-        x = action.get("coordinate", [0, 0])[0] + offset_x
-        y = action.get("coordinate", [0, 0])[1] + offset_y
+    def abs_xy(coord_key="coordinate"):
+        """Return absolute screen coords from a region-relative coordinate pair."""
+        coords = action.get(coord_key, [0, 0])
+        return coords[0] + offset_x, coords[1] + offset_y
+
+    # ── Click variants ──────────────────────────────────────────────────────
+    if action_type in ("left_click", "click", "mouse"):
+        x, y = abs_xy()
         pyautogui.click(x, y)
         logger.info(f"Left click at ({x}, {y})")
 
     elif action_type == "right_click":
-        x = action.get("coordinate", [0, 0])[0] + offset_x
-        y = action.get("coordinate", [0, 0])[1] + offset_y
+        x, y = abs_xy()
         pyautogui.rightClick(x, y)
         logger.info(f"Right click at ({x}, {y})")
 
     elif action_type == "double_click":
-        x = action.get("coordinate", [0, 0])[0] + offset_x
-        y = action.get("coordinate", [0, 0])[1] + offset_y
+        x, y = abs_xy()
         pyautogui.doubleClick(x, y)
         logger.info(f"Double click at ({x}, {y})")
 
     elif action_type == "middle_click":
-        x = action.get("coordinate", [0, 0])[0] + offset_x
-        y = action.get("coordinate", [0, 0])[1] + offset_y
+        x, y = abs_xy()
         pyautogui.click(x, y, button="middle")
         logger.info(f"Middle click at ({x}, {y})")
 
     elif action_type == "move":
-        x = action.get("coordinate", [0, 0])[0] + offset_x
-        y = action.get("coordinate", [0, 0])[1] + offset_y
+        x, y = abs_xy()
         pyautogui.moveTo(x, y)
         logger.info(f"Move to ({x}, {y})")
 
+    # ── Keyboard ────────────────────────────────────────────────────────────
     elif action_type == "type":
         text = action.get("text", "")
-        try:
-            import pyperclip
-            pyperclip.copy(text)
-            pyautogui.hotkey("command", "v")   # macOS paste
-            logger.info(f"Pasted text ({len(text)} chars)")
-        except ImportError:
-            pyautogui.write(text, interval=0.03)
-            logger.info(f"Typed text ({len(text)} chars)")
+        pyperclip.copy(text)
+        pyautogui.hotkey("command", "v")   # macOS paste
+        logger.info(f"Pasted text ({len(text)} chars): {text[:40]!r}")
 
     elif action_type == "key":
-        key = action.get("text", "")
+        # Claude sends key names in action["text"], not action["key"]
+        key = action.get("text") or action.get("key", "")
         key_map = {
             "Return":    "enter",
             "Tab":       "tab",
             "Escape":    "esc",
+            "escape":    "esc",
             "BackSpace": "backspace",
             "Delete":    "delete",
+            "super+tab": ["alt", "tab"],   # macOS app switcher
             "ctrl+a":    ["ctrl", "a"],
             "ctrl+c":    ["ctrl", "c"],
             "ctrl+v":    ["ctrl", "v"],
             "ctrl+z":    ["ctrl", "z"],
+            "cmd+a":     ["command", "a"],
+            "cmd+c":     ["command", "c"],
+            "cmd+v":     ["command", "v"],
+            "cmd+z":     ["command", "z"],
         }
         mapped = key_map.get(key, key)
         if isinstance(mapped, list):
             pyautogui.hotkey(*mapped)
         else:
             pyautogui.press(mapped)
-        logger.info(f"Key press: {key}")
+        logger.info(f"Key press: {key!r} → {mapped!r}")
 
+    # ── Scroll ──────────────────────────────────────────────────────────────
     elif action_type == "scroll":
-        x         = action.get("coordinate", [0, 0])[0] + offset_x
-        y         = action.get("coordinate", [0, 0])[1] + offset_y
-        direction = action.get("direction", "down")
-        amount    = action.get("amount", 3)
-        scroll_amount = amount if direction == "up" else -amount
-        pyautogui.scroll(scroll_amount, x=x, y=y)
+        x, y         = abs_xy()
+        direction    = action.get("direction", "down")
+        amount       = action.get("amount", 3)
+        scroll_delta = amount if direction == "up" else -amount
+        pyautogui.scroll(scroll_delta, x=x, y=y)
         logger.info(f"Scroll {direction} {amount} at ({x}, {y})")
 
+    # ── Drag ────────────────────────────────────────────────────────────────
     elif action_type == "drag":
-        start = action.get("startCoordinate", [0, 0])
-        end   = action.get("coordinate", [0, 0])
-        pyautogui.drag(
-            start[0] + offset_x, start[1] + offset_y,
-            end[0] - start[0],   end[1] - start[1],
-            duration=0.5
-        )
-        logger.info(f"Drag from {start} to {end}")
+        sx, sy = abs_xy("startCoordinate")
+        ex, ey = abs_xy("coordinate")
+        pyautogui.mouseDown(sx, sy)
+        pyautogui.moveTo(ex, ey, duration=0.5)
+        pyautogui.mouseUp()
+        logger.info(f"Drag ({sx},{sy}) → ({ex},{ey})")
 
+    # ── Screenshot — handled by the loop, not here ──────────────────────────
     elif action_type == "screenshot":
-        pass  # Handled by the loop
+        pass
 
     else:
-        logger.warning(f"Unknown action type: '{action_type}' — skipping")
-
+        logger.warning(f"Unknown action type: {action_type!r} — skipping")
+        logger.warning(f"Full action dict: {action}")
 
 # ─────────────────────────────────────────────
 # Bedrock Computer Use — Agentic Loop
@@ -469,8 +534,10 @@ def run_computer_use_loop(bedrock_client, json_data, region):
 
     Returns True on success, False on failure.
     """
+
     messages = []
 
+    # Initial screenshot
     screenshot_bytes = take_screenshot(region)
 
     messages.append({
@@ -484,36 +551,17 @@ def run_computer_use_loop(bedrock_client, json_data, region):
             },
             {
                 "text": (
-                    "You are controlling a computer using the provided tools."
-
-                    "Your task is to interact with the UI shown in the screenshot."
-
-                    "You MUST use the computer tool to complete the task. Do not just describe what to do."
-
-                    "Task:"
-                    "Type the text \"abc\" into every visible input field in the UI."
-
-                    "Rules:"
-                    " - Click into each field before typing"
-                    " - If fields are off-screen, scroll to find them"
-                    " - Continue until all visible fields contain \"abc\""
-                    " - Do not stop early"
+                    "You are controlling a computer using the provided tools.\n\n"
+                    "Task:\n"
+                    "Look at the screenshot of the AMS window.\n"
+                    "Type the text \"abc\" into every visible input field in the UI.\n\n"
+                    "Rules:\n"
+                    "- Click into each field before typing\n"
+                    "- If fields are off-screen, scroll to find them\n"
+                    "- Continue until all visible fields contain \"abc\"\n"
+                    "- Do not stop early\n"
+                    "- You MUST use the computer tool to complete this task\n"
                 )
-                # "text": (
-                #     "You are helping enter insurance/policy data into an AMS "
-                #     "(Agency Management System).\n\n"
-                #     "Look at the screenshot of the AMS window. Your job is to enter "
-                #     "the following JSON data into the appropriate form fields visible "
-                #     "on screen.\n\n"
-                #     "Rules:\n"
-                #     "- Match JSON field names to visible form labels as best you can\n"
-                #     "- Click a field before typing into it\n"
-                #     "- Clear existing content before entering new values (Ctrl+A then type)\n"
-                #     "- If a field is not visible, scroll to find it\n"
-                #     "- After entering all data, do NOT submit the form — "
-                #     "stop and let the user review\n\n"
-                #     f"Data to enter:\n{json.dumps(json_data, indent=2)}"
-                # )
             }
         ]
     })
@@ -524,50 +572,93 @@ def run_computer_use_loop(bedrock_client, json_data, region):
         try:
             response = bedrock_client.converse(
                 modelId=MODEL_ID,
+                system=[{
+                    "text": "You are controlling a computer using the computer tool."
+                }],
                 messages=messages,
-                additionalModelRequestFields={
+                toolConfig={
                     "tools": [
                         {
-                            "type": "computer_20250124",
-                            "name": "computer",
-                            "display_width_px": region["width"],
-                            "display_height_px": region["height"],
-                            "display_number": 0
+                            "toolSpec": {
+                                "name": "computer",
+                                "description": "Control mouse, keyboard, and screenshot the screen",
+                                "inputSchema": {
+                                    "json": {
+                                        "type": "object",
+                                        "properties": {
+                                            "action": {
+                                                "type": "string",
+                                                "enum": ["screenshot", "mouse", "type", "key", "scroll"]
+                                            },
+                                            "coordinate": {"type": "array", "items": {"type": "integer"}},
+                                            "text": {"type": "string"},
+                                            "direction": {"type": "string"},
+                                            "amount": {"type": "integer"}
+                                        },
+                                        "required": ["action"]
+                                    }
+                                }
+                            }
                         }
-                    ],
+                    ]
+                },
+                additionalModelRequestFields={
                     "anthropic_beta": ["computer-use-2025-01-24"]
                 }
             )
+          
+            
+            
+            
         except Exception as e:
             logger.error(f"Bedrock call failed on turn {turn + 1}: {e}")
-            raise   
-        print(json.dumps(response, indent=2))
+            return False
+
+        # Debug full response
+        print(json.dumps(response, indent=2, default=str))
+
         output_message = response["output"]["message"]
         messages.append(output_message)
 
         content_blocks = output_message.get("content", [])
-        tool_uses      = [b for b in content_blocks if b.get("type") == "tool_use"]
 
+        # ---- Parse tool uses safely ----
+        tool_uses = []
+        for block in content_blocks:
+            if "toolUse" in block:
+                tool_uses.append(block["toolUse"])
+
+        # ---- Log text output ----
         for block in content_blocks:
             if block.get("type") == "text" and block.get("text"):
                 logger.info(f"Claude: {block['text'][:200]}")
 
+        # ---- Safety check (prevents Bedrock validation crash later) ----
+        if response.get("stopReason") == "tool_use" and not tool_uses:
+            raise RuntimeError("Claude requested tool use but none were parsed.")
+
+        # ---- Exit condition ----
         if not tool_uses:
             logger.info("Claude finished — no more actions requested")
             return True
 
+        # ---- Execute tool calls ----
         tool_results = []
 
-        for tool_use in tool_uses:
-            tool_name  = tool_use.get("name")
-            tool_id    = tool_use.get("toolUseId") or tool_use.get("id")
-            tool_input = tool_use.get("input", {})
+        for tu in tool_uses:
+            tool_name = tu.get("name")
+            tool_id = tu.get("toolUseId")
+            tool_input = tu.get("input", {})
 
             logger.info(f"Tool: {tool_name} | action: {tool_input.get('action')}")
 
-            if tool_name == "computer":
-                action_type = tool_input.get("action")
+            if tool_name != "computer":
+                logger.warning(f"Unknown tool: {tool_name}")
+                continue
 
+            action_type = tool_input.get("action")
+
+            try:
                 if action_type == "screenshot":
                     new_screenshot = take_screenshot(region)
                 else:
@@ -588,19 +679,21 @@ def run_computer_use_loop(bedrock_client, json_data, region):
                         ]
                     }
                 })
-            else:
-                logger.warning(f"Unknown tool: {tool_name}")
 
-        if tool_results:
-            messages.append({
-                "role": "user",
-                "content": tool_results
-            })
+            except Exception as e:
+                logger.error(f"Tool execution failed: {e}")
+                return False
+
+        # ---- CRITICAL: respond immediately with tool_result ----
+        messages.append({
+            "role": "user",
+            "content": tool_results
+        })
+
+        # loop continues automatically
 
     logger.error(f"Exceeded MAX_TURNS ({MAX_TURNS}) — job incomplete")
     return False
-
-
 # ─────────────────────────────────────────────
 # Flask Server Communication
 # ─────────────────────────────────────────────

@@ -29,4 +29,3 @@ pyautogui
 pynput
 pyperclip
 requests
-mss
