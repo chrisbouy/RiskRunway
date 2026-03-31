@@ -40,7 +40,7 @@ import requests
 
 try:
     import mss
-    from PIL import Image
+    from PIL import Image, ImageDraw
     USE_MSS = True
 except ImportError:
     from PIL import ImageGrab, Image
@@ -119,7 +119,7 @@ def extract_json(text: str) -> dict:
 # Screenshot
 # ─────────────────────────────────────────────────────────────────────────────
 
-def take_screenshot(region: dict) -> bytes:
+def take_screenshot(region: dict,marker: tuple = None) -> bytes:
     """
     Capture the given screen region and return raw PNG bytes.
     mss handles negative y coordinates correctly on macOS dual-monitor setups.
@@ -144,12 +144,21 @@ def take_screenshot(region: dict) -> bytes:
         )
         img = ImageGrab.grab(bbox=bbox, all_screens=True)
 
-    debug_path = Path(tempfile.gettempdir()) / "ams_debug_last.png"
+    timestamp = time.strftime("%Y%m%d_%H%M%S_%f")
+    debug_path = Path(tempfile.gettempdir()) / f"ams_debug_{timestamp}.png"
     img.save(str(debug_path))
     logger.info(f"Screenshot: {debug_path} ({img.width}x{img.height})")
 
     buf = io.BytesIO()
+    if marker:
+        draw = ImageDraw.Draw(img)
+        mx, my = marker
+        # Red crosshair, 20px size
+        draw.line([(mx-20, my), (mx+20, my)], fill="red", width=2)
+        draw.line([(mx, my-20), (mx, my+20)], fill="red", width=2)
     img.save(buf, format="PNG")
+    
+    
     return buf.getvalue()
 
 
@@ -237,13 +246,15 @@ def get_fill_instructions(bedrock_client, screenshot_bytes: bytes,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def bulk_fill(fill_instructions: dict, region: dict) -> set:
-    """
-    Execute every fill instruction Claude returned.
-    Coordinates from Claude are relative to the screenshot (top-left = 0,0),
-    so we add the region offset to get absolute screen coordinates.
-    Returns the set of field labels that were successfully filled.
-    """
     filled = set()
+
+    # Click somewhere safe first to ensure browser address bar isn't focused
+    safe_x = region["x"] + region["width"] // 2
+    safe_y = region["y"] + region["height"] // 2
+    pyautogui.click(safe_x, safe_y)
+    time.sleep(0.2)
+    pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
+    time.sleep(0.1)
 
     for label, info in fill_instructions.items():
         # Skip metadata keys
@@ -256,18 +267,42 @@ def bulk_fill(fill_instructions: dict, region: dict) -> set:
             continue
 
         abs_x = int(info.get("x", 0)) + region["x"]
-        abs_y = int(info.get("y", 0)) + region["y"]
+        abs_y = int(info.get("y", 0)) + region["y"] + 10
 
         try:
+            # take_screenshot(region)
+            # pyautogui.click(abs_x, abs_y)
+            # take_screenshot(region)
+            # time.sleep(CLICK_DELAY)
+            # # Verify we're not in the address bar by pressing Escape first
+            # # then clicking the field again
+            # pyautogui.press("escape")
+            # print("clicked escape")
+            # take_screenshot(region)  # debug: see each fill step in the screenshot
+            
+            time.sleep(5)
             pyautogui.click(abs_x, abs_y)
-            time.sleep(CLICK_DELAY)
-            pyautogui.hotkey(*SELECT_HOTKEY)   # select any existing content
-            time.sleep(0.03)
+            logger.info(f"clicked field '{label}'-absolute coords:({abs_x},{abs_y}) -relative coords:({info.get('x', 0)},{info.get('y', 0)}) region:{region} region[y] {region['y']}")
+            take_screenshot(region, (abs_x, abs_y))
+            time.sleep(5)
+            
+            # pyautogui.hotkey(*SELECT_HOTKEY) 
+            # logger.info("select hotkey pressed") 
+            # take_screenshot(region)          
             pyperclip.copy(value)
+            # clipboard_content = pyperclip.paste()
+            
             pyautogui.hotkey(*PASTE_HOTKEY)    # paste
-            time.sleep(FILL_DELAY)
-            logger.info(f"  Filled '{label}' at ({abs_x},{abs_y}) -> {value!r}")
+            logger.info(f"pasted value: {value}")
+            # print(f"typing value {value}")
+            # pyautogui.write(value, interval=FILL_DELAY)  # type with delay to avoid missing characters
+            take_screenshot(region)
+            
+            time.sleep(5)
+            logger.info(f"  Filled '{label}' at ({abs_x},{abs_y}) -> {value}")
+            # take_screenshot(region)  # debug: see each fill step in the screenshot
             filled.add(label)
+            break
         except Exception as e:
             logger.warning(f"  Failed to fill '{label}' at ({abs_x},{abs_y}): {e}")
 
