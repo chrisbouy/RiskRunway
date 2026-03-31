@@ -249,12 +249,12 @@ def bulk_fill(fill_instructions: dict, region: dict) -> set:
     filled = set()
 
     # Click somewhere safe first to ensure browser address bar isn't focused
-    safe_x = region["x"] + region["width"] // 2
-    safe_y = region["y"] + region["height"] // 2
-    pyautogui.click(safe_x, safe_y)
-    time.sleep(0.2)
-    pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
-    time.sleep(0.1)
+    # safe_x = region["x"] + region["width"] // 2
+    # safe_y = region["y"] + region["height"] // 2
+    # pyautogui.click(safe_x, safe_y)
+    # time.sleep(0.2)
+    # pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
+    # time.sleep(0.1)
 
     for label, info in fill_instructions.items():
         # Skip metadata keys
@@ -271,8 +271,10 @@ def bulk_fill(fill_instructions: dict, region: dict) -> set:
 
         try:
             # take_screenshot(region)
-            # pyautogui.click(abs_x, abs_y)
-            # take_screenshot(region)
+            pyautogui.click(abs_x, abs_y)
+            time.sleep(0.5)
+            logger.info(f"clicked field '{label}'-absolute coords:({abs_x},{abs_y}) -relative coords:({info.get('x', 0)},{info.get('y', 0)}) region:{region} region[y] {region['y']}")
+            take_screenshot(region, (abs_x, abs_y))
             # time.sleep(CLICK_DELAY)
             # # Verify we're not in the address bar by pressing Escape first
             # # then clicking the field again
@@ -280,11 +282,11 @@ def bulk_fill(fill_instructions: dict, region: dict) -> set:
             # print("clicked escape")
             # take_screenshot(region)  # debug: see each fill step in the screenshot
             
-            time.sleep(5)
+            # time.sleep(5)
             pyautogui.click(abs_x, abs_y)
-            logger.info(f"clicked field '{label}'-absolute coords:({abs_x},{abs_y}) -relative coords:({info.get('x', 0)},{info.get('y', 0)}) region:{region} region[y] {region['y']}")
-            take_screenshot(region, (abs_x, abs_y))
-            time.sleep(5)
+            # logger.info(f"clicked field '{label}'-absolute coords:({abs_x},{abs_y}) -relative coords:({info.get('x', 0)},{info.get('y', 0)}) region:{region} region[y] {region['y']}")
+            # take_screenshot(region, (abs_x, abs_y))
+            # time.sleep(5)
             
             # pyautogui.hotkey(*SELECT_HOTKEY) 
             # logger.info("select hotkey pressed") 
@@ -293,16 +295,16 @@ def bulk_fill(fill_instructions: dict, region: dict) -> set:
             # clipboard_content = pyperclip.paste()
             
             pyautogui.hotkey(*PASTE_HOTKEY)    # paste
-            logger.info(f"pasted value: {value}")
+            # logger.info(f"pasted value: {value}")
             # print(f"typing value {value}")
             # pyautogui.write(value, interval=FILL_DELAY)  # type with delay to avoid missing characters
-            take_screenshot(region)
+            # take_screenshot(region)
             
-            time.sleep(5)
-            logger.info(f"  Filled '{label}' at ({abs_x},{abs_y}) -> {value}")
+            # time.sleep(5)
+            # logger.info(f"  Filled '{label}' at ({abs_x},{abs_y}) -> {value}")
             # take_screenshot(region)  # debug: see each fill step in the screenshot
             filled.add(label)
-            break
+            # break
         except Exception as e:
             logger.warning(f"  Failed to fill '{label}' at ({abs_x},{abs_y}): {e}")
 
