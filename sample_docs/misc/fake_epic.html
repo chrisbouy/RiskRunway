@@ -246,7 +246,7 @@
   .field select,
   .field textarea {
     background: var(--input-bg);
-    border: 1px solid var(--border);
+    border: 1px solid #9ca3af;
     border-radius: 4px;
     color: var(--text);
     font-family: 'IBM Plex Sans', sans-serif;
@@ -387,20 +387,19 @@
         <div class="form-grid">
           <div class="field span-2">
             <label>Insured Name <span class="req">*</span></label>
-            <input type="text" id="insured_name" name="insured_name" placeholder="Legal entity name">
+            <input type="text" id="insured_name" name="insured_name">
           </div>
           <div class="field">
             <label>DBA / Trade Name</label>
-            <input type="text" id="dba" name="dba" placeholder="Doing business as">
+            <input type="text" id="dba" name="dba">
           </div>
           <div class="field span-2">
             <label>Mailing Address <span class="req">*</span></label>
-            <input type="text" id="address" name="address" placeholder="Street address">
+            <input type="text" id="address" name="address">
           </div>
           <div class="field">
             <label>State <span class="req">*</span></label>
             <select id="state" name="state">
-              <option value="">Select state</option>
               <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
               <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
               <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
@@ -418,19 +417,19 @@
           </div>
           <div class="field">
             <label>City</label>
-            <input type="text" id="city" name="city" placeholder="City">
+            <input type="text" id="city" name="city">
           </div>
           <div class="field">
             <label>ZIP</label>
-            <input type="text" id="zip" name="zip" placeholder="ZIP code">
+            <input type="text" id="zip" name="zip">
           </div>
           <div class="field">
             <label>Phone</label>
-            <input type="text" id="phone" name="phone" placeholder="(555) 000-0000">
+            <input type="text" id="phone" name="phone">
           </div>
           <div class="field span-2">
             <label>Email</label>
-            <input type="text" id="email" name="email" placeholder="contact@insured.com">
+            <input type="text" id="email" name="email">
           </div>
         </div>
       </div>
@@ -447,7 +446,6 @@
           <div class="field">
             <label>Line of Business <span class="req">*</span></label>
             <select id="line_of_business" name="line_of_business">
-              <option value="">Select LOB</option>
               <option>General Liability</option>
               <option>Commercial Auto</option>
               <option>Workers Compensation</option>
@@ -462,32 +460,31 @@
           </div>
           <div class="field">
             <label>Carrier <span class="req">*</span></label>
-            <input type="text" id="carrier" name="carrier" placeholder="Carrier name">
+            <input type="text" id="carrier" name="carrier">
           </div>
           <div class="field">
             <label>Policy Number</label>
-            <input type="text" id="policy_number" name="policy_number" placeholder="POL-XXXXXXXX">
+            <input type="text" id="policy_number" name="policy_number">
           </div>
           <div class="field">
             <label>Broker</label>
-            <input type="text" id="broker" name="broker" placeholder="Broker name">
+            <input type="text" id="broker" name="broker">
           </div>
           <div class="field">
             <label>Effective Date <span class="req">*</span></label>
-            <input type="text" id="effective_date" name="effective_date" placeholder="MM/DD/YYYY">
+            <input type="text" id="effective_date" name="effective_date">
           </div>
           <div class="field">
             <label>Expiration Date <span class="req">*</span></label>
-            <input type="text" id="expiration_date" name="expiration_date" placeholder="MM/DD/YYYY">
+            <input type="text" id="expiration_date" name="expiration_date">
           </div>
           <div class="field">
             <label>Annual Premium <span class="req">*</span></label>
-            <input type="text" id="premium" name="premium" placeholder="$0.00">
+            <input type="text" id="premium" name="premium">
           </div>
           <div class="field">
             <label>Payment Plan</label>
             <select id="payment_plan" name="payment_plan">
-              <option value="">Select</option>
               <option>Annual</option>
               <option>Semi-Annual</option>
               <option>Quarterly</option>
@@ -507,19 +504,19 @@
         <div class="form-grid-4">
           <div class="field">
             <label>Per Occurrence</label>
-            <input type="text" id="per_occurrence" name="per_occurrence" placeholder="$1,000,000">
+            <input type="text" id="per_occurrence" name="per_occurrence">
           </div>
           <div class="field">
             <label>General Aggregate</label>
-            <input type="text" id="general_aggregate" name="general_aggregate" placeholder="$2,000,000">
+            <input type="text" id="general_aggregate" name="general_aggregate">
           </div>
           <div class="field">
             <label>Products / Comp Ops</label>
-            <input type="text" id="products_comp_ops" name="products_comp_ops" placeholder="$2,000,000">
+            <input type="text" id="products_comp_ops" name="products_comp_ops">
           </div>
           <div class="field">
             <label>Deductible</label>
-            <input type="text" id="deductible" name="deductible" placeholder="$0">
+            <input type="text" id="deductible" name="deductible">
           </div>
         </div>
       </div>
@@ -534,31 +531,31 @@
         <div class="form-grid">
           <div class="field">
             <label>SIC Code</label>
-            <input type="text" id="sic_code" name="sic_code" placeholder="0000">
+            <input type="text" id="sic_code" name="sic_code">
           </div>
           <div class="field">
             <label>NAICS Code</label>
-            <input type="text" id="naics_code" name="naics_code" placeholder="000000">
+            <input type="text" id="naics_code" name="naics_code">
           </div>
           <div class="field">
             <label>Years in Business</label>
-            <input type="text" id="years_in_business" name="years_in_business" placeholder="0">
+            <input type="text" id="years_in_business" name="years_in_business">
           </div>
           <div class="field">
             <label>Annual Revenue</label>
-            <input type="text" id="annual_revenue" name="annual_revenue" placeholder="$0">
+            <input type="text" id="annual_revenue" name="annual_revenue">
           </div>
           <div class="field">
             <label>No. of Employees</label>
-            <input type="text" id="num_employees" name="num_employees" placeholder="0">
+            <input type="text" id="num_employees" name="num_employees">
           </div>
           <div class="field">
             <label>Payroll</label>
-            <input type="text" id="payroll" name="payroll" placeholder="$0">
+            <input type="text" id="payroll" name="payroll">
           </div>
           <div class="field span-3">
             <label>Description of Operations</label>
-            <textarea id="description" name="description" placeholder="Describe the insured's primary business operations..."></textarea>
+            <textarea id="description" name="description"></textarea>
           </div>
         </div>
       </div>
@@ -571,7 +568,7 @@
       </div>
       <div class="card-body">
         <div class="field">
-          <textarea id="notes" name="notes" style="min-height:80px" placeholder="Internal notes for this policy..."></textarea>
+          <textarea id="notes" name="notes" style="min-height:80px"></textarea>
         </div>
       </div>
     </div>
