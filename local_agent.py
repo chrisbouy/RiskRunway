@@ -246,7 +246,7 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
         all_filled.update(newly_filled)
         
         #dropdown pass
-        # time.sleep(2)
+        time.sleep(2)
         print(f"\n  Taking screenshot for claude's dropdown pass {pass_num + 1}...")
         screenshot   = take_screenshot(region)
         dropdowns_json = get_dropdown_coords(bedrock_client, screenshot,remaining_data)
@@ -307,16 +307,18 @@ def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict
         "You are looking at a screenshot of a form.\n\n"
 
         "Your job:\n"
-        "Identify ONLY visible dropdown/select fields whose label matches one of the keys in this list:\n"
-        f"{json.dumps(list(json_data.keys()))}\n\n"
+        "Identify ONLY visible dropdown fields whose label matches one of the keys in this list:\n"
+        f"{json.dumps(json_data, indent=2)}\n\n"
 
-        "Return ONLY their form field label, the entire json path for the matching key, and coordinates.\n"
-        "Do NOT assign values.\n\n"
+        "- Return ONLY  the form field label, the entire json path for the matching key, and coordinates.\n"
+        "- If the data value is numeric (e.g., premium, amount, totals), it is NOT a dropdown match.\n"
+        "- Only include a dropdown if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
+        "- If field does not match any key, skip it.\n\n"
 
         "Format:\n"
         '{\n'
-        '  "State": {"x": 1157, "y": 419, "key_path": "State"},\n'
-        '  "Line of Business": {"x": 328, "y": 662, "key_path": "Line of Business"}\n'
+        '  "State": {"x": 1157, "y": 419, "key_path": "insured state"},\n'
+        '  "Line of Business": {"x": 350, "y": 584, "key_path": "type of coverage"}\n'
         '}'
     )
 
