@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 import boto3
+from msal import region
 import pyautogui
 import pyperclip
 import requests
@@ -77,7 +78,6 @@ logger.info(
 
 job_queue: queue.Queue = queue.Queue()
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # JSON parsing — handles whatever format Claude returns
 # ─────────────────────────────────────────────────────────────────────────────
@@ -113,7 +113,6 @@ def extract_json(text: str) -> dict:
             pass
 
     raise ValueError(f"No valid JSON found in Claude response:\n{text[:400]}")
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Screenshot
@@ -169,127 +168,6 @@ def take_screenshot(region: dict,marker: tuple = None) -> bytes:
     
     
     return buf.getvalue()
-
-
-def get_fill_instructions(bedrock_client, screenshot_bytes: bytes,
-                          json_data: dict, already_filled: set) -> dict:
-    """
-    Send one screenshot + the full job data to Claude.
-
-    Claude figures out:
-      - Which visible fields match which data values
-      - Where each field is (pixel coordinates)
-      - How to format each value (dates, currency, state abbreviations, etc.)
-
-    Returns a ready-to-execute dict:
-      {
-        "Insured Name":   {"x": 630, "y": 354, "value": "Acme Corp LLC"},
-        "Effective Date": {"x": 322, "y": 727, "value": "01/15/2025"},
-        ...
-        "__has_more_fields__": false
-      }
-
-    already_filled: set of field labels filled in previous scroll passes,
-                    so Claude skips them and focuses on new ones.
-    """
-    skip_note = ""
-    if already_filled:
-        skip_note = (
-            f"\nFields already filled in a previous pass (skip these): "
-            f"{sorted(already_filled)}\n"
-        )
-
-    prompt = (
-        "You are looking at a screenshot of an insurance AMS "
-        "(Agency Management System) form.\n\n"
-        "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
-        f"{json.dumps(json_data, indent=2)}\n\n"
-        "Your job:\n"
-        "1. Look at every visible, editable input field in the screenshot.\n"
-        "2. Match available data to fields using common sense.\n"
-        "3. Return a JSON object for every field you can fill — "
-        "text inputs AND dropdowns AND date fields.\n\n"
-        "Field type rules:\n"
-        "- Text inputs: paste the value directly.\n"
-        "- Dropdown/select fields: Scroll through the dropdown and return the text of the closest matching option "
-        "visible in the dropdown. For example, if the data says 'Commercial Property' "
-        "and the dropdown has an option 'Commercial Property', select that option. "
-        "If the data says 'LA' and the dropdown has state options, select 'LA'.\n"
-        "- Date fields: format as MM/DD/YYYY.\n"
-        "- Currency fields: digits only, no $ sign (e.g. 4650.00).\n"
-        "- State fields: 2-letter abbreviation.\n"
-        "- Phone fields: (555) 000-0000 format if possible.\n\n"
-        "Important:\n"
-        "- Include dropdowns — they are just as important as text fields.\n"
-        "- You do NOT need to use all the available data — only fill fields you can see.\n"
-        "- If you can't find a good match for a field, skip it — don't guess or make up values.\n"
-        "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
-        "- Only include fields that are clearly visible and editable.\n"
-        "- If a field is already filled in, skip it.\n"
-        "Return ONLY valid JSON, no explanation, no markdown. Format:\n"
-        '{\n'
-        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC"},\n'
-        '  "State":            {"x": 1157, "y": 419, "value": "LA"},\n'
-        '  "Line of Business": {"x": 328, "y": 662, "value": "Commercial Property"},\n'
-        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026"}\n'
-        '}'
-    )
-
-    response = bedrock_client.converse(
-        modelId=MODEL_ID,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"image": {"format": "png", "source": {"bytes": screenshot_bytes}}},
-                {"text": prompt},
-            ],
-        }],
-    )
-
-    raw = response["output"]["message"]["content"][0]["text"]
-    logger.info(f"Claude response ({len(raw)} chars): {raw!r}")
-    return extract_json(raw)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Bulk fill — fast pyautogui loop, no more API calls
-# ─────────────────────────────────────────────────────────────────────────────
-
-def bulk_fill(fill_instructions: dict, region: dict) -> set:
-    filled = set()
-    # Click somewhere safe first to ensure browser address bar isn't focused
-    safe_x = region["x"] + region["width"] // 2
-    safe_y = region["y"] + region["height"] // 2
-    pyautogui.click(safe_x, safe_y)
-    time.sleep(0.2)
-    pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
-    time.sleep(0.1)
-    
-    print(f"\n  Filling from quote : {fill_instructions} \n")
-    for path, info in flatten_with_path(fill_instructions):
-        label = path.split(".")[-1]
-        # Skip metadata keys
-        if label.startswith("__") or not isinstance(info, dict):
-            continue
-        value = str(info.get("value", "")).strip()
-        if not value:
-            logger.debug(f"Skipping '{label}' — no value")
-            continue
-        abs_x = int(info.get("x", 0)) + region["x"]
-        abs_y = int(info["y"] * 1.05) + region["y"] #todo: remove this hack..use textbox handles?
-        try:
-            pyautogui.click(abs_x, abs_y)
-            time.sleep(1)
-            # logger.info(f"clicked field '{label}'")
-            # take_screenshot(region, (abs_x, abs_y))
-            pyperclip.copy(value)
-            logger.info(f"FILLING FIELD: json Path: {path} Value: {value} Coords: ({abs_x},{abs_y})")
-            pyautogui.hotkey(*PASTE_HOTKEY)    # paste
-            filled.add(label)
-            # check for successful paste by taking another screenshot and looking for the value? log success and remove from json
-        except Exception as e:
-            logger.warning(f"  Failed to fill '{label}' at ({abs_x},{abs_y}): {e}")
-    return filled
 
 def flatten_with_path(d, parent_key=""):
     items = []
@@ -354,27 +232,36 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
     for pass_num in range(MAX_SCROLL_PASSES):
         logger.info(f"--- Pass {pass_num + 1}/{MAX_SCROLL_PASSES} ---")
         logger.info(f"Remaining data keys: {list(remaining_data.keys())}")
-
         if not remaining_data:
             logger.info("All data placed — done")
             break
-        time.sleep(2)
-        print(f"  Taking screenshot for claude...")
+        
+        #textbox pass
+        # time.sleep(2)
+        print(f"\n  Taking screenshot for claude's tb pass {pass_num + 1}...")
         screenshot   = take_screenshot(region)
-        instructions = get_fill_instructions(
-            bedrock_client, screenshot, remaining_data, all_filled
-        )
-
-        field_count = len([k for k in instructions if not k.startswith("__")])
+        textboxes_json = get_tb_coords(bedrock_client, screenshot, remaining_data, all_filled)
+        field_count = len([k for k in textboxes_json if not k.startswith("__")])
+        newly_filled = tb_fill(textboxes_json, region)
+        all_filled.update(newly_filled)
+        
+        #dropdown pass
+        # time.sleep(2)
+        print(f"\n  Taking screenshot for claude's dropdown pass {pass_num + 1}...")
+        screenshot   = take_screenshot(region)
+        dropdowns_json = get_dropdown_coords(bedrock_client, screenshot,remaining_data)
+        newly_filled = ddl_fill(bedrock_client,dropdowns_json,remaining_data, region)
+        all_filled.update(newly_filled)
+        
+        field_count = field_count + len([k for k in dropdowns_json if not k.startswith("__")])
         if field_count == 0:
             logger.info("No fillable fields returned — done")
             break
-
-        newly_filled = bulk_fill(instructions, region)
-        all_filled.update(newly_filled)
+        
+        
 
         # Remove the data values that got placed this pass
-        for label, info in instructions.items():
+        for label, info in get_tb_coords.items():
             if label.startswith("__") or label not in newly_filled:
                 continue
             value_placed = str(info.get("value", "")).strip()
@@ -391,11 +278,11 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
 
         # Scroll for next pass
         last_filled_form_field = list(newly_filled)[-1]  #returns a random element from the set, we just want any one of the filled fields to scroll from
-        last_info  = instructions.get(last_filled_form_field, {})
+        last_info  = get_tb_coords.get(last_filled_form_field, {})
         last_x     = int(last_info.get("x", 0)) + region["x"]
         last_y     = int(last_info.get("y", 0)) + region["y"]
         pyautogui.click(last_x, last_y-10)
-        time.sleep(1)
+        # time.sleep(1)
         print(f"  Scrolling down for next pass...")
         take_screenshot(region,(last_x,last_y))  # final screenshot after filling
         # pyautogui.press("escape")
@@ -404,12 +291,214 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
         # cy = region["y"] + region["height"] // 2
         # pyautogui.scroll(-8, x=cx, y=cy)
         pyautogui.scroll(-8)  # scroll down
-        time.sleep(1)
+        # time.sleep(1)
         print(f"  Scroll complete.")
         take_screenshot(region,(safe_x,safe_y))  # final screenshot after scrolling
 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bulk fill — fast pyautogui loop, 2 passes per screen-full (text inputs, then dropdowns), no more API calls
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict) -> dict:
+    prompt = (
+        "You are looking at a screenshot of a form.\n\n"
+
+        "Your job:\n"
+        "Identify ONLY visible dropdown/select fields whose label matches one of the keys in this list:\n"
+        f"{json.dumps(list(json_data.keys()))}\n\n"
+
+        "Return ONLY their form field label, the entire json path for the matching key, and coordinates.\n"
+        "Do NOT assign values.\n\n"
+
+        "Format:\n"
+        '{\n'
+        '  "State": {"x": 1157, "y": 419, "key_path": "State"},\n'
+        '  "Line of Business": {"x": 328, "y": 662, "key_path": "Line of Business"}\n'
+        '}'
+    )
+
+    response = bedrock_client.converse(
+        modelId=MODEL_ID,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"image": {"format": "png", "source": {"bytes": screenshot_bytes}}},
+                {"text": prompt},
+            ],
+        }],
+    )
+
+    raw = response["output"]["message"]["content"][0]["text"]
+    ddls = extract_json(raw)
+    print(f"Claude dropdown response: {ddls}")
+    return ddls
+
+def ddl_fill(bedrock_client, ddl_dict: dict, json_data: dict, region: dict) -> set:
+    filled = set()
+    for label, info in ddl_dict.items():
+        abs_x = int(info["x"]) + region["x"]
+        abs_y = int(info["y"] * 1.05) + region["y"]
+
+        pyautogui.click(abs_x, abs_y)
+        # time.sleep(0.4)
+
+        print(f"  screenshot for claude after opening dropdown '{label}'")
+        screenshot = take_screenshot(region)
+
+        prompt = (
+            "You are looking at an OPEN dropdown list.\n\n"
+            f"Target value: {json.dumps(json_data)}\n\n"
+            # "Click the best matching visible option.\n\n"
+            "Return ONLY:\n"
+            '{"x": ..., "y": ..., "value": "..."}'
+        )
+
+        response = bedrock_client.converse(
+            modelId=MODEL_ID,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"image": {"format": "png", "source": {"bytes": screenshot}}},
+                    {"text": prompt},
+                ],
+            }],
+        )
+
+        result = extract_json(response["output"]["message"]["content"][0]["text"])
+
+        opt_x = int(result["x"]) + region["x"]
+        opt_y = int(result["y"] * 1.05) + region["y"]
+        print(f"  clicking option at ({opt_x},{opt_y}) for field '{label}'")
+        pyautogui.click(abs_x, opt_y) # why does x drift?
+        # time.sleep(2)
+        print(f"filled ddl field '{label}' with value: {result['value']}")
+        take_screenshot(region,(abs_x, opt_y))  # final screenshot after filling
+        filled.add(label)
+        print("\n")
+
+def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
+                          json_data: dict, already_filled: set) -> dict:
+    """
+    Send one screenshot + the full job data to Claude.
+
+    Claude figures out:
+      - Which visible fields match which data values
+      - Where each field is (pixel coordinates)
+      - How to format each value (dates, currency, state abbreviations, etc.)
+
+    Returns a ready-to-execute dict:
+      {
+        "Insured Name":   {"x": 630, "y": 354, "value": "Acme Corp LLC"},
+        "Effective Date": {"x": 322, "y": 727, "value": "01/15/2025"},
+        ...
+        "__has_more_fields__": false
+      }
+
+    already_filled: set of field labels filled in previous scroll passes,
+                    so Claude skips them and focuses on new ones.
+    """
+    skip_note = ""
+    if already_filled:
+        skip_note = (
+            f"\nFields already filled in a previous pass (skip these): "
+            f"{sorted(already_filled)}\n"
+        )
+
+    prompt = (
+        "You are looking at a screenshot of an insurance AMS "
+        "(Agency Management System) form.\n\n"
+
+        "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
+        f"{json.dumps(json_data, indent=2)}\n\n"
+
+        "Your job:\n"
+        "1. Look at every visible, editable TEXT INPUT or DATE field in the screenshot.\n"
+        "2. Match available data to fields using common sense.\n"
+        "3. Return a JSON object for every field you can confidently fill.\n\n"
+
+        "STRICT RULES:\n"
+        "- ONLY include text inputs and date fields.\n"
+        "- DO NOT include dropdowns or select fields.\n"
+        "- DO NOT guess values.\n"
+        "- DO NOT include fields unless you are confident.\n"
+        "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
+        "- Skip fields already filled.\n\n"
+
+        "Formatting rules:\n"
+        "- Dates → MM/DD/YYYY\n"
+        "- Currency → digits only (no $)\n"
+        "- State → 2-letter abbreviation\n"
+        "- Phone → (555) 000-0000 if possible\n\n"
+
+        f"{skip_note}"
+
+        "Return ONLY valid JSON. No explanation.\n"
+        "Format:\n"
+        '{\n'
+        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC"},\n'
+        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026"}\n'
+        '}'
+    )
+    response = bedrock_client.converse(
+        modelId=MODEL_ID,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"image": {"format": "png", "source": {"bytes": screenshot_bytes}}},
+                {"text": prompt},
+            ],
+        }],
+    )
+
+    raw = response["output"]["message"]["content"][0]["text"]
+    logger.info(f"Claude pass1 response ({len(raw)} chars): {raw!r}")
+    return extract_json(raw)
+
+
+def tb_fill(tb_dict: dict, region: dict) -> set:
+    filled = set()
+    # Click somewhere safe first to ensure browser address bar isn't focused
+    safe_x = region["x"] + region["width"] // 2
+    safe_y = region["y"] + region["height"] // 2
+    pyautogui.click(safe_x, safe_y)
+    # time.sleep(0.1)
+    pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
+    # time.sleep(0.1)
+    
+    print(f"\n  Filling from quote : {tb_dict} \n")
+    for path, info in flatten_with_path(tb_dict):
+        label = path.split(".")[-1]
+        # Skip metadata keys
+        if label.startswith("__") or not isinstance(info, dict):
+            continue
+        value = str(info.get("value", "")).strip()
+        if not value:
+            logger.debug(f"Skipping '{label}' — no value")
+            continue
+        abs_x = int(info.get("x", 0)) + region["x"]
+        abs_y = int(info["y"] * 1.05) + region["y"] #todo: remove this hack..use textbox handles?
+        try:
+            # time.sleep(1)
+            print(f"\n clicking field '{label}' at ({abs_x},{abs_y}) to fill value: {value}")
+            take_screenshot(region,(abs_x,abs_y))  # final screenshot after filling
+            pyautogui.click(abs_x, abs_y)
+            # time.sleep(1)
+            # logger.info(f"clicked field '{label}'")
+            # take_screenshot(region, (abs_x, abs_y))
+            pyperclip.copy(value)
+            logger.info(f"FILLING FIELD: json Path: {path} Value: {value} Coords: ({abs_x},{abs_y})")
+            pyautogui.hotkey(*PASTE_HOTKEY)    # paste
+            # time.sleep(1)
+            print(f"filled field '{label}' with value: {value}")
+            take_screenshot(region,(abs_x,abs_y))  # final screenshot after filling
+            filled.add(label)
+            # check for successful paste by taking another screenshot and looking for the value? log success and remove from json
+        except Exception as e:
+            logger.warning(f"  Failed to fill '{label}' at ({abs_x},{abs_y}): {e}")
+    return filled
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Overlay widget — drag onto AMS window, click Push
