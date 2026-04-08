@@ -243,42 +243,54 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
         textboxes_json = get_tb_coords(bedrock_client, screenshot, remaining_data, all_filled)
         field_count = len([k for k in textboxes_json if not k.startswith("__")])
         newly_filled = tb_fill(textboxes_json, region)
+        print(f"all filled: {all_filled}")
+        print(f"newly filled textboxes: {newly_filled}")
         all_filled.update(newly_filled)
-        
+        print(f"filled fields: {all_filled}")
+        # Remove the data values that got placed this pass
+        for label, info in textboxes_json.items():
+            if label.startswith("__") or label not in newly_filled:
+                continue
+            key_path = info.get("key_path")
+            if key_path and key_path in remaining_data:
+                logger.info(f"Removing '{key_path}' from remaining data")
+                del remaining_data[key_path]
+        if remaining_data == 0:
+            logger.info("json quote data empty — done")
+            break
         #dropdown pass
         time.sleep(2)
         print(f"\n  Taking screenshot for claude's dropdown pass {pass_num + 1}...")
         screenshot   = take_screenshot(region)
         dropdowns_json = get_dropdown_coords(bedrock_client, screenshot,remaining_data)
-        newly_filled = ddl_fill(bedrock_client,dropdowns_json,remaining_data, region)
+        newly_filled = ddl_fill(bedrock_client,dropdowns_json, region)
+        print(f"all filled: {all_filled}")
+        print(f"newly filled dropdowns: {newly_filled}")
         all_filled.update(newly_filled)
-        
-        field_count = field_count + len([k for k in dropdowns_json if not k.startswith("__")])
-        if field_count == 0:
-            logger.info("No fillable fields returned — done")
-            break
-        
-        
-
+        print(f"filled fields: {all_filled}")
         # Remove the data values that got placed this pass
-        for label, info in get_tb_coords.items():
+        for label, info in dropdowns_json.items():
             if label.startswith("__") or label not in newly_filled:
                 continue
-            value_placed = str(info.get("value", "")).strip()
-            # Find and remove the matching key from remaining_data
-            for data_key, data_val in list(remaining_data.items()):
-                if str(data_val).strip() == value_placed:
-                    logger.info(f"  Removing '{data_key}' from remaining data")
-                    del remaining_data[data_key]
-                    break
-
-        if not newly_filled:
-            logger.info("No new fields filled — done")
+            key_path = info.get("key_path")
+            if key_path and key_path in remaining_data:
+                logger.info(f"Removing '{key_path}' from remaining data")
+                del remaining_data[key_path]
+        if remaining_data == 0:
+            logger.info("json quote data empty — done")
             break
-
+        
+        # field_count = field_count + len([k for k in dropdowns_json if not k.startswith("__")])
+        # if field_count == 0:
+        #     logger.info("No fillable fields returned — done")
+        #     break
+        # if not newly_filled:
+        #     logger.info("No new fields filled — done")
+        #     break
+        
         # Scroll for next pass
         last_filled_form_field = list(newly_filled)[-1]  #returns a random element from the set, we just want any one of the filled fields to scroll from
-        last_info  = get_tb_coords.get(last_filled_form_field, {})
+        last_info  = dropdowns_json.get(last_filled_form_field, {})
         last_x     = int(last_info.get("x", 0)) + region["x"]
         last_y     = int(last_info.get("y", 0)) + region["y"]
         pyautogui.click(last_x, last_y-10)
@@ -293,7 +305,7 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
         pyautogui.scroll(-8)  # scroll down
         # time.sleep(1)
         print(f"  Scroll complete.")
-        take_screenshot(region,(safe_x,safe_y))  # final screenshot after scrolling
+        # take_screenshot(region,(safe_x,safe_y))  # final screenshot after scrolling
 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
@@ -304,11 +316,16 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
 
 def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict) -> dict:
     prompt = (
-        "You are looking at a screenshot of a form.\n\n"
+         "You are looking at a screenshot of an insurance AMS "
+        "(Agency Management System) form.\n\n"
+
+        "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
+        f"{json.dumps(json_data, indent=2)}\n\n"
 
         "Your job:\n"
-        "Identify ONLY visible dropdown fields whose label matches one of the keys in this list:\n"
-        f"{json.dumps(json_data, indent=2)}\n\n"
+        "1. Look at every visible dropdown in the screenshot.\n"
+        "2. Match available data to fields using common sense.\n"
+        "3. Return a JSON object for every field you can confidently identify.\n\n"
 
         "- Return ONLY  the form field label, the entire json path for the matching key, and coordinates.\n"
         "- If the data value is numeric (e.g., premium, amount, totals), it is NOT a dropdown match.\n"
@@ -317,8 +334,8 @@ def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict
 
         "Format:\n"
         '{\n'
-        '  "State": {"x": 1157, "y": 419, "key_path": "insured state"},\n'
-        '  "Line of Business": {"x": 350, "y": 584, "key_path": "type of coverage"}\n'
+        '  "State": {"x": 1157, "y": 419, "value": "LA", "key_path": "insured state"},\n'
+        '  "Line of Business": {"x": 350, "y": 584, "value": "Commercial Property", "key_path": "type of coverage"}\n'
         '}'
     )
 
@@ -338,7 +355,7 @@ def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict
     print(f"Claude dropdown response: {ddls}")
     return ddls
 
-def ddl_fill(bedrock_client, ddl_dict: dict, json_data: dict, region: dict) -> set:
+def ddl_fill(bedrock_client, ddl_dict: dict,  region: dict) -> set:
     filled = set()
     for label, info in ddl_dict.items():
         abs_x = int(info["x"]) + region["x"]
@@ -350,9 +367,14 @@ def ddl_fill(bedrock_client, ddl_dict: dict, json_data: dict, region: dict) -> s
         print(f"  screenshot for claude after opening dropdown '{label}'")
         screenshot = take_screenshot(region)
 
+        for path, info in flatten_with_path(ddl_dict):
+            if path.split(".")[-1] == label:
+                value = str(info.get("value", "")).strip()
+
+    
         prompt = (
             "You are looking at an OPEN dropdown list.\n\n"
-            f"Target value: {json.dumps(json_data)}\n\n"
+            f"Target value: {value}\n\n"
             # "Click the best matching visible option.\n\n"
             "Return ONLY:\n"
             '{"x": ..., "y": ..., "value": "..."}'
@@ -380,28 +402,10 @@ def ddl_fill(bedrock_client, ddl_dict: dict, json_data: dict, region: dict) -> s
         take_screenshot(region,(abs_x, opt_y))  # final screenshot after filling
         filled.add(label)
         print("\n")
+    return filled
 
 def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
                           json_data: dict, already_filled: set) -> dict:
-    """
-    Send one screenshot + the full job data to Claude.
-
-    Claude figures out:
-      - Which visible fields match which data values
-      - Where each field is (pixel coordinates)
-      - How to format each value (dates, currency, state abbreviations, etc.)
-
-    Returns a ready-to-execute dict:
-      {
-        "Insured Name":   {"x": 630, "y": 354, "value": "Acme Corp LLC"},
-        "Effective Date": {"x": 322, "y": 727, "value": "01/15/2025"},
-        ...
-        "__has_more_fields__": false
-      }
-
-    already_filled: set of field labels filled in previous scroll passes,
-                    so Claude skips them and focuses on new ones.
-    """
     skip_note = ""
     if already_filled:
         skip_note = (
@@ -440,8 +444,8 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
         "Return ONLY valid JSON. No explanation.\n"
         "Format:\n"
         '{\n'
-        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC"},\n'
-        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026"}\n'
+        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name"},\n'
+        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date"}\n'
         '}'
     )
     response = bedrock_client.converse(
