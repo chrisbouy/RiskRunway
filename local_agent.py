@@ -445,6 +445,7 @@ def match_data_to_tb_fields(bedrock_client, fields: dict, data: dict) -> dict:
         "Rules:\n"
         "- Use common sense — 'Insured Name' matches 'insured legal name', etc.\n"
         "- Broker field on the form is referring to the wholesale broker listed in the data.\n"
+        "- Producer field on the form is referring to the retail agent listed in the data.\n"
         "- If you see text already filled in, skip that field.\n"
         "- Dates → MM/DD/YYYY\n"
         "- Currency → digits only, no $\n"
