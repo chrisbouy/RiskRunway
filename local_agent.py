@@ -53,7 +53,7 @@ except ImportError:
 DEFAULT_SERVER_URL = "http://localhost:5001"
 AGENT_ID           = str(uuid.uuid4())[:8]
 POLL_INTERVAL      = 0.5   # seconds between idle polls
-MAX_SCROLL_PASSES  = 5     # max scroll passes per job (safety limit)
+MAX_SCROLL_PASSES  = 1     # max scroll passes per job (safety limit)
 CLICK_DELAY        = 0.08  # seconds to wait after clicking a field
 FILL_DELAY         = 0.06  # seconds between filling each field
 
@@ -314,8 +314,8 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
             break
 
         previous_pass_screenshot = current_ss
-        print(f"  Scrolling down for next pass...")
-        scroll_form(region, safe_click=safe_click)
+        # print(f"  Scrolling down for next pass...")
+        # scroll_form(region, safe_click=safe_click)
 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
