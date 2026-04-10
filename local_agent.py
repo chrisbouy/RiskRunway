@@ -277,6 +277,7 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
             break
 
         tb_data_map = get_tb_coords(bedrock_client,current_ss,remaining_data,all_filled)
+        safe_click  = tb_data_map.pop("__safe_click__", None)
         logger.info(f"filling")
         newly_filled = tb_fill(tb_data_map, region)
         all_filled.update(newly_filled)
@@ -314,7 +315,7 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
 
         previous_pass_screenshot = current_ss
         print(f"  Scrolling down for next pass...")
-        scroll_form(region)
+        scroll_form(region, safe_click=safe_click)
 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
@@ -339,7 +340,12 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
         "Your job:\n"
         "1. Look at every visible, editable field on the form.\n"
         "2. Match available data to fields using common sense.\n"
-        "3. Return a JSON object for ONLY fields you have a value for.\n\n"
+        "3. Return a JSON object for ONLY fields you have a value for.\n"
+        "4. Also include one entry '__safe_click__' with the coordinates of any "
+        "empty space on the form that is NOT a text input, dropdown, or button — "
+        "somewhere safe to click that won't trigger any field focus. "
+        "A section header, a card background, or whitespace between fields is ideal.\n"
+        '  "__safe_click__": {"x": 400, "y": 200}\n'
 
         "STRICT RULES:\n"
         "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
@@ -699,13 +705,20 @@ def ddl_fill(bedrock_client, ddl_dict: dict,  region: dict) -> set:
 
 
 
-def scroll_form(region: dict):
-    #Scroll down to reveal more fields
-    cx = region["x"] + region["width"]  // 2
-    cy = region["y"] + region["height"] // 2
-    # pyautogui.click(cx, cy)  # click center to ensure scroll goes to the right place
-    pyautogui.scroll(-80, x=cx, y=cy)
-    # pyautogui.press('pagedown')
+def scroll_form(region: dict, safe_click: dict = None):
+    if safe_click:
+        sx = int(safe_click.get("x", 0)) + region["x"]
+        sy = int(safe_click.get("y", 0)) + region["y"]
+    else:
+        # fallback — top of window, above any form content
+        sx = region["x"] + region["width"] // 2
+        sy = region["y"] + 60   # topbar/chrome area, no fields here
+
+    pyautogui.click(sx, sy)
+    time.sleep(0.1)
+    pyautogui.press("escape")
+    time.sleep(0.1)
+    pyautogui.scroll(-80, x=sx, y=sy)
     time.sleep(1)
 
 def show_overlay_and_wait() -> Optional[tuple]:
