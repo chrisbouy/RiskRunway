@@ -65,7 +65,7 @@ FORM_REGION_INSET_RIGHT  = 18
 FORM_REGION_INSET_BOTTOM = 18
 
 AWS_REGION = "us-east-1"
-MODEL_ID   = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+MODEL_ID   = "us.anthropic.claude-sonnet-4-6"
 
 IS_MAC        = platform.system() == "Darwin"
 PASTE_HOTKEY  = ("command", "v") if IS_MAC else ("ctrl", "v")
@@ -83,6 +83,30 @@ logger.info(
 )
 
 job_queue: queue.Queue = queue.Queue()
+
+def bedrock_invoke(bedrock_client, messages: list, image_bytes: bytes = None) -> str:
+    """
+    Invoke Bedrock using the streaming API for faster time-to-first-token.
+    Collects all chunks and returns the complete response text.
+    """
+    content = []
+    if image_bytes:
+        content.append({"image": {"format": "png", "source": {"bytes": image_bytes}}})
+    content.append({"text": messages[-1]["text"]})
+
+    response = bedrock_client.converse_stream(
+        modelId=MODEL_ID,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    full_text = []
+    for event in response["stream"]:
+        if "contentBlockDelta" in event:
+            delta = event["contentBlockDelta"].get("delta", {})
+            if "text" in delta:
+                full_text.append(delta["text"])
+
+    return "".join(full_text)
 
 def extract_json(text: str) -> dict:
     """
@@ -341,11 +365,11 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
         "1. Look at every visible, editable field on the form.\n"
         "2. Match available data to fields using common sense.\n"
         "3. Return a JSON object for ONLY fields you have a value for.\n"
-        "4. Also include one entry '__safe_click__' with the coordinates of any "
-        "empty space on the form that is NOT a text input, dropdown, or button — "
-        "somewhere safe to click that won't trigger any field focus. "
-        "A section header, a card background, or whitespace between fields is ideal.\n"
-        '  "__safe_click__": {"x": 400, "y": 200}\n'
+        # "4. Also include one entry '__safe_click__' with the coordinates of any "
+        # "empty space on the form that is NOT a text input, dropdown, or button — "
+        # "somewhere safe to click that won't trigger any field focus. "
+        # "A section header, a card background, or whitespace between fields is ideal.\n"
+        # '  "__safe_click__": {"x": 400, "y": 200}\n'
 
         "STRICT RULES:\n"
         "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
@@ -375,18 +399,18 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
         '  "Line of Business": {"value": "Commercial Property", "key_path": "type of coverage", "field_type": "dropdown_field"}\n'
 '}'
     )
-    response = bedrock_client.converse(
-        modelId=MODEL_ID,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"image": {"format": "png", "source": {"bytes": screenshot_bytes}}},
-                {"text": prompt},
-            ],
-        }],
-    )
-
-    raw = response["output"]["message"]["content"][0]["text"]
+    # response = bedrock_client.converse(
+    #     modelId=MODEL_ID,
+    #     messages=[{
+    #         "role": "user",
+    #         "content": [
+    #             {"image": {"format": "png", "source": {"bytes": screenshot_bytes}}},
+    #             {"text": prompt},
+    #         ],
+    #     }],
+    # )
+    raw = bedrock_invoke(bedrock_client, [{"text": prompt}], image_bytes=screenshot_bytes)
+    # raw = response["output"]["message"]["content"][0]["text"]
     logger.info(f"Claude response ({len(raw)} chars): {raw}")
     return extract_json(raw)
 
@@ -430,11 +454,6 @@ def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict
     ddls = extract_json(raw)
     print(f"Claude dropdown response: {ddls}")
     return ddls
-
-
-
-
-#new  3 pass - get all, then match, then fill for textboxes and dropdowns separately
 def get_text_fields(bedrock_client, screenshot_bytes: bytes) -> dict:
     """
     Call 1: Vision only. Find all text inputs and date fields.
@@ -475,7 +494,6 @@ def get_text_fields(bedrock_client, screenshot_bytes: bytes) -> dict:
     #     print(f"{name}: x={coords['x']}, y={coords['y']}")
 
     return extract_json(raw)
-
 def match_data_to_tb_fields(bedrock_client, fields: dict, data: dict) -> dict:
     """
     Call 2: Text only, no image. Match data values to the fields found.
