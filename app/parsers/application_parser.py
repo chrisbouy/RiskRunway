@@ -89,10 +89,6 @@ def _get_llm_client():
 
 
 def _ocr_page_with_fallback(page):
-    """
-    OCR a page with optimized settings for speed.
-    Uses 200 DPI (good balance of quality/speed) and single best config.
-    """
     page_image = page.to_image(resolution=200).original
     try:
         # Use single best config for insurance docs (PSM 6 = uniform block of text)
@@ -104,18 +100,11 @@ def _ocr_page_with_fallback(page):
 
 
 def pass1_extract_application_layout(pdf_path):
-    """
-    Pass 1: robust text extraction for application documents.
-    Uses digital text extraction when good; OCR fallback only when needed.
-    Optimized for speed - no redundant OCR processing.
-    """
     import gc
     pages = []
-
     with pdfplumber.open(pdf_path) as pdf:
         total_pages = len(pdf.pages)
         print(f"  Processing {total_pages} page(s)...")
-
         for page_number, page in enumerate(pdf.pages, start=1):
             print(f"  Processing page {page_number}...")
 

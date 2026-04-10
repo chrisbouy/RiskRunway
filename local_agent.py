@@ -40,10 +40,10 @@ import requests
 
 try:
     import mss
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageChops, ImageDraw, ImageOps, ImageStat
     USE_MSS = True
 except ImportError:
-    from PIL import ImageGrab, Image
+    from PIL import ImageGrab, Image, ImageChops, ImageOps, ImageStat
     USE_MSS = False
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +56,13 @@ POLL_INTERVAL      = 0.5   # seconds between idle polls
 MAX_SCROLL_PASSES  = 5     # max scroll passes per job (safety limit)
 CLICK_DELAY        = 0.08  # seconds to wait after clicking a field
 FILL_DELAY         = 0.06  # seconds between filling each field
+
+# Crop the detected app window down to the form viewport so vision
+# never sees browser chrome, tabs, or the address bar.
+FORM_REGION_INSET_TOP    = 95
+FORM_REGION_INSET_LEFT   = 18
+FORM_REGION_INSET_RIGHT  = 18
+FORM_REGION_INSET_BOTTOM = 18
 
 AWS_REGION = "us-east-1"
 MODEL_ID   = "us.anthropic.claude-sonnet-4-20250514-v1:0"
@@ -160,6 +167,22 @@ def take_screenshot(region: dict,marker: tuple = None) -> bytes:
     
     return buf.getvalue()
 
+
+def inset_region(region: dict,
+                 top: int = 0,
+                 left: int = 0,
+                 right: int = 0,
+                 bottom: int = 0) -> dict:
+    """
+    Return a smaller region inset from the given bounds.
+    Keeps width/height at least 1px so downstream capture never explodes.
+    """
+    x = region["x"] + left
+    y = region["y"] + top
+    width = max(1, region["width"] - left - right)
+    height = max(1, region["height"] - top - bottom)
+    return {"x": x, "y": y, "width": width, "height": height}
+
 def flatten_with_path(d, parent_key=""):
     items = []
     for k, v in d.items():
@@ -212,9 +235,30 @@ def flatten_job_data(json_data: dict) -> dict:
     # Drop Nones — don't send empty keys to Claude
     return {k: v for k, v in flat.items() if v is not None}
 
-def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
+def screenshots_almost_equal(first: bytes, second: bytes, threshold: float = 2.0) -> bool:
+    """
+    Compare screenshots with a small tolerance so focus rings/caret repaints
+    do not force another AI pass.
+    """
+    first_img = Image.open(io.BytesIO(first)).convert("RGB")
+    second_img = Image.open(io.BytesIO(second)).convert("RGB")
+
+    if first_img.size != second_img.size:
+        return False
+
+    # Shrink and grayscale to ignore tiny pixel-level noise.
+    target_size = (160, 100)
+    first_small = ImageOps.grayscale(first_img.resize(target_size))
+    second_small = ImageOps.grayscale(second_img.resize(target_size))
+    diff = ImageChops.difference(first_small, second_small)
+    mean_diff = ImageStat.Stat(diff).mean[0]
+    logger.info(f"Screenshot diff score: {mean_diff:.2f}")
+    return mean_diff <= threshold
+
+def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
     all_filled: set = set()
     remaining_data  = flatten_job_data(json_data)   # starts full, shrinks each pass
+    previous_pass_screenshot: Optional[bytes] = None
 
     for pass_num in range(MAX_SCROLL_PASSES):
         logger.info(f"--- Pass {pass_num + 1}/{MAX_SCROLL_PASSES} ---")
@@ -222,15 +266,21 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
         if not remaining_data:
             logger.info("All data placed — done")
             break
-        
-        #textbox pass
-        # time.sleep(2)
-        print(f"\n  Taking screenshot for claude's tb pass {pass_num + 1}...")
-        screenshot   = take_screenshot(region)
-        textboxes_json = get_text_fields(bedrock_client, screenshot)
-        tb_data_map = match_data_to_tb_fields(bedrock_client,textboxes_json,remaining_data)
+
+        print(f"\n  Taking screenshot for claude's  pass {pass_num + 1} over form...")
+        current_ss = take_screenshot(region)
+        if previous_pass_screenshot is not None and screenshots_almost_equal(
+            previous_pass_screenshot,
+            current_ss,
+        ):
+            logger.info("Screen is unchanged from the prior pass — stopping.")
+            break
+
+        tb_data_map = get_tb_coords(bedrock_client,current_ss,remaining_data,all_filled)
+        logger.info(f"filling")
         newly_filled = tb_fill(tb_data_map, region)
         all_filled.update(newly_filled)
+
         # Remove the data values that got placed this pass
         for label, info in tb_data_map.items():
             if label.startswith("__") or label not in newly_filled:
@@ -239,47 +289,32 @@ def run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
             if key_path and key_path in remaining_data:
                 logger.info(f"Removing '{key_path}' from remaining data")
                 del remaining_data[key_path]
-        if remaining_data == 0:
-            logger.info("json quote data empty — done")
-            break
-        #dropdown pass
-        time.sleep(1)
-        print(f"\n  Taking screenshot for claude's dropdown pass {pass_num + 1}...")
-        screenshot   = take_screenshot(region)
-        dropdowns_json = get_ddl_fields(bedrock_client, screenshot)
-        ddl_data_map = match_data_to_ddl_fields(bedrock_client,dropdowns_json,remaining_data)
-        newly_filled = ddl_fill(bedrock_client,ddl_data_map, region)
-        all_filled.update(newly_filled)
-        # Remove the data values that got placed this pass
-        for label, info in ddl_data_map.items():
-            if label.startswith("__") or label not in newly_filled:
+
+        # Also remove matched non-text fields so we do not keep re-proposing
+        # dropdowns/selects in later textbox-only passes.
+        for label, info in tb_data_map.items():
+            if label.startswith("__") or not isinstance(info, dict):
                 continue
+            if label in newly_filled:
+                continue
+            if info.get("field_type") == "text_field":
+                continue
+
             key_path = info.get("key_path")
             if key_path and key_path in remaining_data:
-                logger.info(f"Removing '{key_path}' from remaining data")
+                logger.info(
+                    f"Removing matched non-text field '{key_path}' "
+                    f"(label='{label}', field_type='{info.get('field_type')}') from remaining data"
+                )
                 del remaining_data[key_path]
-        if remaining_data == 0:
+
+        if not remaining_data:
             logger.info("json quote data empty — done")
             break
-        
-        # field_count = field_count + len([k for k in dropdowns_json if not k.startswith("__")])
-        # if field_count == 0:
-        #     logger.info("No fillable fields returned — done")
-        #     break
-        # if not newly_filled:
-        #     logger.info("No new fields filled — done")
-        #     break
-        
-        
+
+        previous_pass_screenshot = current_ss
         print(f"  Scrolling down for next pass...")
-        before_scroll=take_screenshot(region)  # ss before scrolling
         scroll_form(region)
-        print(f"  Scroll complete.")
-        after_scroll=  take_screenshot(region)  # final screenshot after scrolling
-            # Check if the scroll had any effect by comparing screenshots
-        if before_scroll == after_scroll:
-            logger.info("No change after scrolling — likely end of form reached.")
-            break
 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
@@ -302,16 +337,19 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
         f"{json.dumps(json_data, indent=2)}\n\n"
 
         "Your job:\n"
-        "1. Look at every visible, editable TEXT INPUT or DATE field in the screenshot.\n"
+        "1. Look at every visible, editable field on the form.\n"
         "2. Match available data to fields using common sense.\n"
-        "3. Return a JSON object for every field you can confidently fill.\n\n"
+        "3. Return a JSON object for ONLY fields you have a value for.\n\n"
 
         "STRICT RULES:\n"
-        "- ONLY include text inputs and date fields.\n"
-        "- DO NOT include dropdowns or select fields.\n"
+        "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
+        # "- ONLY include text inputs and date fields.\n"
+        # "- DO NOT include dropdowns or select fields.  If a dropdown matches a key, remove it from\n"
         "- DO NOT guess values.\n"
         "- DO NOT include fields unless you are confident.\n"
         "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
+        "- Producer field on the form is referring to the retail agent listed in the data.\n"
+        "- For fields that are not textboxes, omit coordinates.\n"
         "- Skip fields already filled.\n\n"
 
         "Formatting rules:\n"
@@ -325,9 +363,11 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
         "Return ONLY valid JSON. No explanation.\n"
         "Format:\n"
         '{\n'
-        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name"},\n'
-        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date"}\n'
-        '}'
+        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name", "field_type": "text_field"},\n'
+        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date", "field_type": "text_field"}\n'
+        '  "State":            {"value": "LA", "key_path": "insured state", "field_type": "dropdown_field"}\n'
+        '  "Line of Business": {"value": "Commercial Property", "key_path": "type of coverage", "field_type": "dropdown_field"}\n'
+'}'
     )
     response = bedrock_client.converse(
         modelId=MODEL_ID,
@@ -341,7 +381,7 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
     )
 
     raw = response["output"]["message"]["content"][0]["text"]
-    logger.info(f"Claude pass1 response ({len(raw)} chars): {raw!r}")
+    logger.info(f"Claude response ({len(raw)} chars): {raw}")
     return extract_json(raw)
 
 def get_dropdown_coords(bedrock_client, screenshot_bytes: bytes, json_data: dict) -> dict:
@@ -502,8 +542,11 @@ def tb_fill(tb_dict: dict, region: dict) -> set:
         if not value:
             logger.debug(f"Skipping '{label}' — no value")
             continue
+        if info.get("field_type") != "text_field":
+            logger.debug(f"Skipping '{label}' — not a text field")
+            continue
         abs_x = int(info.get("x", 0)) + region["x"]
-        abs_y = int(info["y"] * 1.05) + region["y"] #todo: remove this hack..use textbox handles?
+        abs_y = int(info.get("y", 0)) + region["y"] #todo: remove this hack..use textbox handles?
         try:
             pyautogui.click(abs_x, abs_y)
             pyperclip.copy(value)
@@ -606,11 +649,11 @@ def ddl_fill(bedrock_client, ddl_dict: dict,  region: dict) -> set:
         abs_y = int(info["y"] * 1.05) + region["y"]
 
         # before_open_screenshot = take_screenshot(region)
-        pyautogui.click(abs_x, abs_y)
-        time.sleep(1)  # wait for dropdown to open and render options
+        pyautogui.click(abs_x, abs_y)          
+        time.sleep(.5)  # wait for dropdown to open and render options
         print(f"  screenshot for claude after opening dropdown '{label}' at ({abs_x},{abs_y})...")
         screenshot = take_screenshot(region)
-        time.sleep(1)
+        time.sleep(.5)
         # if screenshot == before_open_screenshot:
         #     raise AssertionError(f"Dropdown '{label}' did not open")
         for path, info in flatten_with_path(ddl_dict):
@@ -646,8 +689,9 @@ def ddl_fill(bedrock_client, ddl_dict: dict,  region: dict) -> set:
         pyautogui.click(abs_x, opt_y) # why does x drift?
         # time.sleep(2)
         print(f"filled ddl field '{label}' with value: {result['value']}")
+        time.sleep(.5)
         take_screenshot(region,(abs_x, opt_y))  # final screenshot after filling
-        time.sleep(1)
+        time.sleep(.5)
         filled.add(label)
         print("\n")
     return filled
@@ -762,7 +806,20 @@ def prompt_user_to_select_window() -> Optional[dict]:
         return None
 
     x, y   = pos
-    region = _get_window_region_at(x, y)
+    window_region = _get_window_region_at(x, y)
+    region = inset_region(
+        window_region,
+        top=FORM_REGION_INSET_TOP,
+        left=FORM_REGION_INSET_LEFT,
+        right=FORM_REGION_INSET_RIGHT,
+        bottom=FORM_REGION_INSET_BOTTOM,
+    )
+    logger.info(
+        "Form viewport region: "
+        f"{region['width']}x{region['height']} at ({region['x']},{region['y']}) "
+        f"from window {window_region['width']}x{window_region['height']} "
+        f"at ({window_region['x']},{window_region['y']})"
+    )
     print("\n  Window selected — Claude is starting now!\n")
     return region
 

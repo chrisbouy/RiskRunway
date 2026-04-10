@@ -5,6 +5,7 @@ requests
 pillow
 tesserocr
 pytesseract
+opencv-python-headless
 ollama
 google-genai
 python-dotenv

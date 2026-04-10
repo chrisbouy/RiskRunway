@@ -9,11 +9,11 @@ img.save("/tmp/test_shot.png")
 with open("/tmp/test_shot.png", "rb") as f:
     b64 = base64.b64encode(f.read()).decode()
 
-print("Calling Bedrock Computer Use...")
+print("Calling Bedrock...")
 client = boto3.client("bedrock-runtime", region_name="us-east-1")
 
 response = client.converse(
-    modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+    modelId="us.anthropic.claude-sonnet-4-6",
     messages=[{
         "role": "user",
         "content": [
@@ -32,16 +32,16 @@ response = client.converse(
             }
         ]
     }],
-    additionalModelRequestFields={
-        "tools": [{
-            "type": "computer_20250124",
-            "name": "computer",
-            "display_width_px": 1440,
-            "display_height_px": 900,
-            "display_number": 0
-        }],
-        "anthropic_beta": ["computer-use-2025-01-24"]
-    }
+    # additionalModelRequestFields={
+    #     "tools": [{
+    #         "type": "computer_20250124",
+    #         "name": "computer",
+    #         "display_width_px": 1440,
+    #         "display_height_px": 900,
+    #         "display_number": 0
+    #     }],
+    #     "anthropic_beta": ["computer-use-2025-01-24"]
+    # }
 )
 
 content = response["output"]["message"]["content"]

@@ -659,6 +659,17 @@ def parse_quote(pdf_path):
     # print(f"parse_quote result: {result}")
     return result["pass2_normalized"]
 
+
+
+
+
+
+
+
+
+
+
+
 def groq_request_with_backoff(fn, max_retries=5):
     for attempt in range(max_retries):
         try:
