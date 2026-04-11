@@ -546,6 +546,7 @@ def prompt_user_to_select_window() -> Optional[dict]:
         return None
 
     x, y   = pos
+    time.sleep(0.5)
     window_region = _get_window_region_at(x, y)
     region = inset_region(
         window_region,
@@ -563,17 +564,58 @@ def prompt_user_to_select_window() -> Optional[dict]:
     print("\n  Window selected — Claude is starting now!\n")
     return region
 
-def _get_window_region_at(x: int, y: int) -> dict:
-    """Return bounding box of the window at screen position (x, y)."""
+# def _get_window_region_at(x: int, y: int) -> dict:
+#     """Return bounding box of the window at screen position (x, y)."""
 
-    # macOS via Quartz
+#     # macOS via Quartz
+#     try:
+#         from Quartz import (CGWindowListCopyWindowInfo,
+#                             kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
+#         windows = CGWindowListCopyWindowInfo(
+#             kCGWindowListOptionOnScreenOnly, kCGNullWindowID
+#         )
+#         for win in windows:
+#             b  = win.get("kCGWindowBounds", {})
+#             wx, wy = int(b.get("X", 0)), int(b.get("Y", 0))
+#             ww, wh = int(b.get("Width", 0)), int(b.get("Height", 0))
+#             if wx <= x <= wx + ww and wy <= y <= wy + wh and ww > 50 and wh > 50:
+#                 title  = win.get("kCGWindowName") or win.get("kCGWindowOwnerName", "")
+#                 region = {"x": wx, "y": wy, "width": ww, "height": wh}
+#                 logger.info(f"Window (macOS): '{title}' {ww}x{wh} at ({wx},{wy})")
+#                 return region
+#     except ImportError:
+#         pass
+
+#     # Windows via pywin32
+#     try:
+#         import win32gui
+#         hwnd = win32gui.WindowFromPoint((x, y))
+#         if hwnd:
+#             wx, wy, wx2, wy2 = win32gui.GetWindowRect(hwnd)
+#             title  = win32gui.GetWindowText(hwnd)
+#             region = {"x": wx, "y": wy, "width": wx2 - wx, "height": wy2 - wy}
+#             logger.info(f"Window (Windows): '{title}' at {region}")
+#             return region
+#     except ImportError:
+#         pass
+
+#     # Fallback: full screen
+#     logger.warning("Could not detect window bounds — using full screen")
+#     w, h = pyautogui.size()
+#     return {"x": 0, "y": 0, "width": w, "height": h}
+
+def _get_window_region_at(x: int, y: int) -> dict:
     try:
         from Quartz import (CGWindowListCopyWindowInfo,
                             kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
+        import os
+        current_pid = os.getpid()
         windows = CGWindowListCopyWindowInfo(
             kCGWindowListOptionOnScreenOnly, kCGNullWindowID
         )
         for win in windows:
+            if win.get("kCGWindowOwnerPID") == current_pid:
+                continue  # skip anything owned by this Python process
             b  = win.get("kCGWindowBounds", {})
             wx, wy = int(b.get("X", 0)), int(b.get("Y", 0))
             ww, wh = int(b.get("Width", 0)), int(b.get("Height", 0))
@@ -585,21 +627,6 @@ def _get_window_region_at(x: int, y: int) -> dict:
     except ImportError:
         pass
 
-    # Windows via pywin32
-    try:
-        import win32gui
-        hwnd = win32gui.WindowFromPoint((x, y))
-        if hwnd:
-            wx, wy, wx2, wy2 = win32gui.GetWindowRect(hwnd)
-            title  = win32gui.GetWindowText(hwnd)
-            region = {"x": wx, "y": wy, "width": wx2 - wx, "height": wy2 - wy}
-            logger.info(f"Window (Windows): '{title}' at {region}")
-            return region
-    except ImportError:
-        pass
-
-    # Fallback: full screen
-    logger.warning("Could not detect window bounds — using full screen")
     w, h = pyautogui.size()
     return {"x": 0, "y": 0, "width": w, "height": h}
 
