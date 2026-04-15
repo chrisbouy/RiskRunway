@@ -93,7 +93,8 @@ def bedrock_invoke(bedrock_client, messages: list, image_bytes: bytes = None) ->
     """
     content = []
     if image_bytes:
-        content.append({"image": {"format": "png", "source": {"bytes": image_bytes}}})
+        # Use JPEG format for faster upload (Bedrock supports jpeg, png, gif, webp)
+        content.append({"image": {"format": "jpeg", "source": {"bytes": image_bytes}}})
     content.append({"text": messages[-1]["text"]})
 
     response = bedrock_client.converse_stream(
@@ -142,13 +143,19 @@ def extract_json(text: str) -> dict:
 
     raise ValueError(f"No valid JSON found in Claude response:\n{text[:400]}")
 
-SCREENSHOT_SCALE = 0.5
+SCREENSHOT_SCALE = 0.5  # Reduce image size for faster upload/processing
+JPEG_QUALITY = 65  # Lower = faster + smaller file, higher = better quality (1-100)
 
 def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
     """
-    Capture the given screen region and return raw PNG bytes.
+    Capture the given screen region and return JPEG bytes.
     mss handles negative y coordinates correctly on macOS dual-monitor setups.
     Also saves a debug copy to /tmp/ams_debug_last.png for inspection.
+
+    Speed optimizations:
+    - Uses JPEG instead of PNG (much faster compression, 3-10x smaller files)
+    - Configurable quality setting (JPEG_QUALITY)
+    - Resize before encoding to reduce data size
     """
     if USE_MSS:
         with mss.mss() as sct:
@@ -176,20 +183,24 @@ def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
         print(f"Drawing marker at ({mx},{my})")
         draw.line([(mx-20, my), (mx+20, my)], fill="red", width=2)
         draw.line([(mx, my-20), (mx, my+20)], fill="red", width=2)
-    
+
     timestamp = time.strftime("%Y%m%d_%H%M%S_%f")
     debug_path = Path(tempfile.gettempdir()) / f"ams_debug_{timestamp}.png"
     img.save(str(debug_path))
     logger.info(f"Screenshot: {debug_path} ({img.width}x{img.height})")
 
-    # Shrink before encoding
+    # Shrink before encoding (major speed boost)
     new_w = int(img.width  * SCREENSHOT_SCALE)
     new_h = int(img.height * SCREENSHOT_SCALE)
     img_small = img.resize((new_w, new_h), Image.LANCZOS)
-    
+
+    # Use JPEG instead of PNG - much faster and 3-10x smaller
     buf = io.BytesIO()
-    img_small.save(buf, format="PNG")
-    return buf.getvalue(), SCREENSHOT_SCALE
+    img_small.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=False)
+    bytes_data = buf.getvalue()
+
+    logger.info(f"Compressed to {len(bytes_data) / 1024:.1f}KB JPEG (quality={JPEG_QUALITY})")
+    return bytes_data, SCREENSHOT_SCALE
 
 
 def inset_region(region: dict,
