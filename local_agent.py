@@ -773,28 +773,25 @@ def run_job(job: dict, server_url: str, bedrock_client):
     persistent_overlay.set_status("working...", "#f39c12", "#f39c12")
     persistent_overlay.set_button_enabled(False)
 
+    # Store result from thread to avoid widget updates in background thread
+    result = {"success": None, "error": None}
+
     # Define the work function to run in a thread
     def do_work():
         try:
             success = run_vision_job(bedrock_client, json_data, region)
+            result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")
                 print(f"\n  Job #{job_id} complete!")
-                persistent_overlay.set_status("complete!", "#2ecc8a", "#2ecc8a")
             else:
                 update_job_status(server_url, job_id, "failed", "No fields were filled")
                 print(f"\n  Job #{job_id} — no fields could be filled")
-                persistent_overlay.set_status("no fields filled", "#e74c3c", "#e74c3c")
         except Exception as e:
             logger.error(f"Job {job_id} error: {e}", exc_info=True)
             update_job_status(server_url, job_id, "failed", str(e))
             print(f"\n  Job #{job_id} error: {e}")
-            persistent_overlay.set_status("error", "#e74c3c", "#e74c3c")
-        finally:
-            # Re-enable the button after a short delay
-            time.sleep(2)
-            persistent_overlay.set_status("ready", "#5a6180", "#2ecc8a")
-            persistent_overlay.set_button_enabled(True)
+            result["error"] = str(e)
 
     # Run the heavy work in a background thread to keep UI responsive
     work_thread = threading.Thread(target=do_work, daemon=True)
@@ -805,8 +802,18 @@ def run_job(job: dict, server_url: str, bedrock_client):
         persistent_overlay.update()
         time.sleep(0.05)
 
-    # One final update after thread completes
-    persistent_overlay.update()
+    # Update widget status on MAIN THREAD after work completes
+    if result.get("error"):
+        persistent_overlay.set_status("error", "#e74c3c", "#e74c3c")
+    elif result.get("success"):
+        persistent_overlay.set_status("complete!", "#2ecc8a", "#2ecc8a")
+    else:
+        persistent_overlay.set_status("no fields filled", "#e74c3c", "#e74c3c")
+
+    # Re-enable the button after a short delay
+    time.sleep(2)
+    persistent_overlay.set_status("ready", "#5a6180", "#2ecc8a")
+    persistent_overlay.set_button_enabled(True)
 
 def polling_loop(server_url: str):
     """Runs in background. Puts jobs on job_queue for the main thread."""
