@@ -462,6 +462,7 @@ class EmailMessage(Base):
         return {
             'id': self.id,
             'submission_id': self.submission_id,
+            'connected_account_id': self.connected_account_id,
             'message_id': self.message_id,
             'from_email': self.from_email,
             'from_name': self.from_name,
@@ -495,7 +496,8 @@ class EmailAttachment(Base):
     size_bytes = Column(Integer, nullable=True)
     file_path = Column(String(1000), nullable=True)  # Path to saved file on disk
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
+    message_id = Column(String(500), nullable=True)  # Original email Message-ID for IMAP retrieval
+    attachment_id = Column(String(500), nullable=True)  # OAuth: attachment ID; IMAP: part index
     # Relationships
     email = relationship('EmailMessage', back_populates='attachments')
 

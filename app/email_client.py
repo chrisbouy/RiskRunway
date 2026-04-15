@@ -260,63 +260,25 @@ class EmailClient:
         db_session: Session
     ):
         """
-        Process an email attachment - save to disk and trigger parsing.
+        Process an email attachment - save metadata only (lazy download approach).
+        Attachment will be downloaded on-demand when user clicks 'Ingest'.
         """
-        import io
-        
         filename = attachment_info.get('filename', '')
         content_type = attachment_info.get('content_type', '')
-        
-        # Skip non-PDF files
-        if not filename.lower().endswith('.pdf'):
-            logger.info(f"Skipping non-PDF attachment: {filename}")
-            return
-        
-        # Create attachments directory
-        attachments_dir = os.path.join('data', 'email_attachments', str(email_record.id))
-        os.makedirs(attachments_dir, exist_ok=True)
-        
-        # Save file path
-        file_path = os.path.join(attachments_dir, filename)
-        
-        # Download attachment data
-        attachment_data = None
-        
-        if account.provider == EmailProvider.GMAIL:
-            try:
-                attachment_data = service.fetch_attachments(
-                    access_token=account.get_decrypted_tokens().get('access_token'),
-                    message_id=attachment_info.get('message_id'),
-                    attachment_id=attachment_info.get('attachment_id')
-                )
-            except Exception as e:
-                logger.error(f"Failed to fetch Gmail attachment: {e}")
-        
-        elif account.provider == EmailProvider.OUTLOOK:
-            try:
-                attachment_data = service.fetch_attachments(
-                    access_token=account.get_decrypted_tokens().get('access_token'),
-                    message_id=attachment_info.get('message_id'),
-                    attachment_id=attachment_info.get('attachment_id')
-                )
-            except Exception as e:
-                logger.error(f"Failed to fetch Outlook attachment: {e}")
-        
-        if attachment_data:
-            with open(file_path, 'wb') as f:
-                f.write(attachment_data)
-            
-            # Create database record
-            attachment = EmailAttachment(
-                email_id=email_record.id,
-                filename=filename,
-                content_type=content_type,
-                size_bytes=len(attachment_data),
-                file_path=file_path
-            )
-            db_session.add(attachment)
-            
-            logger.info(f"Saved attachment: {filename} to {file_path}")
+
+        # Create database record with metadata only - file will be downloaded on-demand
+        attachment = EmailAttachment(
+            email_id=email_record.id,
+            filename=filename,
+            content_type=content_type,
+            size_bytes=attachment_info.get('size', 0),
+            file_path=None,  # Not downloaded yet - will be populated on-demand
+            message_id=attachment_info.get('message_id'),  # OAuth message ID for retrieval
+            attachment_id=attachment_info.get('attachment_id')  # OAuth attachment ID
+        )
+        db_session.add(attachment)
+
+        logger.info(f"Saved attachment metadata: {filename} (will download on-demand)")
     
     def ingest_attachment(self, email_attachment_id: int, submission_id: int) -> Dict:
         """

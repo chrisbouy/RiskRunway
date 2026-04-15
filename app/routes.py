@@ -1099,6 +1099,8 @@ def trigger_email_scrape():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+
+
 def _get_user_broker_emails(db_session: Session, user_id: int) -> List[str]:
     """Get all active broker email addresses for a user"""
     broker_emails = []
@@ -1123,14 +1125,13 @@ def _get_user_quote_subjects(db_session: Session, user_id: int) -> List[str]:
             Submission.assigned_to == user_id
         ).all()
         
-        # Collect carrier names from quotes
-        carriers = set()
+        # Collect insured names from quotes
+        names = set()
         for sub in submissions:
-            for quote in sub.quotes:
-                if quote.carrier_name:
-                    carriers.add(quote.carrier_name.strip().lower())
+            if sub.insured_name:
+                names.add(sub.insured_name.strip().lower())
         
-        quote_subjects = list(carriers)
+        quote_subjects = list(names)
     except Exception as e:
         logger.warning(f"Failed to get quote subjects for user {user_id}: {e}")
     return quote_subjects
@@ -1230,6 +1231,7 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
             email_msg = EmailMessage(
                 message_id=unified_email.message_id,
                 subject=unified_email.subject,
+                connected_account_id=account.id,
                 from_email=unified_email.from_email,
                 from_name=unified_email.from_name,
                 to_email=unified_email.to_email,
@@ -1249,6 +1251,8 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
             for att in unified_email.attachments:
                 attachment = EmailAttachment(
                     email_id=email_msg.id,
+                    message_id=unified_email.message_id,
+                    attachment_id=att.get('attachment_id'),
                     filename=att.get('filename', ''),
                     content_type=att.get('content_type', ''),
                     size_bytes=att.get('size', 0)
@@ -1409,12 +1413,164 @@ def delete_email(email_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMessage, db_session: Session) -> Optional[str]:
+    """
+    Download email attachment on-demand if not already downloaded.
+
+    This implements lazy attachment loading - attachments are stored as metadata during
+    email scraping, then downloaded only when the user clicks "Ingest Quote".
+
+    Handles both OAuth (Gmail/Outlook) and IMAP sources:
+    - OAuth: Uses stored access_token with automatic refresh
+    - IMAP: Reconnects using config credentials and fetches by message_id + part_index
+
+    Returns the file path or None if download fails.
+    """
+    # If already downloaded and file exists, return it
+    if attachment.file_path and os.path.exists(attachment.file_path):
+        logger.info(f"Attachment {attachment.filename} already downloaded at {attachment.file_path}")
+        return attachment.file_path
+
+    logger.info(f"Downloading attachment {attachment.filename} on-demand...")
+
+    # Create attachments directory
+    attachments_dir = os.path.join('data', 'email_attachments', str(email.id))
+    os.makedirs(attachments_dir, exist_ok=True)
+    file_path = os.path.join(attachments_dir, attachment.filename)
+
+    try:
+        # Check if this is an OAuth email or IMAP email
+        print(f"Email {email.id} connected_account_id: {email.connected_account_id}")
+        if email.connected_account_id:
+            # OAuth path (Gmail or Outlook)
+            account = db_session.query(ConnectedAccount).filter_by(id=email.connected_account_id).first()
+            if not account:
+                logger.error(f"Connected account {email.connected_account_id} not found")
+                return None
+
+            # Get OAuth service
+            service = get_oauth_service(account.provider.value, current_app.config)
+
+            # Get tokens and check if refresh needed
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+
+            # Auto-refresh token if expired
+            if account.expires_at and account.expires_at < datetime.utcnow():
+                logger.info(f"Access token expired, refreshing...")
+                try:
+                    new_tokens = service.refresh_access_token(tokens.get('refresh_token'))
+                    account.set_encrypted_tokens(new_tokens)
+                    db_session.commit()
+                    access_token = new_tokens.get('access_token')
+                    logger.info(f"Token refreshed successfully")
+                except Exception as e:
+                    logger.error(f"Failed to refresh token: {e}")
+                    account.status = ConnectedAccountStatus.ERROR
+                    account.last_error = str(e)
+                    db_session.commit()
+                    return None
+
+            # Download attachment using OAuth API
+            attachment_data = service.fetch_attachments(
+                access_token=access_token,
+                message_id=attachment.message_id,
+                attachment_id=attachment.attachment_id
+            )
+
+            if attachment_data:
+                with open(file_path, 'wb') as f:
+                    f.write(attachment_data)
+
+                # Update database with file path
+                attachment.file_path = file_path
+                db_session.commit()
+
+                logger.info(f"Downloaded OAuth attachment {attachment.filename} to {file_path}")
+                return file_path
+            else:
+                logger.error(f"Failed to download OAuth attachment {attachment.filename}")
+                return None
+
+        else:
+            # IMAP path - need to reconnect and fetch
+            if not current_app.config.get('IMAP_PASSWORD'):
+                logger.error("IMAP credentials not configured")
+                return None
+
+            scraper = EmailScraper(
+                imap_server=current_app.config['IMAP_SERVER'],
+                email_address=current_app.config['IMAP_EMAIL'],
+                password=current_app.config['IMAP_PASSWORD'],
+                use_ssl=current_app.config['IMAP_USE_SSL']
+            )
+
+            if not scraper.connect():
+                logger.error("Failed to connect to IMAP server")
+                return None
+
+            try:
+                import email as email_lib
+                from email.utils import parsedate_to_datetime
+
+                # Search for the email by Message-ID
+                scraper.mail.select('INBOX')
+                _, message_numbers = scraper.mail.search(None, f'HEADER Message-ID "{attachment.message_id}"')
+
+                if not message_numbers[0]:
+                    logger.error(f"Email with message_id {attachment.message_id} not found in IMAP")
+                    return None
+
+                # Fetch the email
+                num = message_numbers[0].split()[0]
+                _, msg_data = scraper.mail.fetch(num, '(RFC822)')
+                email_body = msg_data[0][1]
+                msg = email_lib.message_from_bytes(email_body)
+
+                # Walk through parts to find the attachment
+                part_index = int(attachment.attachment_id) if attachment.attachment_id else 0
+                current_index = 0
+
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        content_disposition = str(part.get("Content-Disposition", ""))
+                        if "attachment" in content_disposition:
+                            if current_index == part_index:
+                                # Found the attachment
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    with open(file_path, 'wb') as f:
+                                        f.write(payload)
+
+                                    # Update database with file path
+                                    attachment.file_path = file_path
+                                    db_session.commit()
+
+                                    logger.info(f"Downloaded IMAP attachment {attachment.filename} to {file_path}")
+                                    return file_path
+                            current_index += 1
+
+                logger.error(f"Attachment not found in IMAP email at index {part_index}")
+                return None
+
+            finally:
+                scraper.disconnect()
+
+    except Exception as e:
+        logger.error(f"Error downloading attachment on-demand: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 @bp.route('/api/email/<int:email_id>/ingest_quote/<int:submission_id>', methods=['POST'])
 @login_required
 def ingest_quote_to_submission(email_id, submission_id):
     """Ingest a quote from an email attachment to a submission"""
     try:
+        print(f"Starting quote ingestion for email_id {email_id}, submission_id {submission_id}")
         db_session = get_session()
+        logger.info(f"Processing quote ingestion for email_id {email_id}, submission_id {submission_id}")
         try:
             # Get the email with attachments eagerly loaded
             email = db_session.query(EmailMessage).filter_by(id=email_id).first()
@@ -1431,33 +1587,28 @@ def ingest_quote_to_submission(email_id, submission_id):
                 EmailAttachment.email_id == email_id,
                 EmailAttachment.filename.like('%.pdf')
             ).all()
-            
+            logger.info(f"Found {len(attachments)} PDF attachments for email_id {email_id}")
             if not attachments:
                 return jsonify({'success': False, 'error': 'No PDF attachments found in this email'}), 400
-            
-            # Store file paths before we potentially close the session
-            attachment_data = []
-            for att in attachments:
-                attachment_data.append({
-                    'file_path': att.file_path,
-                    'filename': att.filename,
-                    'content_type': att.content_type,
-                    'size_bytes': att.size_bytes
-                })
-            
+
             created_quotes = []
-            
-            for att_data in attachment_data:
-                if not att_data['file_path'] or not os.path.exists(att_data['file_path']):
+
+            # Process each attachment - download on-demand if needed
+            for att in attachments:
+                # Download attachment on-demand if not already downloaded
+                file_path = _download_attachment_on_demand(att, email, db_session)
+                print(f"Downloaded attachment {att.filename} to {file_path}")
+                if not file_path:
+                    logger.warning(f"Failed to download attachment {att.filename}, skipping")
                     continue
                 
                 # Copy file to uploads folder
-                filename = secure_filename(att_data['filename'])
+                filename = secure_filename(att.filename)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 unique_filename = f"{timestamp}_{filename}"
                 filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                shutil.copy2(att_data['file_path'], filepath)
-                
+                shutil.copy2(file_path, filepath)
+                logger.info(f"Copied attachment {file_path} to {filepath} for processing quote from email_id {email_id}")
                 # Process the quote
                 try:
                     three_pass_result = process_quote_two_pass(filepath, [])
@@ -1474,7 +1625,7 @@ def ingest_quote_to_submission(email_id, submission_id):
                     
                     if not effective_date:
                         effective_date = submission.effective_date
-                    
+                    logger.info(f"Parsed quote data for email_id {email_id}: carrier={carrier_name}, effective_date={effective_date}")
                     # Create quote record
                     quote_id = create_quote(
                         submission_id=submission_id,
@@ -1484,12 +1635,13 @@ def ingest_quote_to_submission(email_id, submission_id):
                         pass1_layout_json=json.dumps(layout_data),
                         user=session.get('username')
                     )
-                    
+                    logger.info(f"Created quote record with id {quote_id} for email_id {email_id}")
                     # Create document record - need to get a new session
                     quote_session = get_session()
                     try:
+                        logger.info(f"Uploading quote document for quote_id {quote_id}, submission_id {submission_id}")
                         quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename)
-                        storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att_data['content_type'])
+                        storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att.content_type)
                         doc = Document(
                             submission_id=submission_id,
                             quote_id=quote_id,
@@ -1501,10 +1653,11 @@ def ingest_quote_to_submission(email_id, submission_id):
                             storage_provider=storage_provider,
                             storage_key=storage_key,
                             original_filename=filename,
-                            content_type=att_data['content_type'],
-                            size_bytes=att_data['size_bytes'],
+                            content_type=att.content_type,
+                            size_bytes=att.size_bytes,
                             uploaded_by=session.get('username')
                         )
+                        logger.info(f"Creating document record for quote_id {quote_id}, submission_id {submission_id}")
                         quote_session.add(doc)
                         quote_session.commit()
                     finally:
@@ -1527,7 +1680,7 @@ def ingest_quote_to_submission(email_id, submission_id):
                     )
                     
                 except Exception as e:
-                    print(f"Error processing quote {att_data['filename']}: {e}")
+                    print(f"Error processing quote {att.filename}: {e}")
                     continue
             
             if not created_quotes:
@@ -2567,6 +2720,55 @@ def admin():
     """Display the admin page with database tables"""
     return render_template('admin.html')
 
+@bp.route('/api/admin/sql', methods=['POST'])
+@admin_required
+def execute_sql():
+    """Execute raw SQL (admin only - dangerous!)"""
+    try:
+        data = request.get_json()
+        logger.info(f"Received SQL execution request: {data}")
+        sql = data.get('sql', '').strip()
+        logger.info(f"Executing SQL: {sql}")
+        
+        if not sql:
+            return jsonify({'success': False, 'error': 'No SQL provided'}), 400
+        
+        session = get_session()
+        try:
+            logger.info(f"Executing admin SQL: {sql}")
+            from sqlalchemy import text
+            result = session.execute(text(sql))
+            
+            sql_upper = sql.upper()
+            
+            # For SELECT queries, return results
+            if sql_upper.startswith('SELECT'):
+                rows = result.fetchall()
+                columns = result.keys()
+                data = [dict(zip(columns, row)) for row in rows]
+                session.close()
+                return jsonify({'success': True, 'columns': list(columns), 'data': data})
+            
+            # ✅ ADD THIS: For INSERT/UPDATE/DELETE, commit and return affected rows
+            else:
+                session.commit()
+                affected = result.rowcount
+                session.close()
+                return jsonify({
+                    'success': True, 
+                    'affected_rows': affected,
+                    'message': f'Query executed successfully. {affected} rows affected.'
+                })
+                
+        except Exception as e:
+            session.rollback()
+            session.close()
+            logger.error(f"SQL execution error: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
+    except Exception as e:
+        logger.error(f"SQL execution error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @bp.route('/api/admin/data', methods=['GET'])
 @admin_required
@@ -2608,6 +2810,9 @@ def get_admin_data():
         # Get all email messages (last 100 for performance)
         email_messages_query = session.query(EmailMessage).order_by(EmailMessage.received_date.desc()).limit(100).all()
         email_messages = [e.to_dict() for e in email_messages_query]
+        # Get all email attachments (last 100 for performance)
+        email_attachments_query = session.query(EmailAttachment).order_by(EmailAttachment.created_at.desc()).limit(100).all()
+        email_attachments = [att.to_dict() for att in email_attachments_query]
 
         session.close()
 
@@ -2618,6 +2823,7 @@ def get_admin_data():
             'users': users,
             'brokers': brokers,
             'email_messages': email_messages,
+            'email_attachments': email_attachments,
             'audit_log': audit_data
         })
     except Exception as e:

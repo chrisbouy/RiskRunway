@@ -32,6 +32,7 @@ import uuid
 import argparse
 from pathlib import Path
 from typing import Optional
+from PIL.ImageOps import scale
 import boto3
 from msal import region
 import pyautogui
@@ -83,6 +84,7 @@ logger.info(
 )
 
 job_queue: queue.Queue = queue.Queue()
+persistent_overlay = None  # Global persistent overlay widget
 
 def bedrock_invoke(bedrock_client, messages: list, image_bytes: bytes = None) -> str:
     """
@@ -140,7 +142,9 @@ def extract_json(text: str) -> dict:
 
     raise ValueError(f"No valid JSON found in Claude response:\n{text[:400]}")
 
-def take_screenshot(region: dict,marker: tuple = None) -> bytes:
+SCREENSHOT_SCALE = 0.5
+
+def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
     """
     Capture the given screen region and return raw PNG bytes.
     mss handles negative y coordinates correctly on macOS dual-monitor setups.
@@ -178,18 +182,14 @@ def take_screenshot(region: dict,marker: tuple = None) -> bytes:
     img.save(str(debug_path))
     logger.info(f"Screenshot: {debug_path} ({img.width}x{img.height})")
 
+    # Shrink before encoding
+    new_w = int(img.width  * SCREENSHOT_SCALE)
+    new_h = int(img.height * SCREENSHOT_SCALE)
+    img_small = img.resize((new_w, new_h), Image.LANCZOS)
+    
     buf = io.BytesIO()
-    # if marker:
-    #     draw = ImageDraw.Draw(img)
-    #     mx, my = marker
-    #     # Red crosshair, 20px size
-    #     print(f"Drawing marker at ({mx},{my})")
-    #     draw.line([(mx-20, my), (mx+20, my)], fill="red", width=2)
-    #     draw.line([(mx, my-20), (mx, my+20)], fill="red", width=2)
-    img.save(buf, format="PNG")
-    
-    
-    return buf.getvalue()
+    img_small.save(buf, format="PNG")
+    return buf.getvalue(), SCREENSHOT_SCALE
 
 
 def inset_region(region: dict,
@@ -287,12 +287,13 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
     for pass_num in range(MAX_SCROLL_PASSES):
         logger.info(f"--- Pass {pass_num + 1}/{MAX_SCROLL_PASSES} ---")
         logger.info(f"Remaining data keys: {list(remaining_data.keys())}")
-        if not remaining_data:
-            logger.info("All data placed — done")
-            break
+        # Comment out early exit - keep data persistent across jobs
+        # if not remaining_data:
+        #     logger.info("All data placed — done")
+        #     break
 
         print(f"\n  Taking screenshot for claude's  pass {pass_num + 1} over form...")
-        current_ss = take_screenshot(region)
+        current_ss, scale = take_screenshot(region)
         if previous_pass_screenshot is not None and screenshots_almost_equal(
             previous_pass_screenshot,
             current_ss,
@@ -303,39 +304,41 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
         tb_data_map = get_tb_coords(bedrock_client,current_ss,remaining_data,all_filled)
         safe_click  = tb_data_map.pop("__safe_click__", None)
         logger.info(f"filling")
-        newly_filled = tb_fill(tb_data_map, region)
+        newly_filled = tb_fill(tb_data_map, region, scale)
         all_filled.update(newly_filled)
 
-        # Remove the data values that got placed this pass
-        for label, info in tb_data_map.items():
-            if label.startswith("__") or label not in newly_filled:
-                continue
-            key_path = info.get("key_path")
-            if key_path and key_path in remaining_data:
-                logger.info(f"Removing '{key_path}' from remaining data")
-                del remaining_data[key_path]
+        # COMMENTED OUT: Remove the data values that got placed this pass
+        # This keeps the data persistent so the same data can fill multiple forms
+        # for label, info in tb_data_map.items():
+        #     if label.startswith("__") or label not in newly_filled:
+        #         continue
+        #     key_path = info.get("key_path")
+        #     if key_path and key_path in remaining_data:
+        #         logger.info(f"Removing '{key_path}' from remaining data")
+        #         del remaining_data[key_path]
 
-        # Also remove matched non-text fields so we do not keep re-proposing
+        # COMMENTED OUT: Also remove matched non-text fields so we do not keep re-proposing
         # dropdowns/selects in later textbox-only passes.
-        for label, info in tb_data_map.items():
-            if label.startswith("__") or not isinstance(info, dict):
-                continue
-            if label in newly_filled:
-                continue
-            if info.get("field_type") == "text_field":
-                continue
+        # for label, info in tb_data_map.items():
+        #     if label.startswith("__") or not isinstance(info, dict):
+        #         continue
+        #     if label in newly_filled:
+        #         continue
+        #     if info.get("field_type") == "text_field":
+        #         continue
 
-            key_path = info.get("key_path")
-            if key_path and key_path in remaining_data:
-                logger.info(
-                    f"Removing matched non-text field '{key_path}' "
-                    f"(label='{label}', field_type='{info.get('field_type')}') from remaining data"
-                )
-                del remaining_data[key_path]
+        #     key_path = info.get("key_path")
+        #     if key_path and key_path in remaining_data:
+        #         logger.info(
+        #             f"Removing matched non-text field '{key_path}' "
+        #             f"(label='{label}', field_type='{info.get('field_type')}') from remaining data"
+        #         )
+        #         del remaining_data[key_path]
 
-        if not remaining_data:
-            logger.info("json quote data empty — done")
-            break
+        # COMMENTED OUT: Early exit when data is empty - keep data persistent
+        # if not remaining_data:
+        #     logger.info("json quote data empty — done")
+        #     break
 
         previous_pass_screenshot = current_ss
         # print(f"  Scrolling down for next pass...")
@@ -412,15 +415,15 @@ def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
     logger.info(f"Claude response ({len(raw)} chars): {raw}")
     return extract_json(raw)
 
-def tb_fill(tb_dict: dict, region: dict) -> set:
+def tb_fill(tb_dict: dict, region: dict, scale: float) -> set:
     filled = set()
     # Click somewhere safe first to ensure browser address bar isn't focused
     safe_x = region["x"] + region["width"] // 2
     safe_y = region["y"] + region["height"] // 2
     pyautogui.click(safe_x, safe_y)
-    time.sleep(0.1)
-    pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
-    time.sleep(0.1)
+    # time.sleep(0.1)
+    # pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
+    # time.sleep(0.1)
     
     # print(f"\n  Filling textboxes from this quote/tb_dict : {tb_dict} \n")
     for path, info in flatten_with_path(tb_dict):
@@ -435,8 +438,8 @@ def tb_fill(tb_dict: dict, region: dict) -> set:
         if info.get("field_type") != "text_field":
             logger.debug(f"Skipping '{label}' — not a text field")
             continue
-        abs_x = int(info.get("x", 0)) + region["x"]
-        abs_y = int(info.get("y", 0)) + region["y"] #todo: remove this hack..use textbox handles?
+        abs_x = int(info["x"] / scale) + region["x"]
+        abs_y = int(info["y"] / scale) + region["y"]
         try:
             pyautogui.click(abs_x, abs_y)
             pyperclip.copy(value)
@@ -448,104 +451,188 @@ def tb_fill(tb_dict: dict, region: dict) -> set:
             logger.warning(f"  Failed to fill '{label}' at ({abs_x},{abs_y}): {e}")
     return filled
 
-def show_overlay_and_wait() -> Optional[tuple]:
+class PersistentOverlay:
     """
-    Shows a draggable always-on-top widget.
-    User drags it onto the AMS window and clicks "Push Data Here".
-    Returns (x, y) center of the widget when clicked, or None if cancelled.
-    Must run on the main thread (macOS tkinter requirement).
+    A persistent, draggable widget that stays alive across multiple jobs.
+    Uses update() instead of mainloop() to avoid freezing.
     """
-    import tkinter as tk
-    result = {"pos": None}
+    def __init__(self):
+        import tkinter as tk
+        self.tk = tk
+        self.root = tk.Tk()
+        self.root.title("AMS Agent")
+        self.root.attributes("-topmost", True)
+        self.root.overrideredirect(True)
+        self.root.attributes("-alpha", 0.95)
+        self.root.configure(bg="#1a1f2e")
+        self.root.resizable(False, False)
 
-    root = tk.Tk()
-    root.title("AMS Agent")
-    root.attributes("-topmost", True)
-    root.overrideredirect(True)
-    root.attributes("-alpha", 0.95)
-    root.configure(bg="#1a1f2e")
-    root.resizable(False, False)
+        w, h = 220, 160
+        screen_w = self.root.winfo_screenwidth()
+        self.root.geometry(f"{w}x{h}+{screen_w - w - 20}+80")
 
-    w, h     = 220, 160
-    screen_w = root.winfo_screenwidth()
-    root.geometry(f"{w}x{h}+{screen_w - w - 20}+80")
+        # State
+        self.position_result = None
+        self.should_close = False
+        self.drag = {"x": 0, "y": 0}
 
-    drag = {"x": 0, "y": 0}
+        # Build UI
+        self._build_ui()
 
-    def drag_start(e):
-        drag["x"] = e.x_root - root.winfo_x()
-        drag["y"] = e.y_root - root.winfo_y()
+        # Configure close handler
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def drag_move(e):
-        root.geometry(f"+{e.x_root - drag['x']}+{e.y_root - drag['y']}")
+        logger.info("Persistent overlay created")
 
-    # Header / drag handle
-    hdr = tk.Frame(root, bg="#141824", cursor="fleur")
-    hdr.pack(fill="x")
-    hdr.bind("<ButtonPress-1>", drag_start)
-    hdr.bind("<B1-Motion>", drag_move)
+    def _build_ui(self):
+        """Build the widget UI components"""
+        # Header / drag handle
+        hdr = self.tk.Frame(self.root, bg="#141824", cursor="fleur")
+        hdr.pack(fill="x")
+        hdr.bind("<ButtonPress-1>", self._drag_start)
+        hdr.bind("<B1-Motion>", self._drag_move)
 
-    inner = tk.Frame(hdr, bg="#141824")
-    inner.pack(fill="x", padx=12, pady=8)
-    inner.bind("<ButtonPress-1>", drag_start)
-    inner.bind("<B1-Motion>", drag_move)
+        inner = self.tk.Frame(hdr, bg="#141824")
+        inner.pack(fill="x", padx=12, pady=8)
+        inner.bind("<ButtonPress-1>", self._drag_start)
+        inner.bind("<B1-Motion>", self._drag_move)
 
-    for text, font, fg, side in [
-        ("AMS Agent", ("Courier", 11, "bold"), "#4f8ef7", "left"),
-        ("●",         ("Courier", 8),           "#2ecc8a", "right"),
-        ("ready",     ("Helvetica", 9),         "#5a6180", "right"),
-    ]:
-        lbl = tk.Label(inner, text=text, font=font, fg=fg, bg="#141824")
-        lbl.pack(side=side, padx=(0 if side != "right" else 4))
-        lbl.bind("<ButtonPress-1>", drag_start)
-        lbl.bind("<B1-Motion>", drag_move)
+        # Status labels
+        self.title_label = self.tk.Label(inner, text="AMS Agent", font=("Courier", 11, "bold"),
+                                         fg="#4f8ef7", bg="#141824")
+        self.title_label.pack(side="left")
+        self.title_label.bind("<ButtonPress-1>", self._drag_start)
+        self.title_label.bind("<B1-Motion>", self._drag_move)
 
-    # Body
-    body = tk.Frame(root, bg="#1a1f2e")
-    body.pack(fill="both", expand=True, padx=12, pady=6)
+        self.status_indicator = self.tk.Label(inner, text="●", font=("Courier", 8),
+                                              fg="#2ecc8a", bg="#141824")
+        self.status_indicator.pack(side="right", padx=(0, 4))
+        self.status_indicator.bind("<ButtonPress-1>", self._drag_start)
+        self.status_indicator.bind("<B1-Motion>", self._drag_move)
 
-    tk.Label(
-        body,
-        text="Drag onto AMS window\nthen click below.",
-        font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
-        justify="center", wraplength=180,
-    ).pack(pady=(4, 10))
+        self.status_text = self.tk.Label(inner, text="ready", font=("Helvetica", 9),
+                                         fg="#5a6180", bg="#141824")
+        self.status_text.pack(side="right", padx=4)
+        self.status_text.bind("<ButtonPress-1>", self._drag_start)
+        self.status_text.bind("<B1-Motion>", self._drag_move)
 
-    def on_push():
-        cx = root.winfo_x() + root.winfo_width()  // 2
-        cy = root.winfo_y() + root.winfo_height() // 2
-        result["pos"] = (cx, cy)
-        root.destroy()
+        # Body
+        self.body = self.tk.Frame(self.root, bg="#1a1f2e")
+        self.body.pack(fill="both", expand=True, padx=12, pady=6)
 
-    tk.Button(
-        body,
-        text="Push Data Here",
-        font=("Helvetica", 11, "bold"), fg="#ffffff", bg="#4f8ef7",
-        activebackground="#3a7ee8", activeforeground="#ffffff",
-        relief="flat", cursor="hand2", padx=10, pady=8,
-        command=on_push,
-    ).pack(fill="x")
+        self.instruction_label = self.tk.Label(
+            self.body,
+            text="Drag onto AMS window\nthen click below.",
+            font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
+            justify="center", wraplength=180,
+        )
+        self.instruction_label.pack(pady=(4, 10))
 
-    cancel = tk.Label(
-        body, text="cancel",
-        font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2",
-    )
-    cancel.pack(pady=(6, 0))
-    cancel.bind("<Button-1>", lambda e: root.destroy())
+        self.push_button = self.tk.Button(
+            self.body,
+            text="Push Data Here",
+            font=("Helvetica", 11, "bold"), fg="#ffffff", bg="#4f8ef7",
+            activebackground="#3a7ee8", activeforeground="#ffffff",
+            relief="flat", cursor="hand2", padx=10, pady=8,
+            command=self._on_push,
+        )
+        self.push_button.pack(fill="x")
 
-    root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
-    logger.info("Overlay shown — waiting for user to position and click...")
-    root.mainloop()
-    return result["pos"]
+        self.cancel_label = self.tk.Label(
+            self.body, text="close",
+            font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2",
+        )
+        self.cancel_label.pack(pady=(6, 0))
+        self.cancel_label.bind("<Button-1>", lambda e: self._on_close())
+
+        self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
+
+    def _drag_start(self, e):
+        self.drag["x"] = e.x_root - self.root.winfo_x()
+        self.drag["y"] = e.y_root - self.root.winfo_y()
+
+    def _drag_move(self, e):
+        self.root.geometry(f"+{e.x_root - self.drag['x']}+{e.y_root - self.drag['y']}")
+
+    def _on_push(self):
+        """Called when user clicks 'Push Data Here'"""
+        cx = self.root.winfo_x() + self.root.winfo_width() // 2
+        cy = self.root.winfo_y() + self.root.winfo_height() // 2
+        self.position_result = (cx, cy)
+        logger.info(f"User clicked Push Data Here at ({cx}, {cy})")
+
+    def _on_close(self):
+        """Called when user closes the widget"""
+        self.should_close = True
+        logger.info("User requested to close overlay")
+
+    def set_status(self, status: str, color: str = "#5a6180", indicator_color: str = "#2ecc8a"):
+        """Update the status text and colors"""
+        self.status_text.config(text=status, fg=color)
+        self.status_indicator.config(fg=indicator_color)
+        self.update()
+
+    def set_button_enabled(self, enabled: bool):
+        """Enable or disable the push button"""
+        if enabled:
+            self.push_button.config(state="normal", cursor="hand2")
+        else:
+            self.push_button.config(state="disabled", cursor="arrow")
+        self.update()
+
+    def update(self):
+        """Process pending events - call this regularly to keep UI responsive"""
+        try:
+            self.root.update_idletasks()
+            self.root.update()
+        except self.tk.TclError:
+            # Widget was destroyed
+            pass
+
+    def wait_for_click(self) -> Optional[tuple]:
+        """
+        Wait for user to click 'Push Data Here' or close the widget.
+        Returns (x, y) position or None if cancelled.
+        Uses update() loop instead of mainloop() to stay responsive.
+        """
+        self.position_result = None
+        self.set_status("ready", "#5a6180", "#2ecc8a")
+        self.set_button_enabled(True)
+
+        logger.info("Waiting for user to click 'Push Data Here'...")
+
+        while self.position_result is None and not self.should_close:
+            self.update()
+            time.sleep(0.01)  # Small delay to prevent CPU spinning
+
+        if self.should_close:
+            return None
+
+        return self.position_result
+
+    def destroy(self):
+        """Destroy the widget"""
+        try:
+            self.root.destroy()
+        except:
+            pass
+        logger.info("Overlay destroyed")
 
 def prompt_user_to_select_window() -> Optional[dict]:
-    """Show overlay, wait for click, return the window region dict."""
-    pos = show_overlay_and_wait()
+    """Use the persistent overlay to get window selection."""
+    global persistent_overlay
+
+    if persistent_overlay is None:
+        logger.error("Persistent overlay not initialized!")
+        return None
+
+    # Wait for user to click
+    pos = persistent_overlay.wait_for_click()
     if pos is None:
         logger.info("User cancelled")
         return None
 
-    x, y   = pos
+    x, y = pos
     time.sleep(0.5)
     window_region = _get_window_region_at(x, y)
     region = inset_region(
@@ -655,6 +742,8 @@ def update_job_status(server_url: str, job_id: int, status: str, message: str = 
         logger.error(f"Status update failed for job {job_id}: {e}")
 
 def run_job(job: dict, server_url: str, bedrock_client):
+    global persistent_overlay
+
     job_id    = job["id"]
     json_data = job.get("json_data") or {}
 
@@ -671,25 +760,53 @@ def run_job(job: dict, server_url: str, bedrock_client):
     print(f"{'='*52}\n")
     logger.info(f"Job data keys: {list(json_data.keys()) if isinstance(json_data, dict) else type(json_data)}")
 
+    # Get window region from user
     region = prompt_user_to_select_window()
     if region is None:
         update_job_status(server_url, job_id, "failed", "User cancelled")
+        persistent_overlay.set_status("cancelled", "#e74c3c", "#e74c3c")
         return
 
     logger.info(f"Target region: {region}")
 
-    try:
-        success = run_vision_job(bedrock_client, json_data, region)
-        if success:
-            update_job_status(server_url, job_id, "complete")
-            print(f"\n  Job #{job_id} complete!")
-        else:
-            update_job_status(server_url, job_id, "failed", "No fields were filled")
-            print(f"\n  Job #{job_id} — no fields could be filled")
-    except Exception as e:
-        logger.error(f"Job {job_id} error: {e}", exc_info=True)
-        update_job_status(server_url, job_id, "failed", str(e))
-        print(f"\n  Job #{job_id} error: {e}")
+    # Update widget to show we're working
+    persistent_overlay.set_status("working...", "#f39c12", "#f39c12")
+    persistent_overlay.set_button_enabled(False)
+
+    # Define the work function to run in a thread
+    def do_work():
+        try:
+            success = run_vision_job(bedrock_client, json_data, region)
+            if success:
+                update_job_status(server_url, job_id, "complete")
+                print(f"\n  Job #{job_id} complete!")
+                persistent_overlay.set_status("complete!", "#2ecc8a", "#2ecc8a")
+            else:
+                update_job_status(server_url, job_id, "failed", "No fields were filled")
+                print(f"\n  Job #{job_id} — no fields could be filled")
+                persistent_overlay.set_status("no fields filled", "#e74c3c", "#e74c3c")
+        except Exception as e:
+            logger.error(f"Job {job_id} error: {e}", exc_info=True)
+            update_job_status(server_url, job_id, "failed", str(e))
+            print(f"\n  Job #{job_id} error: {e}")
+            persistent_overlay.set_status("error", "#e74c3c", "#e74c3c")
+        finally:
+            # Re-enable the button after a short delay
+            time.sleep(2)
+            persistent_overlay.set_status("ready", "#5a6180", "#2ecc8a")
+            persistent_overlay.set_button_enabled(True)
+
+    # Run the heavy work in a background thread to keep UI responsive
+    work_thread = threading.Thread(target=do_work, daemon=True)
+    work_thread.start()
+
+    # Keep updating the widget while work is happening
+    while work_thread.is_alive():
+        persistent_overlay.update()
+        time.sleep(0.05)
+
+    # One final update after thread completes
+    persistent_overlay.update()
 
 def polling_loop(server_url: str):
     """Runs in background. Puts jobs on job_queue for the main thread."""
@@ -706,6 +823,8 @@ def polling_loop(server_url: str):
             time.sleep(POLL_INTERVAL)
 
 def main():
+    global persistent_overlay
+
     parser = argparse.ArgumentParser(description="AMS Export Agent — vision-map")
     parser.add_argument("--server",     default=DEFAULT_SERVER_URL,
                         help=f"Flask server URL (default: {DEFAULT_SERVER_URL})")
@@ -730,6 +849,10 @@ def main():
         logger.error(f"Bedrock init failed: {e}")
         sys.exit(1)
 
+    # Create the persistent overlay widget (must be on main thread for macOS)
+    persistent_overlay = PersistentOverlay()
+    logger.info("Persistent overlay widget created and ready")
+
     # Polling runs in background; tkinter must stay on main thread
     threading.Thread(
         target=polling_loop, args=(server_url,), daemon=True
@@ -739,14 +862,34 @@ def main():
 
     while True:
         try:
-            job = job_queue.get(timeout=0.5)
-            run_job(job, server_url, bedrock_client)
-            job_queue.task_done()
-        except queue.Empty:
-            continue
+            # Keep the overlay widget responsive
+            if persistent_overlay and not persistent_overlay.should_close:
+                persistent_overlay.update()
+
+            # Check if user closed the widget
+            if persistent_overlay and persistent_overlay.should_close:
+                print("\nWidget closed by user. Shutting down...")
+                break
+
+            # Check for jobs (non-blocking with short timeout)
+            try:
+                job = job_queue.get(timeout=0.01)
+                run_job(job, server_url, bedrock_client)
+                job_queue.task_done()
+            except queue.Empty:
+                pass
+
+            # Small sleep to prevent CPU spinning
+            time.sleep(0.01)
+
         except KeyboardInterrupt:
             print("\nAgent stopped.")
-            sys.exit(0)
+            break
+
+    # Clean up
+    if persistent_overlay:
+        persistent_overlay.destroy()
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

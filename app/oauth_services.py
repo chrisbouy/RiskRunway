@@ -251,35 +251,55 @@ class GmailOAuthService:
         access_token: str,
         max_results: int = 50,
         query: str = None,
-        since_date: datetime = None
+        since_date: datetime = None,
+        broker_emails: list = None,
+        quote_subjects: list = None
     ) -> List[UnifiedEmail]:
         """
         Fetch recent emails from Gmail.
+        Filters by broker senders and/or quote subjects if provided.
         """
         from googleapiclient.discovery import build
-        
+
         credentials = google.oauth2.credentials.Credentials(token=access_token)
         service = build('gmail', 'v1', credentials=credentials)
-        
+
         # Build query
+        query_parts = []
+
+        # Filter by broker emails (if provided)
+        if broker_emails:
+            broker_queries = [f"from:{email}" for email in broker_emails]
+            query_parts.append(f"({' OR '.join(broker_queries)})")
+
+        # Filter by quote subjects (if provided)
+        if quote_subjects:
+            subject_queries = [f"subject:{subject}" for subject in quote_subjects]
+            query_parts.append(f"({' OR '.join(subject_queries)})")
+
+        # Default to attachments if no other filters
+        if not query_parts:
+            query_parts.append('has:attachment')
+
+        # Add custom query if provided
         if query:
-            search_query = query
-        else:
-            search_query = 'has:attachment'
-        
+            query_parts.append(query)
+
+        search_query = ' '.join(query_parts)
+
         if since_date:
             search_query += f' after:{since_date.strftime("%Y/%m/%d")}'
-        
+
         # Get message list
         results = service.users().messages().list(
             userId='me',
             q=search_query,
             maxResults=max_results
         ).execute()
-        
+
         messages = results.get('messages', [])
         emails = []
-        
+
         for msg in messages:
             # Get full message
             message = service.users().messages().get(
@@ -287,11 +307,11 @@ class GmailOAuthService:
                 id=msg['id'],
                 format='full'
             ).execute()
-            
+
             unified_email = self._parse_gmail_message(message)
             if unified_email:
                 emails.append(unified_email)
-        
+
         return emails
     
     def fetch_attachments(
@@ -739,9 +759,9 @@ class OutlookOAuthService:
             
             # First check if attachments came in the message (inline)
             inline_attachments = message.get('attachments', [])
-            print(f"Message {message_id} has {len(inline_attachments)} attachments (inline)")
+            print(f"Message {message_id} has {len(inline_attachments)} inline attachments")
             if inline_attachments:
-                print(f"Message {message_id} has {len(inline_attachments)} attachments (inline)")
+                print(f"Message {message_id} has {len(inline_attachments)} inline attachments")
                 for att in inline_attachments:
                     print(f"Inline attachment: {att}")
                     attachments.append({

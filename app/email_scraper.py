@@ -105,30 +105,33 @@ class EmailScraper:
         return text_body, html_body
     
     def extract_attachments(self, msg) -> List[Dict]:
-        """Extract attachment metadata from email message."""
+        """Extract attachment metadata from email message (metadata only for lazy loading)."""
         attachments = []
-        
+
         if msg.is_multipart():
+            part_index = 0
             for part in msg.walk():
                 content_disposition = str(part.get("Content-Disposition", ""))
-                
+
                 if "attachment" in content_disposition:
                     filename = part.get_filename()
                     if filename:
                         filename = self.decode_header_value(filename)
                         content_type = part.get_content_type()
-                        
-                        # Get payload size
+
+                        # Get payload size (for metadata only - don't save payload)
                         payload = part.get_payload(decode=True)
                         size_bytes = len(payload) if payload else 0
-                        
+
+                        # Store part index for later retrieval
                         attachments.append({
                             'filename': filename,
                             'content_type': content_type,
                             'size_bytes': size_bytes,
-                            'payload': payload
+                            'part_index': part_index  # Store position for later retrieval
                         })
-        
+                part_index += 1
+
         return attachments
     
     def match_submission(self, subject: str, body_text: str, attachments: List[Dict], 
@@ -181,26 +184,17 @@ class EmailScraper:
         # Return None for now (could be enhanced to show unmatched emails)
         return None, matched_keywords
     
-    def save_attachment(self, attachment_data: Dict, email_id: int, db_session: Session) -> EmailAttachment:
-        """Save attachment to disk and database."""
-        # Create attachments directory if it doesn't exist
-        attachments_dir = os.path.join('data', 'email_attachments', str(email_id))
-        os.makedirs(attachments_dir, exist_ok=True)
-        
-        # Save file to disk
-        filename = attachment_data['filename']
-        file_path = os.path.join(attachments_dir, filename)
-        
-        with open(file_path, 'wb') as f:
-            f.write(attachment_data['payload'])
-        
-        # Create database record
+    def save_attachment(self, attachment_data: Dict, email_id: int, email_message_id: str, db_session: Session) -> EmailAttachment:
+        """Save attachment metadata only (lazy download approach)."""
+        # Create database record with metadata only - file will be downloaded on-demand
         attachment = EmailAttachment(
             email_id=email_id,
-            filename=filename,
+            filename=attachment_data['filename'],
             content_type=attachment_data['content_type'],
             size_bytes=attachment_data['size_bytes'],
-            file_path=file_path
+            file_path=None,  # Not downloaded yet - will be populated on-demand
+            message_id=email_message_id,  # Store original email message ID for IMAP retrieval
+            attachment_id=str(attachment_data.get('part_index', ''))  # Store part index for IMAP
         )
         db_session.add(attachment)
         return attachment
@@ -317,9 +311,9 @@ class EmailScraper:
                         db_session.add(email_record)
                         db_session.flush()  # Get email_record.id
                         
-                        # Save attachments
+                        # Save attachments (metadata only - lazy download)
                         for att_data in attachments:
-                            self.save_attachment(att_data, email_record.id, db_session)
+                            self.save_attachment(att_data, email_record.id, message_id, db_session)
                         
                         matched += 1
                         new_emails += 1

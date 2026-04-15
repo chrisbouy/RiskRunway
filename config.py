@@ -42,7 +42,7 @@ class Config:
     # Microsoft Outlook OAuth (configure via Azure Portal)
     MICROSOFT_CLIENT_ID = os.environ.get('MICROSOFT_CLIENT_ID', '')
     MICROSOFT_CLIENT_SECRET = os.environ.get('MICROSOFT_CLIENT_SECRET', '')
-    MICROSOFT_REDIRECT_URI = os.environ.get('MICROSOFT_REDIRECT_URI', 'http://localhost:5000/oauth/microsoft/callback')
+    MICROSOFT_REDIRECT_URI = os.environ.get('MICROSOFT_REDIRECT_URI', 'http://localhost:5000/oauth/outlook/callback')
     MICROSOFT_TENANT_ID = os.environ.get('MICROSOFT_TENANT_ID', 'common')
     
     # IMAP Email Scraping Configuration (active)
