@@ -1307,22 +1307,23 @@
             const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
             const displayLabel = (submission.status_label || '').trim();
             const quoteReceivedCount = Number(submission.quote_count || 0);
-            const quoteSentCount = Number(submission.quotes_sent_count || 0);
-            
-            // Get email counts
+
+            // Get email counts (broker submissions sent)
             const emailCounts = submission.email_counts || {sent: 0, received: 0};
             const emailReceivedCount = emailCounts.received;
             const emailSentCount = emailCounts.sent;
 
+            // TODO: Include portal uploads in this count
+            const quoteSentCount = emailSentCount;  // Number of brokers we sent the application to
+
             // Determine status based on stage
             let status = '';
             if (stageKey === 'submission') {
-                status = submission.api_status === 'submission' ? 'application in progress' : 'application sent';
+                status = submission.api_status === 'submission' ? 'app in progress' : 'app sent';
             } else if (stageKey === 'quoting') {
-                status = 'waiting on quotes';
+                status = `quotes: ${quoteReceivedCount}/${quoteSentCount}`;
             } else if (stageKey === 'bind') {
-                // For bound, show "Bound, waiting on quotes X/Y"
-                status = `Bound, waiting on quotes ${quoteReceivedCount}/${quoteSentCount}`;
+                status = `Bound`;
             }
 
             const docOptions = (submission.documents || []).map((doc) => {
@@ -1431,6 +1432,15 @@
             return card;
         }
 
+        // Dropzone for new submission (declare first before using in event handlers)
+        const newSubmissionDropzone = new Dropzone("#newSubmissionForm", {
+            url: "/api/submission/create",
+            autoProcessQueue: false,
+            acceptedFiles: ".pdf,.png,.jpg,.jpeg",
+            maxFiles: 1,
+            addRemoveLinks: true
+        });
+
         // New Submission Modal
         document.getElementById('newSubmissionBtn').addEventListener('click', () => {
             document.getElementById('newSubmissionModal').classList.remove('hidden');
@@ -1440,15 +1450,6 @@
             document.getElementById('newSubmissionModal').classList.add('hidden');
             document.getElementById('insuredNameInput').value = '';
             newSubmissionDropzone.removeAllFiles(true);
-        });
-
-        // Dropzone for new submission
-        const newSubmissionDropzone = new Dropzone("#newSubmissionForm", {
-            url: "/api/submission/create",
-            autoProcessQueue: false,
-            acceptedFiles: ".pdf,.png,.jpg,.jpeg",
-            maxFiles: 1,
-            addRemoveLinks: true
         });
 
         newSubmissionDropzone.on("maxfilesexceeded", function(file) {

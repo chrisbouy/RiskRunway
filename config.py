@@ -70,7 +70,7 @@ class Config:
     S3_BUCKET = os.environ.get('S3_BUCKET', '')
     S3_REGION = os.environ.get('S3_REGION', 'us-east-1')
     S3_ENDPOINT_URL = os.environ.get('S3_ENDPOINT_URL', '')
-    DOCUMENTS_LOCAL_FOLDER = os.path.join(UPLOAD_FOLDER, 'documents')
+    # DOCUMENTS_LOCAL_FOLDER = os.path.join(UPLOAD_FOLDER, 'documents')
 
     # Premium Finance Appetite Scoring Rules
     # Score range: 0-100 (higher = better appetite)
@@ -106,5 +106,5 @@ class Config:
 
     # Create necessary folders if they don't exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    os.makedirs(DOCUMENTS_LOCAL_FOLDER, exist_ok=True)
+    # os.makedirs(DOCUMENTS_LOCAL_FOLDER, exist_ok=True)
     os.makedirs(os.path.join(Path(__file__).parent, 'data'), exist_ok=True)

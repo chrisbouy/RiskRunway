@@ -75,17 +75,30 @@ def _storage_upload(local_path, object_key, content_type=None):
             except Exception as err:
                 print(f"[DOC STORAGE] S3 upload failed, falling back to local: {err}")
 
-    local_root = current_app.config.get('DOCUMENTS_LOCAL_FOLDER')
+    local_root = current_app.config.get('UPLOAD_FOLDER')
     final_path = os.path.join(local_root, object_key)
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
     shutil.copy2(local_path, final_path)
     return 'local', object_key
 
 
-def _build_storage_key(submission_id, document_type, filename):
+def _build_storage_key(submission_id, document_type, filename, user_id=None, insured_name=None):
     safe_name = secure_filename(filename) or 'document.bin'
-    return f"submission_{submission_id}/{document_type.lower()}/{uuid.uuid4().hex}_{safe_name}"
-
+    provider = (current_app.config.get('STORAGE_PROVIDER') or 'local').lower()
+    
+    # S3: user_id/insured_name/...
+    # Local: insured_name/...
+    if provider == 's3' and user_id:
+        base = f"{user_id}/"
+    else:
+        base = ""
+    
+    if insured_name:
+        safe_insured = secure_filename(insured_name).replace(' ', '_')
+        # base = f"{base}/{safe_insured}" if base else safe_insured
+    
+    print(f"base: {base}, safe_insured: {safe_insured}, safe_name: {safe_name}")
+    return f"{base}{safe_insured}/{document_type}_{safe_name}"
 
 def _document_download_url(document_id):
     return url_for('main.download_document', document_id=document_id)
@@ -486,6 +499,7 @@ def submission_detail(submission_id):
     if not submission:
         return "Submission not found", 404
     stage_key = _board_stage_key(submission)
+    print(f"[DEBUG] Submission {submission_id}: status='{submission.get('status')}', stage_key='{stage_key}'")
     return render_template('submission.html', submission_id=submission_id, stage_key=stage_key)
 
 
@@ -667,6 +681,7 @@ def create_submission_entry():
     2) Uploaded application document (parsed for stage-1 info).
     """
     try:
+        print(f"Received submission creation request with form data: {request.form} and files: {request.files}")
         insured_name = (request.form.get('insured_name') or '').strip()
         file = request.files.get('file')
         has_file = bool(file and file.filename)
@@ -735,7 +750,7 @@ def create_submission_entry():
         )
 
         if has_file:
-            object_key = _build_storage_key(submission_id, DocumentType.APPLICATION.name, filename)
+            object_key = _build_storage_key(submission_id, DocumentType.APPLICATION.name, filename,session.get('user_id'),insured_name)
             storage_provider, storage_key = _storage_upload(filepath, object_key, file.content_type)
             db_session = get_session()
             try:
@@ -758,7 +773,13 @@ def create_submission_entry():
                 db_session.commit()
             finally:
                 db_session.close()
-
+                # Clean up temp file after processing
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            except Exception as e:
+                print(f"Warning: Could not delete temp file {filepath}: {e}")
+    
         log_action(
             entity_type='submission',
             entity_id=submission_id,
@@ -767,7 +788,7 @@ def create_submission_entry():
             submission_id=submission_id,
             details=json.dumps(intake_data)
         )
-
+        print(f"Created submission {submission_id} with intake data: {intake_data}")
         return jsonify({
             'success': True,
             'submission_id': submission_id,
@@ -835,6 +856,7 @@ def upload_submission_document(submission_id):
         carrier = (request.form.get('carrier') or '').strip() or None
         quote_id = request.form.get('quote_id', type=int)
         term_key = (request.form.get('term_key') or '').strip() or None
+        insured_name = (request.form.get('insured_name') or '').strip() or None
 
         # Save temp file locally first
         filename = secure_filename(file.filename)
@@ -874,7 +896,7 @@ def upload_submission_document(submission_id):
                     Document.is_active == True
                 ).update({'is_active': False}, synchronize_session=False)
 
-            object_key = _build_storage_key(submission_id, document_type.name, filename)
+            object_key = _build_storage_key(submission_id, document_type.name, filename, session.get('user_id'), insured_name)
             storage_provider, storage_key = _storage_upload(temp_path, object_key, file.content_type)
 
             doc = Document(
@@ -921,6 +943,12 @@ def upload_submission_document(submission_id):
             return jsonify({'success': True, 'document': item})
         finally:
             db_session.close()
+            # Clean up temp file after processing
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception as e:
+            print(f"Warning: Could not delete temp file {filepath}: {e}")
             try:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
@@ -1640,7 +1668,7 @@ def ingest_quote_to_submission(email_id, submission_id):
                     quote_session = get_session()
                     try:
                         logger.info(f"Uploading quote document for quote_id {quote_id}, submission_id {submission_id}")
-                        quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename)
+                        quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename, session.get('user_id'))
                         storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att.content_type)
                         doc = Document(
                             submission_id=submission_id,
@@ -1668,7 +1696,13 @@ def ingest_quote_to_submission(email_id, submission_id):
                         'filename': filename,
                         'carrier': carrier_name
                     })
-                    
+                    # Clean up temp file after processing
+                    try:
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                    except Exception as e:
+                        print(f"Warning: Could not delete temp file {filepath}: {e}")
+                        
                     # Log action
                     log_action(
                         entity_type='quote',
@@ -1715,6 +1749,7 @@ def add_email_correspondence(email_id, submission_id):
             
             # Get the submission
             submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            insured_name = submission.insured_name if submission and submission.insured_name else 'unknown_insured'
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
             
@@ -1726,21 +1761,21 @@ def add_email_correspondence(email_id, submission_id):
             
             # Build email content
             email_content = f"""From: {email.from_name or email.from_email}
-To: {email.to_email}
-Subject: {email.subject}
-Date: {email.received_date}
+                                To: {email.to_email}
+                                Subject: {email.subject}
+                                Date: {email.received_date}
 
----
+                                ---
 
-{email.body_text or '(No text content)'}
-"""
+                                {email.body_text or '(No text content)'}
+                                """
             
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(email_content)
             
             # Create document record
             term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
-            doc_key = _build_storage_key(submission_id, 'CORRESPONDENCE', filename)
+            doc_key = _build_storage_key(submission_id, 'CORRESPONDENCE', filename, session.get('user_id'),insured_name)
             storage_provider, storage_key = _storage_upload(filepath, doc_key, 'text/plain')
             
             doc = Document(
@@ -1763,7 +1798,12 @@ Date: {email.received_date}
             # Mark email as read
             email.is_read = True
             db_session.commit()
-            
+            # Clean up temp file after processing
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            except Exception as e:
+                print(f"Warning: Could not delete temp file {filepath}: {e}")
             # Log action
             log_action(
                 entity_type='submission',
@@ -2116,6 +2156,7 @@ def upload_quote():
     Can either create a new submission or add to existing one.
     """
     try:
+        print(f"Received quote upload request with form data: {request.form} and files: {request.files}")
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file part'}), 400
 
@@ -2216,7 +2257,7 @@ def upload_quote():
             # Mirror uploaded quote into generic documents table for stage-based access.
             db_session = get_session()
             try:
-                quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename)
+                quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename, session.get('user_id'),insured_name)
                 storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, file.content_type)
                 doc = Document(
                     submission_id=submission_id,
@@ -2235,6 +2276,12 @@ def upload_quote():
                 )
                 db_session.add(doc)
                 db_session.commit()
+                try:
+                    print(f"file to delete: {filepath}")
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                except Exception as e:
+                    print(f"Warning: Could not delete temp file {filepath}: {e}")
             finally:
                 db_session.close()
             # Log parsing action
@@ -2813,7 +2860,9 @@ def get_admin_data():
         # Get all email attachments (last 100 for performance)
         email_attachments_query = session.query(EmailAttachment).order_by(EmailAttachment.created_at.desc()).limit(100).all()
         email_attachments = [att.to_dict() for att in email_attachments_query]
-
+        # Get all documents
+        documents_query = session.query(Document).order_by(Document.created_at.desc()).all()
+        documents = [d.to_dict() for d in documents_query]
         session.close()
 
         return jsonify({
@@ -2824,6 +2873,7 @@ def get_admin_data():
             'brokers': brokers,
             'email_messages': email_messages,
             'email_attachments': email_attachments,
+            'documents': documents,  # Add this line
             'audit_log': audit_data
         })
     except Exception as e:
@@ -3017,6 +3067,16 @@ def submit_to_market(submission_id):
                 try:
                     _send_broker_email(submission, broker, documents)
                     results['emails_sent'].append(broker.name)
+
+                    # Log individual broker submission for tracking
+                    log_action(
+                        entity_type='submission',
+                        entity_id=submission_id,
+                        action='broker_submission_sent',
+                        submission_id=submission_id,
+                        user=session.get('username'),
+                        details=f"Sent to broker: {broker.name} ({broker.email})"
+                    )
                 except Exception as e:
                     print(f"Error sending email to {broker.name}: {e}")
 
@@ -3028,6 +3088,16 @@ def submit_to_market(submission_id):
                         'broker_name': broker.name,
                         'zip_path': zip_path
                     })
+
+                    # Log individual broker submission for tracking (portal brokers)
+                    log_action(
+                        entity_type='submission',
+                        entity_id=submission_id,
+                        action='broker_submission_sent',
+                        submission_id=submission_id,
+                        user=session.get('username'),
+                        details=f"Generated zip for portal broker: {broker.name} ({broker.portal_name})"
+                    )
                 except Exception as e:
                     print(f"Error generating zip for {broker.name}: {e}")
 

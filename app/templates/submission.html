@@ -1494,7 +1494,7 @@
 
         // Get submission ID from URL
         const submissionId = parseInt('{{ submission_id }}');
-        const initialStageKey = '{{ stage_key|default("quoting") }}';
+        const initialStageKey = '{{ stage_key|default("submission") }}'; // shouldn't need default 
         let submissionData = null;
         let quotes = [];
         let submissionDocuments = [];
@@ -1674,16 +1674,15 @@
                 </div>
             `).join('');
         }
-
-        function renderStageDocumentLists() {
+        function renderStageDocumentLists() { 
             const stage1Docs = submissionDocuments.filter((d) =>
-                ['Application', 'SOV', 'Loss Run', 'Other'].includes(d.document_type)
-            );
-            const bindDocs = submissionDocuments.filter((d) =>
-                ['Binder', 'Finance Agreement'].includes(d.document_type)
+                ['Application', 'SOV', 'Loss Run', 'Other','Binder', 'Finance Agreement'].includes(d.document_type)
+   //         );
+       //     const bindDocs = submissionDocuments.filter((d) =>
+        //        ['Binder', 'Finance Agreement'].includes(d.document_type)
             );
             renderDocList('stage1DocsList', stage1Docs);
-            renderDocList('bindDocsList', bindDocs);
+            renderDocList('bindDocsList', stage1Docs);
         }
 
         async function uploadSubmissionDocument(file, documentType, extra = {}) {
@@ -2093,8 +2092,8 @@
             url: "/api/upload_quote",
             autoProcessQueue: false,
             acceptedFiles: ".pdf,.png,.jpg,.jpeg",
-            addRemoveLinks: false,
-            previewTemplate: '<div style="display:none"></div>'
+            addRemoveLinks: false
+            //previewTemplate: '<div style="display:none"></div>'
         });
 
         myDropzone.on("addedfile", function(file) {
