@@ -1136,6 +1136,49 @@
         .doc-item a:hover {
             text-decoration: underline;
         }
+
+        .edit-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .edit-toolbar.hidden {
+            display: none;
+        }
+
+        .edit-toolbar button {
+            min-width: 88px;
+            justify-content: center;
+        }
+
+        .edit-toolbar .secondary-btn {
+            background: #475569;
+            color: white;
+        }
+
+        .edit-toolbar .primary-btn {
+            background: #2563eb;
+            color: white;
+        }
+
+        .edit-toolbar .success-btn {
+            background: #059669;
+            color: white;
+        }
+
+        .editable-field {
+            width: 100%;
+            min-width: 96px;
+            padding: 0.375rem 0.5rem;
+            border: 1px solid #94a3b8;
+            border-radius: 0.375rem;
+            background: white;
+            color: #0f172a;
+            font-size: 0.813rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -1182,6 +1225,12 @@
     </div>
 
     <div id="bugCaptureRoot" class="main-container">
+        <div id="editToolbar" class="edit-toolbar{% if not is_admin %} hidden{% endif %}">
+            <button id="editQuotesBtn" class="primary-btn">Edit</button>
+            <button id="saveQuotesBtn" class="success-btn hidden">Save</button>
+            <button id="cancelEditBtn" class="secondary-btn hidden">Cancel</button>
+        </div>
+
         <div class="stage-progress" id="stageProgress">
             <div class="stage-step" data-stage="submission">
                 <span class="stage-dot">1</span>
@@ -1494,12 +1543,15 @@
 
         // Get submission ID from URL
         const submissionId = parseInt('{{ submission_id }}');
+        const isAdmin = {{ 'true' if is_admin else 'false' }};
         const initialStageKey = '{{ stage_key|default("submission") }}'; // shouldn't need default 
         let submissionData = null;
         let quotes = [];
+        let quoteDraftsById = {};
         let submissionDocuments = [];
         let quoteVisibilityById = {};
         let displayedPolicyRows = [];
+        let isEditMode = false;
         const bugState = {
             activeTool: 'pen',
             annotations: [],
@@ -1518,6 +1570,96 @@
         const bugDescription = document.getElementById('bugDescription');
         const bugCaptureRoot = document.getElementById('bugCaptureRoot');
         const MAX_SCREENSHOT_DATA_URL_CHARS = 5_500_000;
+
+        function deepClone(value) {
+            return JSON.parse(JSON.stringify(value));
+        }
+
+        function syncQuoteDraftsFromQuotes() {
+            quoteDraftsById = {};
+            quotes.forEach((quote) => {
+                const parsed = quote.parsed_data || {};
+                quoteDraftsById[quote.id] = deepClone(parsed);
+            });
+        }
+
+        function getQuoteParsedData(quote) {
+            if (isEditMode && quoteDraftsById[quote.id]) {
+                return quoteDraftsById[quote.id];
+            }
+            return quote.parsed_data || {};
+        }
+
+        function getValueAtPath(obj, path) {
+            return path.split('.').reduce((acc, segment) => {
+                if (acc === null || acc === undefined) return null;
+                return acc[segment];
+            }, obj);
+        }
+
+        function setValueAtPath(obj, path, value) {
+            const segments = path.split('.');
+            let current = obj;
+            segments.forEach((segment, index) => {
+                if (index === segments.length - 1) {
+                    current[segment] = value;
+                    return;
+                }
+                if (current[segment] === null || current[segment] === undefined || typeof current[segment] !== 'object') {
+                    const nextSegment = segments[index + 1];
+                    current[segment] = /^\d+$/.test(nextSegment) ? [] : {};
+                }
+                current = current[segment];
+            });
+        }
+
+        function normalizeEditedValue(rawValue) {
+            const trimmed = String(rawValue ?? '').trim();
+            if (!trimmed) return null;
+            if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+                return Number(trimmed);
+            }
+            return trimmed;
+        }
+
+        function renderMaybeEditableValue(quoteId, path, value) {
+            if (!isAdmin || !isEditMode || !quoteId || !path) {
+                return value || 'null';
+            }
+            return `<input class="editable-field" data-quote-id="${quoteId}" data-field-path="${path}" value="${escapeHtml(value ?? '')}">`;
+        }
+
+        function renderReadonlyCell(value) {
+            const cellValue = value || 'null';
+            return `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : escapeHtml(cellValue)}</span>`;
+        }
+
+        function setEditMode(nextMode) {
+            isEditMode = nextMode && isAdmin;
+            document.getElementById('editQuotesBtn')?.classList.toggle('hidden', isEditMode);
+            document.getElementById('saveQuotesBtn')?.classList.toggle('hidden', !isEditMode);
+            document.getElementById('cancelEditBtn')?.classList.toggle('hidden', !isEditMode);
+            displayQuotes();
+        }
+
+        async function saveEditedQuotes() {
+            const payloads = Object.entries(quoteDraftsById).map(([quoteId, parsedData]) =>
+                fetch(`/api/quote/${quoteId}/data`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parsed_data: parsedData })
+                }).then(async (response) => {
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || `Failed to save quote ${quoteId}`);
+                    }
+                })
+            );
+
+            await Promise.all(payloads);
+            setEditMode(false);
+            await loadSubmission();
+        }
 
         function getDaysUntilRenewal(effectiveDate) {
             if (!effectiveDate) return null;
@@ -1577,11 +1719,12 @@
             setStageProgress(stage);
         }
 
-        function stageField(label, value) {
+        function stageField(label, value, options = {}) {
+            const renderedValue = renderMaybeEditableValue(options.quoteId, options.path, value);
             return `
                 <div class="stage-field">
                     <div class="stage-field-label">${label}</div>
-                    <div class="stage-field-value">${value || 'null'}</div>
+                    <div class="stage-field-value">${renderedValue}</div>
                 </div>
             `;
         }
@@ -1909,7 +2052,11 @@
 
                 if (data.success) {
                     submissionData = data.submission;
-                    quotes = data.quotes;
+                    quotes = data.quotes.map((quote) => ({
+                        ...quote,
+                        parsed_data: quote.parsed_data || {}
+                    }));
+                    syncQuoteDraftsFromQuotes();
                     quoteVisibilityById = {};
                     quotes.forEach((quote) => {
                         quoteVisibilityById[quote.id] = quote.quote_outcome !== 'LOST';
@@ -2074,7 +2221,7 @@
             // Convert quotes to the format expected by displayResults
             const results = quotes.map((quote, index) => {
                 return {
-                    response: quote.extracted_json,
+                    response: getQuoteParsedData(quote),
                     quote_id: quote.id,
                     quote_index: index,
                     carrier: quote.carrier_name,
@@ -2189,10 +2336,9 @@
 
             results.forEach((result, fileIndex) => {
                 try {
-                    // Extract the JSON string from the response
-                    let jsonString = result.response || JSON.stringify(result);
-                    jsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '');
-                    const data = JSON.parse(jsonString);
+                    const data = typeof result.response === 'string'
+                        ? JSON.parse(result.response.replace(/^```json\n/, '').replace(/\n```$/, ''))
+                        : (result.response || {});
                     allPDFInfo.push({
                         data: data,
                         quoteIndex: result.quote_index !== undefined ? result.quote_index : fileIndex,
@@ -2268,11 +2414,13 @@
 
             // Get data from first quote (since basic info should be the same across quotes)
             const data = allPDFInfo[0].data;
+            const quoteId = allPDFInfo[0].quoteId;
 
             const fields = [
                 {
                     label: 'Insured Name',
-                    value: data.insured?.name || 'N/A'
+                    value: data.insured?.name || 'N/A',
+                    path: 'insured.name'
                 },
                 {
                     label: 'Address',
@@ -2283,15 +2431,18 @@
                             return parts.length > 0 ? parts.join(', ') : 'N/A';
                         }
                         return 'N/A';
-                    })()
+                    })(),
+                    path: null
                 },
                 {
                     label: 'Agency',
-                    value: data.retail_agent?.name || 'N/A'
+                    value: data.retail_agent?.name || 'N/A',
+                    path: 'retail_agent.name'
                 },
                 {
                     label: 'Agency Phone',
-                    value: data.retail_agent?.phone || 'N/A'
+                    value: data.retail_agent?.phone || 'N/A',
+                    path: 'retail_agent.phone'
                 }
             ];
 
@@ -2305,9 +2456,14 @@
 
                 const labelValue = document.createElement('div');
                 labelValue.className = 'info-label-value';
-                labelValue.textContent = field.value;
-                labelValue.style.cursor = 'pointer';
-                labelValue.onclick = () => copyToClipboard(field.value, labelValue);
+                if (isAdmin && isEditMode && field.path) {
+                    labelValue.innerHTML = renderMaybeEditableValue(quoteId, field.path, field.value === 'N/A' ? '' : field.value);
+                    labelValue.style.cursor = 'default';
+                } else {
+                    labelValue.textContent = field.value;
+                    labelValue.style.cursor = 'pointer';
+                    labelValue.onclick = () => copyToClipboard(field.value, labelValue);
+                }
 
                 labelGroup.appendChild(labelTitle);
                 labelGroup.appendChild(labelValue);
@@ -2381,19 +2537,23 @@
                 }
 
                 const values = [
-                    data.general_agent_or_wholesale_broker?.name || null,
-                    data.quote_number || null,
-                    totals?.grand_total || null,
-                    minEarnedPercent,
-                    data.financing?.down_payment || null,
-                    data.financing?.amount_financed || null
+                    { value: data.general_agent_or_wholesale_broker?.name || null, path: 'general_agent_or_wholesale_broker.name' },
+                    { value: data.quote_number || null, path: 'quote_number' },
+                    { value: totals?.grand_total || null, path: 'totals.grand_total' },
+                    { value: minEarnedPercent, path: null },
+                    { value: data.financing?.down_payment || null, path: 'financing.down_payment' },
+                    { value: data.financing?.amount_financed || null, path: 'financing.amount_financed' }
                 ];
 
-                values.forEach((value) => {
+                values.forEach((entry) => {
                     const td = document.createElement('td');
-                    const cellValue = value || 'null';
-                    td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
-                    td.onclick = () => copyToClipboard(cellValue, td);
+                    const cellValue = entry.value || 'null';
+                    if (isAdmin && isEditMode && entry.path && quoteId) {
+                        td.innerHTML = renderMaybeEditableValue(quoteId, entry.path, entry.value);
+                    } else {
+                        td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
+                        td.onclick = () => copyToClipboard(cellValue, td);
+                    }
                     row.appendChild(td);
                 });
 
@@ -2428,23 +2588,27 @@
                 }
 
                 const values = [
-                    quote.coverage,
-                    quote.carrier,
-                    quote.policyNumber,
-                    quote.effective,
-                    quote.expiration,
-                    quote.term,
-                    quote.premium,
-                    quote.tax,
-                    quote.fee,
-                    quote.brokerFee
+                    { value: quote.coverage, path: `policies.${quote.policyIndex - 1}.coverage_type` },
+                    { value: quote.carrier, path: `policies.${quote.policyIndex - 1}.carrier` },
+                    { value: quote.policyNumber, path: `policies.${quote.policyIndex - 1}.policy_number` },
+                    { value: quote.effective, path: `policies.${quote.policyIndex - 1}.effective_date` },
+                    { value: quote.expiration, path: `policies.${quote.policyIndex - 1}.expiration_date` },
+                    { value: quote.term, path: `policies.${quote.policyIndex - 1}.policy_term` },
+                    { value: quote.premium, path: `policies.${quote.policyIndex - 1}.annual_premium` },
+                    { value: quote.tax, path: `policies.${quote.policyIndex - 1}.tax` },
+                    { value: quote.fee, path: `policies.${quote.policyIndex - 1}.fee` },
+                    { value: quote.brokerFee, path: `policies.${quote.policyIndex - 1}.broker_fee` }
                 ];
 
-                values.forEach((value, index) => {
+                values.forEach((entry) => {
                     const td = document.createElement('td');
-                    const cellValue = value || 'null';
-                    td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
-                    td.onclick = () => copyToClipboard(cellValue, td);
+                    const cellValue = entry.value || 'null';
+                    if (isAdmin && isEditMode && quote.quote_id && entry.path) {
+                        td.innerHTML = renderMaybeEditableValue(quote.quote_id, entry.path, entry.value);
+                    } else {
+                        td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
+                        td.onclick = () => copyToClipboard(cellValue, td);
+                    }
                     row.appendChild(td);
                 });
 
@@ -2488,12 +2652,13 @@
                 coverages = data.coverage_types.join(', ') || null;
             }
 
+            const submissionQuoteId = allPDFInfo[0]?.quoteId || null;
             container.innerHTML = [
-                stageField('Insured Name', data.insured?.name),
+                stageField('Insured Name', data.insured?.name, { quoteId: submissionQuoteId, path: 'insured.name' }),
                 stageField('Submission Date', submissionData?.created_at ? new Date(submissionData.created_at).toLocaleDateString() : null),
                 stageField('Address', address),
-                stageField('Agency', data.retail_agent?.name),
-                stageField('Agency Phone', data.retail_agent?.phone),
+                stageField('Agency', data.retail_agent?.name, { quoteId: submissionQuoteId, path: 'retail_agent.name' }),
+                stageField('Agency Phone', data.retail_agent?.phone, { quoteId: submissionQuoteId, path: 'retail_agent.phone' }),
                 stageField('Coverage Type(s) Needed', coverages),
                 stageField('Effective Date', submissionData?.effective_date || data.effective_date)
             ].join('');
@@ -2539,16 +2704,17 @@
             const total = [selected.premium, selected.tax, selected.fee].map(toNumber).filter(v => v !== null).reduce((a, b) => a + b, 0);
 
             if (selectedQuoteBody) {
+                const selectedPolicyIndex = selected.policyIndex - 1;
                 selectedQuoteBody.innerHTML = `
                     <tr>
-                        <td onclick="copyToClipboard('${escapeHtml(String(selected.coverage || 'null')).replace(/'/g, "\\'")}', this)">${selected.coverage || 'null'}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(selected.carrier || 'null')).replace(/'/g, "\\'")}', this)">${selected.carrier || 'null'}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(selected.policyNumber || 'pending')).replace(/'/g, "\\'")}', this)">${selected.policyNumber || 'pending'}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(selected.effective || 'null')).replace(/'/g, "\\'")}', this)">${selected.effective || 'null'}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(selected.expiration || 'null')).replace(/'/g, "\\'")}', this)">${selected.expiration || 'null'}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.premium))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.premium)}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.tax))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.tax)}</td>
-                        <td onclick="copyToClipboard('${escapeHtml(String(formatMoney(selected.fee))).replace(/'/g, "\\'")}', this)">${formatMoney(selected.fee)}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.coverage_type`, selected.coverage) : renderReadonlyCell(selected.coverage)}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.carrier`, selected.carrier) : renderReadonlyCell(selected.carrier)}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.policy_number`, selected.policyNumber || 'pending') : renderReadonlyCell(selected.policyNumber || 'pending')}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.effective_date`, selected.effective) : renderReadonlyCell(selected.effective)}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.expiration_date`, selected.expiration) : renderReadonlyCell(selected.expiration)}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.annual_premium`, selected.premium) : renderReadonlyCell(formatMoney(selected.premium))}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.tax`, selected.tax) : renderReadonlyCell(formatMoney(selected.tax))}</td>
+                        <td>${isAdmin && isEditMode ? renderMaybeEditableValue(selected.quote_id, `policies.${selectedPolicyIndex}.fee`, selected.fee) : renderReadonlyCell(formatMoney(selected.fee))}</td>
                     </tr>
                 `;
             }
@@ -2573,6 +2739,43 @@
             const menu = document.getElementById('headerMenu');
             menu.classList.toggle('active');
         });
+
+        if (isAdmin) {
+            document.getElementById('editQuotesBtn').addEventListener('click', function() {
+                syncQuoteDraftsFromQuotes();
+                setEditMode(true);
+            });
+
+            document.getElementById('cancelEditBtn').addEventListener('click', function() {
+                syncQuoteDraftsFromQuotes();
+                setEditMode(false);
+            });
+
+            document.getElementById('saveQuotesBtn').addEventListener('click', async function() {
+                const btn = this;
+                btn.disabled = true;
+                const originalText = btn.textContent;
+                btn.textContent = 'Saving...';
+                try {
+                    await saveEditedQuotes();
+                } catch (error) {
+                    console.error('Error saving quote edits:', error);
+                    alert(error.message || 'Could not save quote edits.');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
+            });
+
+            document.addEventListener('input', function(event) {
+                const input = event.target.closest('.editable-field');
+                if (!input) return;
+                const quoteId = parseInt(input.dataset.quoteId, 10);
+                const path = input.dataset.fieldPath;
+                if (!quoteId || !path || !quoteDraftsById[quoteId]) return;
+                setValueAtPath(quoteDraftsById[quoteId], path, normalizeEditedValue(input.value));
+            });
+        }
 
         // Close menu when clicking outside
         document.addEventListener('click', function(e) {

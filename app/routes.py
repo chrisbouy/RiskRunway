@@ -19,6 +19,7 @@ from app.database import (
     get_submission_by_id,
     create_submission,
     create_quote,
+    update_submission_appetite_score,
     log_action,
     get_session,
     get_current_db_name,
@@ -500,7 +501,12 @@ def submission_detail(submission_id):
         return "Submission not found", 404
     stage_key = _board_stage_key(submission)
     print(f"[DEBUG] Submission {submission_id}: status='{submission.get('status')}', stage_key='{stage_key}'")
-    return render_template('submission.html', submission_id=submission_id, stage_key=stage_key)
+    return render_template(
+        'submission.html',
+        submission_id=submission_id,
+        stage_key=stage_key,
+        is_admin=session.get('user_role') == 'ADMIN'
+    )
 
 
 @bp.route('/api/submission/<int:submission_id>', methods=['GET'])
@@ -2750,6 +2756,52 @@ def update_quote_status(quote_id):
             submission_id=submission_id,
             quote_id=quote_id,
             details=f"Status changed to {new_status}"
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/quote/<int:quote_id>/data', methods=['PUT'])
+@admin_required
+def update_quote_data(quote_id):
+    """Update parsed quote data for a quote."""
+    try:
+        data = request.get_json() or {}
+        parsed_data = data.get('parsed_data')
+
+        if not isinstance(parsed_data, dict):
+            return jsonify({'success': False, 'error': 'parsed_data must be an object'}), 400
+
+        db_session = get_session()
+        try:
+            quote = db_session.query(Quote).filter_by(id=quote_id).first()
+            if not quote:
+                return jsonify({'success': False, 'error': 'Quote not found'}), 404
+
+            quote.extracted_json = json.dumps(parsed_data)
+
+            policies = parsed_data.get('policies') if isinstance(parsed_data.get('policies'), list) else []
+            first_policy = policies[0] if policies else {}
+            if isinstance(first_policy, dict):
+                quote.carrier_name = first_policy.get('carrier') or quote.carrier_name
+
+            db_session.commit()
+            submission_id = quote.submission_id
+        finally:
+            db_session.close()
+
+        update_submission_appetite_score(submission_id)
+
+        log_action(
+            entity_type='quote',
+            entity_id=quote_id,
+            action='quote_data_updated',
+            user=session.get('username'),
+            submission_id=submission_id,
+            quote_id=quote_id,
+            details='Admin updated parsed quote data'
         )
 
         return jsonify({'success': True})
