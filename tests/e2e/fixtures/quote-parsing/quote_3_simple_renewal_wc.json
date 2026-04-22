@@ -1,0 +1,62 @@
+{
+  "insured": {
+    "name": "Martinez Construction Inc",
+    "address": {
+      "street": "2200 Builder's Way",
+      "city": "Phoenix",
+      "state": "AZ",
+      "zip": "85001"
+    }
+  },
+  "retail_agent": {
+    "name": "Desert Insurance Partners",
+    "code": "AZ-DIP-5544",
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": null
+  },
+  "general_agent_or_wholesale_broker": {
+    "name": "State Compensation Insurance Fund",
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": null,
+    "fax": null
+  },
+  "quote_number": "RNW-2024-0823",
+  "account_number": null,
+  "policies": [
+    {
+      "coverage_type": "Workers Compensation",
+      "carrier": null,
+      "policy_number": "WC-AZ-2024-445566",
+      "effective_date": "2024-04-01",
+      "expiration_date": "2025-04-01",
+      "policy_term": "One Year",
+      "annual_premium": 33235,
+      "tax": 0,
+      "fee": 0,
+      "broker_fee": null,
+      "minimum_earned_percent": 25,
+      "minimum_earned_amount": null
+    }
+  ],
+  "totals": {
+    "total_premium": 33235,
+    "total_tax": 0,
+    "total_fee": 0,
+    "total_broker_fee": null,
+    "grand_total": 33235
+  },
+  "financing": {
+    "down_payment": null,
+    "amount_financed": null
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "insured": {
+    "name": "Red Rooster Design",
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    }
+  },
+  "retail_agent": {
+    "name": null,
+    "code": null,
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": null
+  },
+  "general_agent_or_wholesale_broker": {
+    "name": "CFC Underwriting Limited",
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": null,
+    "fax": null
+  },
+  "quote_number": "6184689",
+  "account_number": null,
+  "policies": [
+    {
+      "coverage_type": "Media Liability",
+      "carrier": "Certain underwriters at Lloyd's and other insurers",
+      "policy_number": null,
+      "effective_date": null,
+      "expiration_date": null,
+      "policy_term": "12 months",
+      "annual_premium": 800,
+      "tax": null,
+      "fee": null,
+      "broker_fee": null,
+      "minimum_earned_percent": null,
+      "minimum_earned_amount": null
+    },
+    {
+      "coverage_type": "Cyber Liability",
+      "carrier": "Certain underwriters at Lloyd's and other insurers",
+      "policy_number": null,
+      "effective_date": null,
+      "expiration_date": null,
+      "policy_term": "12 months",
+      "annual_premium": 1750,
+      "tax": null,
+      "fee": null,
+      "broker_fee": null,
+      "minimum_earned_percent": null,
+      "minimum_earned_amount": null
+    }
+  ],
+  "totals": {
+    "total_premium": 2550,
+    "total_tax": 125.2,
+    "total_fee": 580,
+    "total_broker_fee": 255,
+    "grand_total": 3255.2
+  },
+  "financing": {
+    "down_payment": null,
+    "amount_financed": null
+  }
+}

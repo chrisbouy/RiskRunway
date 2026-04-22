@@ -1,0 +1,52 @@
+{
+  "insured": {
+    "name": "Johnson Enterprises",
+    "address": {
+      "street": "890 Business Road Suite 200",
+      "city": "Miami",
+      "state": "FL",
+      "zip": "33101"
+    }
+  },
+  "retail_agent": {
+    "name": null,
+    "code": null,
+    "address": null,
+    "phone": null
+  },
+  "general_agent_or_wholesale_broker": {
+    "name": "BigCity Brokerage Inc",
+    "address": null,
+    "phone": null,
+    "fax": null
+  },
+  "quote_number": "UMB-24-7765",
+  "account_number": null,
+  "policies": [
+    {
+      "coverage_type": "Umbrella",
+      "carrier": "Travelers Indemnity Company",
+      "policy_number": "TRV-UMB-2024-112233",
+      "effective_date": "2024-04-01",
+      "expiration_date": "2025-04-01",
+      "policy_term": "12 months",
+      "annual_premium": 4250,
+      "tax": 212.5,
+      "fee": 95,
+      "broker_fee": null,
+      "minimum_earned_percent": 75,
+      "minimum_earned_amount": null
+    }
+  ],
+  "totals": {
+    "total_premium": 4250,
+    "total_tax": 212.5,
+    "total_fee": 95,
+    "total_broker_fee": null,
+    "grand_total": 4557.5
+  },
+  "financing": {
+    "down_payment": null,
+    "amount_financed": null
+  }
+}

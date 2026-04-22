@@ -1,0 +1,62 @@
+{
+  "insured": {
+    "name": "TechStart Solutions LLC",
+    "address": {
+      "street": "1500 Innovation Drive, Building C",
+      "city": "Austin",
+      "state": "TX",
+      "zip": "78758"
+    }
+  },
+  "retail_agent": {
+    "name": "Your Local Insurance Agency",
+    "code": "TX-98765",
+    "address": {
+      "street": "321 Agent Street",
+      "city": "Austin",
+      "state": "TX",
+      "zip": "78701"
+    },
+    "phone": "(512) 555-0400"
+  },
+  "general_agent_or_wholesale_broker": {
+    "name": "Metro Wholesale Insurance Services",
+    "address": {
+      "street": "789 Broker Lane",
+      "city": "New York",
+      "state": "NY",
+      "zip": "10004"
+    },
+    "phone": "(212) 555-0300",
+    "fax": null
+  },
+  "quote_number": "SL-2024-CY-4521",
+  "account_number": "A-TX-887654",
+  "policies": [
+    {
+      "coverage_type": "Cyber Liability",
+      "carrier": "Starr Indemnity & Liability Company",
+      "policy_number": "CY-SL-2024-778899",
+      "effective_date": "2024-03-15",
+      "expiration_date": "2025-03-15",
+      "policy_term": "12 months",
+      "annual_premium": 15750,
+      "tax": 763.88,
+      "fee": 106.5,
+      "broker_fee": 787.5,
+      "minimum_earned_percent": 100,
+      "minimum_earned_amount": null
+    }
+  ],
+  "totals": {
+    "total_premium": 15750,
+    "total_tax": 763.88,
+    "total_fee": 106.5,
+    "total_broker_fee": 787.5,
+    "grand_total": 17407.88
+  },
+  "financing": {
+    "down_payment": null,
+    "amount_financed": null
+  }
+}

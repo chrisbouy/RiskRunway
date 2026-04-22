@@ -1,0 +1,90 @@
+{
+  "insured": {
+    "name": "Acme Manufacturing Corp",
+    "address": {
+      "street": "456 Industrial Parkway",
+      "city": "Detroit",
+      "state": "MI",
+      "zip": "48201"
+    }
+  },
+  "retail_agent": {
+    "name": null,
+    "code": null,
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": "(312) 555-0100"
+  },
+  "general_agent_or_wholesale_broker": {
+    "name": "ABC Insurance Agency",
+    "address": {
+      "street": "123 Main Street, Suite 100",
+      "city": "Chicago",
+      "state": "IL",
+      "zip": "60601"
+    },
+    "phone": null,
+    "fax": null
+  },
+  "quote_number": "Q-2024-8856",
+  "account_number": "ACC-45789",
+  "policies": [
+    {
+      "coverage_type": "General Liability",
+      "carrier": "Great American Insurance",
+      "policy_number": "GL-2024-556677",
+      "effective_date": "2024-03-01",
+      "expiration_date": "2025-03-01",
+      "policy_term": "12 months",
+      "annual_premium": 8500,
+      "tax": 425,
+      "fee": 125,
+      "broker_fee": null,
+      "minimum_earned_percent": 90,
+      "minimum_earned_amount": null
+    },
+    {
+      "coverage_type": "Workers Compensation",
+      "carrier": "Liberty Mutual Insurance",
+      "policy_number": "WC-2024-998877",
+      "effective_date": "2024-03-01",
+      "expiration_date": "2025-03-01",
+      "policy_term": "12 months",
+      "annual_premium": 12350,
+      "tax": 618,
+      "fee": 150,
+      "broker_fee": null,
+      "minimum_earned_percent": null,
+      "minimum_earned_amount": null
+    },
+    {
+      "coverage_type": "Commercial Auto",
+      "carrier": "Progressive Commercial",
+      "policy_number": "CA-2024-334455",
+      "effective_date": "2024-03-01",
+      "expiration_date": "2025-03-01",
+      "policy_term": "12 months",
+      "annual_premium": 6780,
+      "tax": 339,
+      "fee": 100,
+      "broker_fee": null,
+      "minimum_earned_percent": null,
+      "minimum_earned_amount": null
+    }
+  ],
+  "totals": {
+    "total_premium": 27630,
+    "total_tax": 1382,
+    "total_fee": 375,
+    "total_broker_fee": null,
+    "grand_total": 29387
+  },
+  "financing": {
+    "down_payment": 7347,
+    "amount_financed": 22040
+  }
+}

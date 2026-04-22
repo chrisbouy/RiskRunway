@@ -81,8 +81,14 @@ def reset_and_seed(db_path: str) -> None:
             status=SubmissionStatus.IN_PROGRESS,
             assigned_to=user.id,
         )
-
-        session.add_all([atlas, beacon, cascade, delta, evergreen, frontier])
+        parsing_test = Submission(
+            insured_name='Parsing Test',
+            effective_date=iso(60),
+            state='TX',
+            status=SubmissionStatus.IN_PROGRESS,
+            assigned_to=user.id,
+        )
+        session.add_all([atlas, beacon, cascade, delta, evergreen, frontier, parsing_test])
         session.flush()
 
         # Add quotes for Atlas (needed for "Submit to Market" test)

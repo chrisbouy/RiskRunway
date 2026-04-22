@@ -1,0 +1,62 @@
+{
+  "insured": {
+    "name": "Urban Mall Properties",
+    "address": {
+      "street": "5500 Commerce Plaza",
+      "city": "Seattle",
+      "state": "WA",
+      "zip": "98101"
+    }
+  },
+  "retail_agent": {
+    "name": "Pacific Northwest Insurance",
+    "code": null,
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": "(206) 555-0600"
+  },
+  "general_agent_or_wholesale_broker": {
+    "name": "Retail Solutions Group LLC",
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
+    "phone": null,
+    "fax": null
+  },
+  "quote_number": "PR-2024-9988",
+  "account_number": "ACCT-WA-5521",
+  "policies": [
+    {
+      "coverage_type": "Commercial Property",
+      "carrier": "FM Global Insurance Company",
+      "policy_number": "CP-2024-WA-334455",
+      "effective_date": "2024-03-01",
+      "expiration_date": "2025-03-01",
+      "policy_term": "12 months",
+      "annual_premium": 18450,
+      "tax": 184.5,
+      "fee": 350,
+      "broker_fee": null,
+      "minimum_earned_percent": 50,
+      "minimum_earned_amount": null
+    }
+  ],
+  "totals": {
+    "total_premium": 18450,
+    "total_tax": 184.5,
+    "total_fee": 350,
+    "total_broker_fee": null,
+    "grand_total": 18984.5
+  },
+  "financing": {
+    "down_payment": 4746.13,
+    "amount_financed": 14238.37
+  }
+}
