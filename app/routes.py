@@ -3772,6 +3772,9 @@ def update_ams_export_job(job_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@bp.route('/favicon.ico')
+def favicon():
+    return '', 204
 
 # ============================================================================
 # HELPER FUNCTIONS

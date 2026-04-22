@@ -16,9 +16,38 @@
         <!-- SQL Runner -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700 p-4">
             <h2 class="text-xl font-semibold text-white mb-3">SQL Runner</h2>
+
+            <!-- Quick Query Buttons -->
+            <div class="mb-3">
+                <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Quick SELECT</p>
+                <div class="flex flex-wrap gap-2 mb-3">
+                    <button onclick="setQuery('SELECT * FROM submissions ORDER BY created_at DESC LIMIT 20')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">submissions (20)</button>
+                    <button onclick="setQuery('SELECT * FROM quotes ORDER BY created_at DESC LIMIT 20')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">quotes (20)</button>
+                    <button onclick="setQuery('SELECT * FROM users')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">users</button>
+                    <button onclick="setQuery('SELECT * FROM brokers')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">brokers</button>
+                    <button onclick="setQuery('SELECT * FROM email_messages ORDER BY received_date DESC LIMIT 50')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">emails (50)</button>
+                    <button onclick="setQuery('SELECT * FROM email_attachments ORDER BY created_at DESC LIMIT 50')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">attachments (50)</button>
+                    <button onclick="setQuery('SELECT * FROM documents ORDER BY created_at DESC LIMIT 50')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">documents (50)</button>
+                    <button onclick="setQuery('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 50')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-300 rounded hover:bg-gray-700">audit log (50)</button>
+                </div>
+
+                <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Quick DELETE</p>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="setQuery('DELETE FROM documents')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE documents</button>
+                    <button onclick="setQuery('DELETE FROM email_attachments')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE email_attachments</button>
+                    <button onclick="setQuery('DELETE FROM email_messages')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE email_messages</button>
+                    <button onclick="setQuery('DELETE FROM quotes')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE quotes</button>
+                    <button onclick="setQuery('DELETE FROM submissions')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE submissions</button>
+                    <button onclick="setQuery('DELETE FROM audit_log')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE audit_log</button>
+                    <button onclick="setQuery('DELETE FROM brokers')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE brokers</button>
+                    <button onclick="setQuery(&quot;DELETE FROM users WHERE role != 'ADMIN'&quot;)" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE non-admin users</button>
+                </div>
+            </div>
+
+            <!-- SQL Input -->
             <div class="flex gap-2">
                 <input type="text" id="sqlInput" placeholder="SELECT * FROM email_attachments LIMIT 5"
-                       class="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 text-white rounded font-mono text-sm">
+                    class="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 text-white rounded font-mono text-sm">
                 <button onclick="runSql()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Run</button>
             </div>
             <div id="sqlResults" class="mt-3 text-sm font-mono text-gray-300 hidden"></div>
@@ -772,6 +801,10 @@
             }
         }
 
+        function setQuery(sql) {
+            document.getElementById('sqlInput').value = sql;
+            document.getElementById('sqlInput').focus();
+        }
         // Load data on page load
         loadData();
 

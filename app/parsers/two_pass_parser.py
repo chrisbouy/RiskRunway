@@ -432,16 +432,8 @@ def _is_text_garbage(text):
 
     return False
 
-def pass1_extract_layout(pdf_path):
-    """
-    Pass 1: Extract text and layout from PDF using classic OCR (pdfplumber + pytesseract)
+def pass1_extract_quote_layout(pdf_path):
 
-    Args:
-        pdf_path: Path to the PDF file
-
-    Returns:
-        dict: Structured layout data with pages array
-    """
     import gc
     pages_data = []
 
@@ -514,7 +506,7 @@ def pass1_extract_layout(pdf_path):
         "pages": pages_data
     }
 
-def pass2_normalize_data(layout_data):
+def pass2_normalize_quote_data(layout_data):
     """
     Pass 2: Normalize extracted layout into standard JSON schema
     
@@ -616,19 +608,19 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     metadata = {}
 
     # Pass 1: Extract layout
-    print("Pass 1: Extracting layout and OCR...")
+    print("Pass 1 of two_pass_parser.process_quote_two_pass: Extracting layout and OCR...")
     pass1_start = time.time()
-    layout_data = pass1_extract_layout(pdf_path)
+    layout_data = pass1_extract_quote_layout(pdf_path)
     metadata['pass1_duration'] = time.time() - pass1_start
-    print(f"  ✓ Pass 1 complete ({metadata['pass1_duration']:.2f}s)")
+    print(f"  ✓ Pass 1 (quote) complete ({metadata['pass1_duration']:.2f}s)")
     print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
 
     # Pass 2: Normalize to JSON
-    print("Pass 2: Normalizing to JSON schema...")
+    print("Pass 2 of two_pass_parser.process_quote_two_pass: Normalizing to JSON schema...")
     pass2_start = time.time()
-    normalized_data = pass2_normalize_data(json.dumps(layout_data))
+    normalized_data = pass2_normalize_quote_data(json.dumps(layout_data))
     metadata['pass2_duration'] = time.time() - pass2_start
-    print(f"  ✓ Pass 2 complete ({metadata['pass2_duration']:.2f}s)")
+    print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
     print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
 
     # Pass 3: Classify intent
@@ -640,7 +632,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     # print(f"  Pass 3 data: {json.dumps(intent_data, indent=2)}")
 
     metadata['total_duration'] = time.time() - start_time
-    print(f"✓ All passes complete ({metadata['total_duration']:.2f}s)")
+    print(f"✓ All quote passes complete ({metadata['total_duration']:.2f}s)")
 
     return {
         "pass1_layout": layout_data,
