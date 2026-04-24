@@ -31,7 +31,7 @@ errorlog = '-'
 loglevel = 'info'
 
 # Process naming
-proc_name = 'ipfs-mapper'
+proc_name = 'riskrunway-mapper'
 
 # Limit request line and header sizes to save memory
 limit_request_line = 4096

@@ -1522,7 +1522,7 @@
     <script>
         // Theme Management - initialized from localStorage (set on kanban page)
         function initTheme() {
-            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-dark';
+            const savedTheme = localStorage.getItem('riskrunway-mapper-theme') || 'traditional-dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
         }
 
@@ -3537,7 +3537,7 @@
             URL.revokeObjectURL(url);
         });
         
-        // Export to AMS - Create job and poll for status
+        // Export to AMS - Create job and trigger local agent via protocol handler
         let amsExportJobId = null;
         let amsExportPollInterval = null;
         
@@ -3569,9 +3569,26 @@
                 }
                 
                 amsExportJobId = data.job.id;
-                btn.textContent = 'Waiting for agent...';
+                btn.textContent = 'Opening agent...';
                 
-                // Poll for job completion
+                // Build the protocol URL to trigger the local agent
+                // Note: The launcher will poll for pending jobs, so we just need to trigger it
+                const protocolUrl = `riskrunway://export`;
+                
+                console.log('Triggering local agent:', protocolUrl);
+                
+                // Open the protocol URL to spawn the local agent
+                // Use a hidden iframe to avoid leaving the page
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = protocolUrl;
+                document.body.appendChild(iframe);
+                setTimeout(() => document.body.removeChild(iframe), 1000);
+                
+                // Show instructions and start polling for status
+                btn.textContent = 'Check your desktop...';
+                
+                // Poll for job completion (the local agent will update the job status)
                 amsExportPollInterval = setInterval(async () => {
                     try {
                         const statusResponse = await fetch(`/api/ams-export/jobs/${amsExportJobId}`);
@@ -3593,8 +3610,11 @@
                                 btn.disabled = false;
                                 btn.textContent = '☁️ Export to AMS';
                                 alert('AMS export failed: ' + (job.error_message || 'Unknown error'));
+                            } else if (job.status === 'in_progress') {
+                                btn.textContent = 'Filling AMS form...';
                             } else {
-                                btn.textContent = 'Processing... (' + job.attempt_count + '/' + job.max_attempts + ')';
+                                // Still pending - agent hasn't picked it up yet
+                                btn.textContent = 'Waiting for agent (' + job.attempt_count + '/' + job.max_attempts + ')';
                             }
                         }
                     } catch (pollError) {

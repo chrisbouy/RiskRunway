@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: ipfs-mapper
+    name: riskrunway-mapper
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -c gunicorn_config.py run:app

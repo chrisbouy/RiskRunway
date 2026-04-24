@@ -2,7 +2,7 @@
 
 ## Overview
 
-IPFS Mapper supports multiple databases that can be switched on-the-fly from the Kanban board. This allows you to:
+RiskRunway Mapper supports multiple databases that can be switched on-the-fly from the Kanban board. This allows you to:
 - Keep production data separate from test scenarios
 - Create isolated use case demonstrations
 - Run automated tests without affecting production data

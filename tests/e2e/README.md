@@ -21,7 +21,7 @@ npm run test:e2e
 By default, Playwright uses a dedicated automated-test database at:
 
 ```bash
-data/e2e-ipfs-mapper.db
+data/e2e-riskrunway-mapper.db
 ```
 
 That database is reset and reseeded at the start of each run unless you explicitly provide `DATABASE_PATH`.

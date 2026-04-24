@@ -633,7 +633,7 @@ def report_submission_bug(submission_id):
                 f"Bug Description:\n{description or '(none provided)'}\n"
             )
 
-            subject = f"[IPFS Mapper Bug] Submission {submission.id} / Quote {quote.id}"
+            subject = f"[RiskRunway Mapper Bug] Submission {submission.id} / Quote {quote.id}"
             extension = 'jpg' if screenshot_subtype == 'jpeg' else 'png'
             screenshot_filename = f"submission_{submission.id}_quote_{quote.id}_bug.{extension}"
             try:
@@ -3683,6 +3683,44 @@ def get_next_ams_export_job():
             
             if not job:
                 return jsonify({'success': True, 'job': None})
+            
+            return jsonify({
+                'success': True,
+                'job': job.to_dict()
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams/jobs/<int:job_id>', methods=['GET'])
+def get_ams_export_job_for_agent(job_id):
+    """
+    Get a specific AMS export job by ID for the local agent to execute.
+    Marks the job as 'in_progress' when fetched.
+    No login required - this is called by the local agent in single-shot mode.
+    """
+    try:
+        db_session = get_session()
+        try:
+            job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+            
+            if not job:
+                return jsonify({'success': False, 'error': 'Job not found'}), 404
+            
+            # Only allow fetching pending jobs (not already in progress or completed)
+            if job.status != 'pending':
+                return jsonify({
+                    'success': False, 
+                    'error': f'Job is not available (status: {job.status})'
+                }), 409
+            
+            # Mark as in progress
+            job.status = 'in_progress'
+            job.started_at = datetime.utcnow()
+            job.attempt_count += 1
+            db_session.commit()
             
             return jsonify({
                 'success': True,

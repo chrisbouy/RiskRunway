@@ -878,7 +878,7 @@
     <script>
         // Theme Management
         function initTheme() {
-            const savedTheme = localStorage.getItem('ipfs-mapper-theme') || 'traditional-dark';
+            const savedTheme = localStorage.getItem('riskrunway-mapper-theme') || 'traditional-dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
             const themeSelect = document.getElementById('themeSelect');
             if (themeSelect) {
@@ -888,7 +888,7 @@
 
         function changeTheme(theme) {
             document.documentElement.setAttribute('data-theme', theme);
-            localStorage.setItem('ipfs-mapper-theme', theme);
+            localStorage.setItem('riskrunway-mapper-theme', theme);
         }
 
         // Initialize theme on page load

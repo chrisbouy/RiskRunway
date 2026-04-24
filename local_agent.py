@@ -739,6 +739,24 @@ def poll_for_job(server_url: str) -> Optional[dict]:
         logger.warning(f"Poll error: {e}")
     return None
 
+def fetch_job_by_id(server_url: str, job_id: int) -> Optional[dict]:
+    """Fetch a specific job by ID for single-shot mode."""
+    try:
+        r = requests.get(f"{server_url}/api/ams/jobs/{job_id}", timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success") and data.get("job"):
+                return data.get("job")
+            else:
+                logger.error(f"Job {job_id} not found or not available: {data.get('error', 'Unknown')}")
+        else:
+            logger.error(f"Failed to fetch job {job_id}: HTTP {r.status_code}")
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Cannot reach {server_url}")
+    except Exception as e:
+        logger.error(f"Fetch job error: {e}")
+    return None
+
 def update_job_status(server_url: str, job_id: int, status: str, message: str = ""):
     payload = {"status": status}
     if message:
@@ -848,14 +866,22 @@ def main():
                         help=f"Flask server URL (default: {DEFAULT_SERVER_URL})")
     parser.add_argument("--aws-region", default=AWS_REGION,
                         help=f"AWS region (default: {AWS_REGION})")
+    parser.add_argument("--job-id", type=int, default=None,
+                        help="Run in single-shot mode: fetch specific job ID, execute, then exit")
+    parser.add_argument("--daemon", action="store_true",
+                        help="Run in daemon mode: continuously poll for jobs (default behavior)")
     args       = parser.parse_args()
     server_url = args.server.rstrip("/")
 
+    # Determine mode: single-shot if job_id provided, otherwise daemon (or explicit --daemon)
+    is_single_shot = args.job_id is not None
+    
     print(f"""
   AMS Export Agent
   ─────────────────────────────────
   Agent ID : {AGENT_ID}
   Server   : {server_url}
+  Mode     : {'Single-shot (Job #' + str(args.job_id) + ')' if is_single_shot else 'Daemon (continuous polling)'}
   OS       : {platform.system()}
   Paste    : {'+'.join(PASTE_HOTKEY)}
     """)
@@ -867,47 +893,75 @@ def main():
         logger.error(f"Bedrock init failed: {e}")
         sys.exit(1)
 
-    # Create the persistent overlay widget (must be on main thread for macOS)
-    persistent_overlay = PersistentOverlay()
-    logger.info("Persistent overlay widget created and ready")
-
-    # Polling runs in background; tkinter must stay on main thread
-    threading.Thread(
-        target=polling_loop, args=(server_url,), daemon=True
-    ).start()
-    logger.info(f"Polling {server_url} every {POLL_INTERVAL}s...")
-    print("Waiting for jobs — Ctrl+C to stop.\n")
-
-    while True:
+    if is_single_shot:
+        # SINGLE-SHOT MODE: Fetch specific job, execute, exit
+        logger.info(f"Single-shot mode: fetching job {args.job_id}")
+        job = fetch_job_by_id(server_url, args.job_id)
+        
+        if job is None:
+            print(f"\n❌ Could not fetch job {args.job_id}. Exiting.")
+            sys.exit(1)
+        
+        # Create overlay just for this job
+        persistent_overlay = PersistentOverlay()
+        logger.info("Overlay created for single-shot job")
+        
+        # Execute the job
         try:
-            # Keep the overlay widget responsive
-            if persistent_overlay and not persistent_overlay.should_close:
-                persistent_overlay.update()
+            run_job(job, server_url, bedrock_client)
+        except Exception as e:
+            logger.error(f"Job execution failed: {e}", exc_info=True)
+            print(f"\n❌ Job {args.job_id} failed: {e}")
+        
+        # Clean up and exit
+        if persistent_overlay:
+            persistent_overlay.destroy()
+        print(f"\n✓ Job {args.job_id} complete. Exiting.")
+        sys.exit(0)
+    
+    else:
+        # DAEMON MODE: Continuous polling (original behavior)
+        # Create the persistent overlay widget (must be on main thread for macOS)
+        persistent_overlay = PersistentOverlay()
+        logger.info("Persistent overlay widget created and ready")
 
-            # Check if user closed the widget
-            if persistent_overlay and persistent_overlay.should_close:
-                print("\nWidget closed by user. Shutting down...")
+        # Polling runs in background; tkinter must stay on main thread
+        threading.Thread(
+            target=polling_loop, args=(server_url,), daemon=True
+        ).start()
+        logger.info(f"Polling {server_url} every {POLL_INTERVAL}s...")
+        print("Waiting for jobs — Ctrl+C to stop.\n")
+
+        while True:
+            try:
+                # Keep the overlay widget responsive
+                if persistent_overlay and not persistent_overlay.should_close:
+                    persistent_overlay.update()
+
+                # Check if user closed the widget
+                if persistent_overlay and persistent_overlay.should_close:
+                    print("\nWidget closed by user. Shutting down...")
+                    break
+
+                # Check for jobs (non-blocking with short timeout)
+                try:
+                    job = job_queue.get(timeout=0.01)
+                    run_job(job, server_url, bedrock_client)
+                    job_queue.task_done()
+                except queue.Empty:
+                    pass
+
+                # Small sleep to prevent CPU spinning
+                time.sleep(0.01)
+
+            except KeyboardInterrupt:
+                print("\nAgent stopped.")
                 break
 
-            # Check for jobs (non-blocking with short timeout)
-            try:
-                job = job_queue.get(timeout=0.01)
-                run_job(job, server_url, bedrock_client)
-                job_queue.task_done()
-            except queue.Empty:
-                pass
-
-            # Small sleep to prevent CPU spinning
-            time.sleep(0.01)
-
-        except KeyboardInterrupt:
-            print("\nAgent stopped.")
-            break
-
-    # Clean up
-    if persistent_overlay:
-        persistent_overlay.destroy()
-    sys.exit(0)
+        # Clean up
+        if persistent_overlay:
+            persistent_overlay.destroy()
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

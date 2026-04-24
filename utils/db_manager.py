@@ -2,7 +2,7 @@
 """
 Database Manager Utility
 
-Manage multiple databases (production, use_cases, test) for IPFS Mapper.
+Manage multiple databases (production, use_cases, test) for RiskRunway Mapper.
 Provides commands to:
 - Initialize databases
 - Seed test data
@@ -170,7 +170,7 @@ def main():
     """Main CLI interface"""
     if len(sys.argv) < 2:
         print("""
-Database Manager for IPFS Mapper
+Database Manager for RiskRunway Mapper
 
 Usage:
     python utils/db_manager.py <command> [args]
