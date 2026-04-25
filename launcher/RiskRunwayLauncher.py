@@ -195,13 +195,16 @@ def handle_url(url):
     """Parse URL and spawn local_agent"""
     logger.info(f"Handling URL: {url}")
     
-    # Parse URL
-    if not url.startswith("riskrunway://"):
-        show_error("Invalid URL format. Expected riskrunway://...")
+    # Handle both riskrunway:// and riskrunwaymapper:// URLs
+    if url.startswith("riskrunwaymapper://"):
+        path_and_query = url[21:]  # Remove 'riskrunwaymapper://'
+    elif url.startswith("riskrunway://"):
+        path_and_query = url[13:]  # Remove 'riskrunway://'
+    else:
+        show_error("Invalid URL format. Expected riskrunway:// or riskrunwaymapper://...")
         return 1
     
     # Extract path and query
-    path_and_query = url[13:]  # Remove 'riskrunway://'
     if '?' in path_and_query:
         path, query = path_and_query.split('?', 1)
     else:
@@ -354,19 +357,54 @@ def main():
         logger.info(f"Argument received: {arg}")
         
         # Check if it's a riskrunway:// URL (macOS protocol handler)
-        if arg.startswith("riskrunway://"):
-            logger.info("Protocol URL received, using default server")
-            server_url = get_default_server_url()
+        if arg.startswith("riskrunway://") or arg.startswith("riskrunwaymapper://"):
+            logger.info("Protocol URL received, parsing parameters")
+            # Parse the URL to extract job_id and server
+            url = arg
+            if url.startswith("riskrunwaymapper://"):
+                path_and_query = url[21:]  # Remove 'riskrunwaymapper://'
+            elif url.startswith("riskrunway://"):
+                path_and_query = url[13:]  # Remove 'riskrunway://'
+            else:
+                path_and_query = url[13:]  # fallback
+            
+            # Extract query parameters
+            if '?' in path_and_query:
+                path, query = path_and_query.split('?', 1)
+            else:
+                path, query = path_and_query, ''
+            
+            params = urllib.parse.parse_qs(query)
+            job_id = params.get('job_id', [None])[0]
+            server = params.get('server', [None])[0]
+            
+            logger.info(f"Parsed from URL: job_id={job_id}, server={server}")
+            
+            if job_id and server:
+                # Use the specific job and server from URL
+                server_url = server.rstrip('/')
+                logger.info(f"Using server from URL: {server_url}")
+                
+                # Find agent and spawn for specific job
+                _, _, resources_dir = get_app_directories()
+                agent_path = find_agent_path(resources_dir)
+                if not agent_path:
+                    show_error("Could not find local_agent.py")
+                    return 1
+                
+                spawn_in_terminal(job_id, server_url, agent_path)
+                return 0
+            else:
+                logger.warning("URL missing job_id or server, falling back to polling")
         
         # Check if it's a server URL
         elif arg.startswith("http://") or arg.startswith("https://"):
             server_url = arg.rstrip('/')
             logger.info(f"Server URL from command line: {server_url}")
     
-    # Use default if not set
-    if not server_url:
-        server_url = get_default_server_url()
-        logger.info(f"Using default server: {server_url}")
+    # Fall back to polling mode
+    server_url = get_default_server_url()
+    logger.info(f"Using default server: {server_url}")
     
     # Fetch pending job
     job = fetch_pending_job(server_url)

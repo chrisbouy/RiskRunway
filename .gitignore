@@ -61,3 +61,9 @@ media/students/
 *.pdf
 .DS_Store
 data/*.db
+*.webm
+playwright-report/*.zip
+playwright-report/data/*
+playwright-report/trace/*
+test-results/*
+

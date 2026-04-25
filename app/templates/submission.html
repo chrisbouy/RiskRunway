@@ -3572,10 +3572,11 @@
                 btn.textContent = 'Opening agent...';
                 
                 // Build the protocol URL to trigger the local agent
-                // Note: The launcher will poll for pending jobs, so we just need to trigger it
-                const protocolUrl = `riskrunway://export`;
+                // Include job_id and server URL so launcher can spawn agent with correct job
+                const serverUrl = window.location.origin;
+                const protocolUrl = `riskrunway://export?job_id=${amsExportJobId}&server=${encodeURIComponent(serverUrl)}`;
                 
-                console.log('Triggering local agent:', protocolUrl);
+                console.log('Triggering local agent:', protocolUrl, 'Job ID:', amsExportJobId);
                 
                 // Open the protocol URL to spawn the local agent
                 // Use a hidden iframe to avoid leaving the page
