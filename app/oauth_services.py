@@ -647,23 +647,30 @@ class OutlookOAuthService:
         """
         # Build query filters
         filters = []
+
+        def _escape_odata_string(value: str) -> str:
+            return str(value).replace("'", "''")
         
-        # Filter by broker emails (if provided)
+        # Filter by broker emails and quote subjects
+        query_parts = []
+
         if broker_emails:
-            broker_filter_parts = [f"from/emailAddress/address eq '{email}'" for email in broker_emails]
-            filters.append(f"({' or '.join(broker_filter_parts)})")
-        
-        # Filter by quote subjects (if provided)
+            broker_filter_parts = [f"from/emailAddress/address eq '{_escape_odata_string(email)}'" for email in broker_emails]
+            query_parts.append(f"({' or '.join(broker_filter_parts)})")
+
         if quote_subjects:
-            subject_filter_parts = [f"contains(subject,'{subject}')" for subject in quote_subjects]
-            filters.append(f"({' or '.join(subject_filter_parts)})")
-        
+            subject_filter_parts = [f"contains(subject,'{_escape_odata_string(subject)}')" for subject in quote_subjects]
+            query_parts.append(f"({' or '.join(subject_filter_parts)})")
+
+        if query_parts:
+            filters.append(f"({' or '.join(query_parts)})")
+
         # If no filters provided, default to checking for attachments
         if not filters:
             filters.append('hasAttachments eq true')
-        
+
         if query:
-            filters.append(f"contains(subject,'{query}')")
+            filters.append(f"contains(subject,'{_escape_odata_string(query)}')")
         
         if since_date:
             # Format datetime for Graph API: '2026-03-24T00:32:00Z' (no microseconds, UTC timezone)

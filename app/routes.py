@@ -1628,8 +1628,7 @@ def ingest_quote_to_submission(email_id, submission_id):
             created_quotes = []
 
             # Process each attachment - download on-demand if needed
-            for att in attachments:
-                # Download attachment on-demand if not already downloaded
+            for att in attachments:                # Download attachment on-demand if not already downloaded
                 file_path = _download_attachment_on_demand(att, email, db_session)
                 print(f"Downloaded attachment {att.filename} to {file_path}")
                 if not file_path:

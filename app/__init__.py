@@ -28,10 +28,6 @@ def create_app():
         """Background task to scrape emails"""
         # Run within Flask application context since this task runs in a background thread
         with app.app_context():
-            if not app.config.get('EMAIL_SCRAPING_ENABLED', False):
-                print("[EMAIL SCRAPER] Email scraping is disabled")
-                return
-            
             scraping_mode = app.config.get('EMAIL_SCRAPING_MODE', 'oauth').lower()
             print(f"[EMAIL SCRAPER] Running in mode: {scraping_mode}")
             
@@ -159,8 +155,8 @@ def create_app():
             finally:
                 db_session.close()
 
-    # Start scheduler if email scraping is enabled
-    if app.config.get('EMAIL_SCRAPING_ENABLED', False):
+    # Start scheduler if email polling is enabled
+    if app.config.get('EMAIL_POLLING_ENABLED', False):
         scheduler = BackgroundScheduler()
         scheduler.add_job(
             func=scrape_emails_task,
@@ -173,7 +169,7 @@ def create_app():
         # Register shutdown hook
         atexit.register(lambda: scheduler.shutdown())
         
-        print(f"[EMAIL SCRAPER] Scheduler started - runs every {app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)} minutes")
+        print(f"[EMAIL SCRAPER] Polling scheduler started - runs every {app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)} minutes")
 
     # Global error handler to return JSON instead of HTML
     @app.errorhandler(Exception)

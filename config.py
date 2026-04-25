@@ -52,7 +52,10 @@ class Config:
     IMAP_USE_SSL = os.environ.get('IMAP_USE_SSL', 'true').lower() == 'true'
     
     # Email Processing
+    # Manual on-demand scraping endpoint
     EMAIL_SCRAPING_ENABLED = os.environ.get('EMAIL_SCRAPING_ENABLED', 'false').lower() == 'true'
+    # Background polling scheduler
+    EMAIL_POLLING_ENABLED = os.environ.get('EMAIL_POLLING_ENABLED', 'false').lower() == 'true'
     EMAIL_SCRAPING_MODE = os.environ.get('EMAIL_SCRAPING_MODE', 'oauth').lower()  # oauth | imap | auto
     # 'oauth' - use OAuth (Gmail/Outlook) only
     # 'imap' - use IMAP only
