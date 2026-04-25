@@ -3586,42 +3586,14 @@
                 document.body.appendChild(iframe);
                 setTimeout(() => document.body.removeChild(iframe), 1000);
                 
-                // Show instructions and start polling for status
-                btn.textContent = 'Check your desktop...';
+                // Close the AMS Export modal and reload the app after a short delay.
+                document.getElementById('amsExportModal').classList.add('hidden');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 800);
                 
-                // Poll for job completion (the local agent will update the job status)
-                amsExportPollInterval = setInterval(async () => {
-                    try {
-                        const statusResponse = await fetch(`/api/ams-export/jobs/${amsExportJobId}`);
-                        const statusData = await statusResponse.json();
-                        
-                        if (statusData.success && statusData.job) {
-                            const job = statusData.job;
-                            
-                            if (job.status === 'completed') {
-                                clearInterval(amsExportPollInterval);
-                                btn.textContent = '✓ Exported!';
-                                alert('AMS export completed successfully!');
-                                setTimeout(() => {
-                                    btn.disabled = false;
-                                    btn.textContent = '☁️ Export to AMS';
-                                }, 2000);
-                            } else if (job.status === 'failed') {
-                                clearInterval(amsExportPollInterval);
-                                btn.disabled = false;
-                                btn.textContent = '☁️ Export to AMS';
-                                alert('AMS export failed: ' + (job.error_message || 'Unknown error'));
-                            } else if (job.status === 'in_progress') {
-                                btn.textContent = 'Filling AMS form...';
-                            } else {
-                                // Still pending - agent hasn't picked it up yet
-                                btn.textContent = 'Waiting for agent (' + job.attempt_count + '/' + job.max_attempts + ')';
-                            }
-                        }
-                    } catch (pollError) {
-                        console.error('Error polling job status:', pollError);
-                    }
-                }, 3000);  // Poll every 3 seconds
+                // Update button text while the app reloads
+                btn.textContent = 'Check your desktop...';
                 
             } catch (error) {
                 console.error('Error starting AMS export:', error);
