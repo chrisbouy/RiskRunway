@@ -11,12 +11,22 @@
   "retail_agent": {
     "name": null,
     "code": null,
-    "address": null,
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
     "phone": null
   },
   "general_agent_or_wholesale_broker": {
     "name": "BigCity Brokerage Inc",
-    "address": null,
+    "address": {
+      "street": null,
+      "city": null,
+      "state": null,
+      "zip": null
+    },
     "phone": null,
     "fax": null
   },

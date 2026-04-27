@@ -5,8 +5,10 @@ import os
 
 # Load .env from root directory
 load_dotenv()
-LLM_PROVIDER = "groq" 
+
+# LLM_PROVIDER = "groq" 
 #LLM_PROVIDER = "gemini" 
+LLM_PROVIDER = "bedrock"
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')

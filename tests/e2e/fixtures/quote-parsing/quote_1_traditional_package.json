@@ -17,7 +17,7 @@
       "state": null,
       "zip": null
     },
-    "phone": "(312) 555-0100"
+    "phone": null
   },
   "general_agent_or_wholesale_broker": {
     "name": "ABC Insurance Agency",
@@ -27,7 +27,7 @@
       "state": "IL",
       "zip": "60601"
     },
-    "phone": null,
+    "phone": "(312) 555-0100",
     "fax": null
   },
   "quote_number": "Q-2024-8856",
@@ -58,7 +58,7 @@
       "tax": 618,
       "fee": 150,
       "broker_fee": null,
-      "minimum_earned_percent": null,
+      "minimum_earned_percent": 90,
       "minimum_earned_amount": null
     },
     {
@@ -72,7 +72,7 @@
       "tax": 339,
       "fee": 100,
       "broker_fee": null,
-      "minimum_earned_percent": null,
+      "minimum_earned_percent": 90,
       "minimum_earned_amount": null
     }
   ],

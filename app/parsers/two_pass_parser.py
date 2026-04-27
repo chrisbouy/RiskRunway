@@ -15,7 +15,7 @@ import random
 import requests
 from google import genai
 from google.genai import types
-from app.parsers.llm_parsers import GeminiClient, GroqClient
+from app.parsers.llm_parsers import BedrockClient, GeminiClient, GroqClient
 import settings
 import pdfplumber
 import pytesseract
@@ -95,21 +95,16 @@ INSURED (the customer buying insurance):
   • Label may appear as: "Insured", "Named Insured", "Applicant", "Borrower", 
     "Account Name", "Customer", "Firm Name", "DBA", "Policyholder"
     
-RETAIL AGENT (local insurance agency working directly with customer):
-  • Company name may appear as: "Agent", "Insurance Agent", "Local Agent", 
-    "Producer", "Retail Agent", "Producing Agent", "Agency of Record"
+RETAIL AGENT ...
   • This is a COMPANY, not a person
   • Usually located in the SAME STATE as the insured
   • May have a "Producer Code" or "Agent Code"
+  • Only fill this field when a separate retail/producing agent is explicitly identified.
 
-GENERAL AGENT / WHOLESALE BROKER (wholesale intermediary between retail agent and carrier):
-  • Company name may appear as: "General Agent", "MGA", "Wholesale Broker", 
-    "Managing General Agent", "Surplus Lines Broker", "Program Administrator"
-  • This is a COMPANY, not a person
-  • May have "Surplus Lines License" or "SL License"
-  • This is the producer/proposer of the quote.  Company that originally created the document, so it could appear in the header or footer.
-
-
+GENERAL AGENT / WHOLESALE BROKER ...
+  • This is the producer/proposer of the quote. Company that originally created the document.
+  • If only one agency appears on the quote and there is no separately labeled retail/producer agency, assume this agency is the quote producer/wholesale broker.
+  • Do not use the same agency for `retail_agent` unless the document explicitly names it as the customer's retail agent.
 COVERAGE TYPE:
   • Normalize to standard terms:
     - "General Liability" (from: CGL, Commercial General Liability, GL)
@@ -187,6 +182,8 @@ DOWN PAYMENT / FINANCING:
   • Amount Financed may be calculated as: Grand Total - Down Payment
   • Often NOT shown on quotes (return null if not present)
 
+NOTES:
+- If a phone number follows an address, it's likely a contact number for that entity. 
 ═══════════════════════════════════════════════════════════════
 OUTPUT JSON SCHEMA
 ═══════════════════════════════════════════════════════════════
@@ -314,7 +311,11 @@ PASS3_INTENT_PROMPT = dedent(
 
 def get_llm_client():
     if settings.LLM_PROVIDER == "groq":
-        return GroqClient(settings.GROQ_API_KEY)
+        # Legacy Groq provider is commented out while the two-pass parser uses AWS Bedrock.
+        # return GroqClient(settings.GROQ_API_KEY)
+        raise ValueError("Groq provider is disabled for two_pass_parser. Use bedrock or gemini.")
+    if settings.LLM_PROVIDER == "bedrock":
+        return BedrockClient()
     if settings.LLM_PROVIDER == "gemini":
         return GeminiClient(genai.Client(api_key=settings.GEMINI_API_KEY), DEFAULT_MODEL)
     raise ValueError("Unknown LLM provider")
@@ -516,28 +517,15 @@ def pass2_normalize_quote_data(layout_data):
     Returns:
         dict: Normalized quote data
     """
-    # client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    
-    # Create prompt with layout data
-    # prompt = PASS2_NORMALIZATION_PROMPT + "\n\nExtracted Layout Data:\n" + json.dumps(layout_data, indent=2)
-    
-    # response = client.models.generate_content(
-    #     model=DEFAULT_MODEL,
-    #     contents=prompt,
-    #     config=types.GenerateContentConfig(
-    #         temperature=0.1,
-    #         response_mime_type="application/json"
-    #     )
-    # )
-    
-    # llm = GroqClient(api_key=settings.GROQ_API_KEY)
+
     llm = get_llm_client()
 
     prompt = PASS2_NORMALIZATION_PROMPT + "\n\nExtracted Layout Data:\n" + json.dumps(layout_data)
     # print(f"Prompt: {prompt}")
 
-    normalized_data = groq_request_with_backoff(lambda: llm.generate_json(prompt))
-    # normalized_data =  llm.generate_json(prompt)
+    # Use the provider directly; Groq backoff wrapper is commented out for Bedrock usage.
+    # normalized_data = groq_request_with_backoff(lambda: llm.generate_json(prompt))
+    normalized_data = llm.generate_json(prompt)
     # print(f"Normalized data: {normalized_data}")
     # print(f"Normalized data: {json.dumps(normalized_data, indent=2)}")
 
@@ -584,7 +572,8 @@ def pass3_classify_intent(normalized_data, existing_quotes=None):
     #         response_mime_type="application/json"
     #     )
     # )
-    llm = GroqClient(api_key=settings.GROQ_API_KEY)
+    # llm = GroqClient(api_key=settings.GROQ_API_KEY)
+    llm = get_llm_client()
 
     prompt = PASS3_INTENT_PROMPT + "\n\nContext:\n" + json.dumps(context, indent=2)
 

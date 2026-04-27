@@ -3,6 +3,7 @@ import requests
 import json
 import time
 import random
+import boto3
 
 class LLMClient:
     def generate_json(self, prompt: str) -> dict:
@@ -53,6 +54,39 @@ class GroqClient(LLMClient):
         content = content.strip()
         
         return json.loads(content)  # Return parsed dict
+
+
+class BedrockClient(LLMClient):
+    def __init__(self, model="us.anthropic.claude-sonnet-4-6", region="us-east-1"):
+        self.model = model
+        self.region = region
+        self.client = boto3.client("bedrock-runtime", region_name=self.region)
+
+    def generate_json(self, prompt: str) -> dict:
+        response = self.client.converse(
+            modelId=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            # Bedrock usually returns a content list of text blocks
+        )
+
+        content_blocks = response["output"]["message"]["content"]
+        full_text = "".join(block.get("text", "") for block in content_blocks)
+        full_text = full_text.strip()
+        if full_text.startswith("```json"):
+            full_text = full_text[7:].strip()
+        elif full_text.startswith("```"):
+            full_text = full_text[3:].strip()
+        if full_text.endswith("```"):
+            full_text = full_text[:-3].strip()
+
+        return json.loads(full_text)
 
 
 class GeminiClient(LLMClient):

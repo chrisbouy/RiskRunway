@@ -25,7 +25,7 @@ class Config:
     DATABASES = {
         'production': os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db'),
         'use_cases': os.environ.get('USE_CASE_DB_PATH') or os.path.join(Path(__file__).parent, 'data', 'use_cases.db'),
-        'test': '/tmp/ipfs_mapper_test.db'
+        'test': os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'e2e-ipfs-mapper.db')
     }
 
     # Email settings (using SendGrid HTTP API for both bug reports and broker submissions)
