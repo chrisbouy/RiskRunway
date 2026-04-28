@@ -194,7 +194,7 @@ Return this EXACT structure (all fields required, use null if not found):
     "insured": {
         "name": "string or null",
         "address": {
-            "street": "string or null",
+            "street": "string or null"(include suite or floor if shown),
             "city": "string or null",
             "state": "string or null",
             "zip": "string or null"
@@ -204,7 +204,7 @@ Return this EXACT structure (all fields required, use null if not found):
         "name": "string or null (company name)",
         "code": "string or null",
         "address": {
-            "street": "string or null",
+            "street": "string or null"(include suite or floor if shown),
             "city": "string or null",
             "state": "string or null",
             "zip": "string or null"
@@ -214,7 +214,7 @@ Return this EXACT structure (all fields required, use null if not found):
     "general_agent_or_wholesale_broker": {
         "name": "string or null (company name)",
         "address": {
-            "street": "string or null",
+            "street": "string or null"(include suite or floor if shown),
             "city": "string or null",
             "state": "string or null",
             "zip": "string or null"
@@ -223,7 +223,6 @@ Return this EXACT structure (all fields required, use null if not found):
         "fax": "string or null"
     },
     "quote_number": "string or null",
-    "account_number": "string or null",
     "policies": [
         {
             "coverage_type": "string or null (use standard term, not abbreviation)",
@@ -231,7 +230,7 @@ Return this EXACT structure (all fields required, use null if not found):
             "policy_number": "string or null",
             "effective_date": "string or null (YYYY-MM-DD format)",
             "expiration_date": "string or null (YYYY-MM-DD format)",
-            "policy_term": "string or null",
+            "policy_term": "number or null (number of months)",
             "annual_premium": "number or null",
             "tax": "number or null",
             "fee": "number or null",

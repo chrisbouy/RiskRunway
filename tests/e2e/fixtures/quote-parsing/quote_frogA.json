@@ -9,20 +9,20 @@
     }
   },
   "retail_agent": {
-    "name": null,
+    "name": "Paulin Insurance Associates LLC",
     "code": null,
     "address": {
-      "street": null,
-      "city": null,
-      "state": null,
-      "zip": null
+           "city": "Metairie",
+           "state": "LA",
+           "street": "4405 N I-10 Service Road W, Suite 200",
+           "zip": "70006"
     },
     "phone": null
   },
   "general_agent_or_wholesale_broker": {
     "name": "RT Specialty",
     "address": {
-      "street": "3850 N. CausewayBlvd.",
+      "street": "3850 N. Causeway Blvd., Suite 1150",
       "city": "Metairie",
       "state": "LA",
       "zip": "70002"
@@ -31,7 +31,6 @@
     "fax": null
   },
   "quote_number": "QT-08764231",
-  "account_number": null,
   "policies": [
     {
       "coverage_type": "Commercial Property",
@@ -39,7 +38,7 @@
       "policy_number": null,
       "effective_date": "2026-02-10",
       "expiration_date": "2027-02-10",
-      "policy_term": "1 year",
+      "policy_term": 12,
       "annual_premium": 4650,
       "tax": 242.5,
       "fee": 350,
