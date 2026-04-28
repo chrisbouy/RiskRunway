@@ -184,6 +184,7 @@ DOWN PAYMENT / FINANCING:
 
 NOTES:
 - If a phone number follows an address, it's likely a contact number for that entity. 
+- All numbers (except number of months in policy term) should have two decimal places (e.g., 254.50, not 254.5)
 ═══════════════════════════════════════════════════════════════
 OUTPUT JSON SCHEMA
 ═══════════════════════════════════════════════════════════════
@@ -520,25 +521,17 @@ def pass2_normalize_quote_data(layout_data):
     llm = get_llm_client()
 
     prompt = PASS2_NORMALIZATION_PROMPT + "\n\nExtracted Layout Data:\n" + json.dumps(layout_data)
-    # print(f"Prompt: {prompt}")
-
-    # Use the provider directly; Groq backoff wrapper is commented out for Bedrock usage.
-    # normalized_data = groq_request_with_backoff(lambda: llm.generate_json(prompt))
     normalized_data = llm.generate_json(prompt)
-    # print(f"Normalized data: {normalized_data}")
-    # print(f"Normalized data: {json.dumps(normalized_data, indent=2)}")
 
-    
-    # Parse response
-    # result_text = response.text.strip()
+    if isinstance(normalized_data, dict):
+        return normalized_data
+
     result_text = json.dumps(normalized_data)
-    # print(f"Result text: {result_text}")
-    
     if result_text.startswith("```json"):
         result_text = result_text[7:]
     if result_text.endswith("```"):
         result_text = result_text[:-3]
-    
+
     return json.loads(result_text.strip())
 
 def pass3_classify_intent(normalized_data, existing_quotes=None):
@@ -606,7 +599,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     # Pass 2: Normalize to JSON
     print("Pass 2 of two_pass_parser.process_quote_two_pass: Normalizing to JSON schema...")
     pass2_start = time.time()
-    normalized_data = pass2_normalize_quote_data(json.dumps(layout_data))
+    normalized_data = pass2_normalize_quote_data(layout_data)
     metadata['pass2_duration'] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
     print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")

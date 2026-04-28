@@ -9,7 +9,7 @@
     }
   },
   "retail_agent": {
-    "name": null,
+    "name": "HIS",
     "code": null,
     "address": {
       "street": null,
@@ -31,27 +31,26 @@
     "fax": null
   },
   "quote_number": "QT-08268470",
-  "account_number": null,
   "policies": [
     {
       "coverage_type": "General Liability",
-      "carrier": "SCOTTSDALE INSURANCE COMPANY",
+      "carrier": "Scottsdale Insurance Company",
       "policy_number": null,
       "effective_date": "2026-01-27",
       "expiration_date": "2027-01-27",
-      "policy_term": "1 year",
-      "annual_premium": 2946,
+      "policy_term": 12,
+      "annual_premium": 2946.00,
       "tax": 156.22,
-      "fee": 275,
+      "fee": 275.00,
       "broker_fee": null,
       "minimum_earned_percent": 25,
       "minimum_earned_amount": null
     }
   ],
   "totals": {
-    "total_premium": 2946,
+    "total_premium": 2946.00,
     "total_tax": 156.22,
-    "total_fee": 275,
+    "total_fee": 275.00,
     "total_broker_fee": null,
     "grand_total": 3377.22
   },

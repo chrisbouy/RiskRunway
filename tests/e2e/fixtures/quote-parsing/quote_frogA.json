@@ -39,20 +39,20 @@
       "effective_date": "2026-02-10",
       "expiration_date": "2027-02-10",
       "policy_term": 12,
-      "annual_premium": 4650,
-      "tax": 242.5,
-      "fee": 350,
+      "annual_premium": 4650.00,
+      "tax": 242.50,
+      "fee": 350.00,
       "broker_fee": null,
       "minimum_earned_percent": 100,
       "minimum_earned_amount": null
     }
   ],
   "totals": {
-    "total_premium": 4650,
-    "total_tax": 242.5,
-    "total_fee": 350,
+    "total_premium": 4650.00,
+    "total_tax": 242.50,
+    "total_fee": 350.00,
     "total_broker_fee": null,
-    "grand_total": 5242.5
+    "grand_total": 5242.50
   },
   "financing": {
     "down_payment": null,

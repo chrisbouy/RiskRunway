@@ -31,7 +31,6 @@
     "fax": null
   },
   "quote_number": "AMW00680083",
-  "account_number": null,
   "policies": [
     {
       "coverage_type": "Commercial Property",
@@ -39,19 +38,19 @@
       "policy_number": null,
       "effective_date": "2026-02-10",
       "expiration_date": "2027-02-10",
-      "policy_term": "1 year",
-      "annual_premium": 4809,
+      "policy_term": 12,
+      "annual_premium": 4809.00,
       "tax": 254.58,
-      "fee": 440,
+      "fee": 440.00,
       "broker_fee": null,
       "minimum_earned_percent": 25,
       "minimum_earned_amount": null
     }
   ],
   "totals": {
-    "total_premium": 4809,
+    "total_premium": 4809.00,
     "total_tax": 254.58,
-    "total_fee": 440,
+    "total_fee": 440.00,
     "total_broker_fee": null,
     "grand_total": 5503.58
   },
