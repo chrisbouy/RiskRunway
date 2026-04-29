@@ -21,6 +21,7 @@ from config import Config
 from app.database import Database, set_current_db
 from app.models import User, Submission, Quote, SubmissionStatus, QuoteStatus, UserRole
 from datetime import datetime, timedelta
+import json
 
 
 def init_database(db_name):
@@ -45,6 +46,7 @@ def seed_use_cases_db():
     
     db_path = Config.DATABASES['use_cases']
     db = Database(db_path=db_path)
+    db.init_db()
     session = db.get_session()
     
     try:
@@ -130,6 +132,140 @@ def seed_use_cases_db():
         session.close()
 
 
+def seed_production_db():
+    """Seed the production database with demo-ready data"""
+    print("Seeding production database with demo data...")
+    
+    db_path = Config.DATABASES['production']
+    db = Database(db_path=db_path)
+    db.init_db()
+    session = db.get_session()
+    try:
+        # Create demo admin user if not exists
+        demo_user = session.query(User).filter_by(username='demo_admin').first()
+        if not demo_user:
+            demo_user = User(
+                username='demo_admin',
+                full_name='Demo Admin',
+                role=UserRole.ADMIN,
+                is_active=True
+            )
+            demo_user.set_password('demo123')
+            session.add(demo_user)
+            session.commit()
+            print('✅ Created demo admin user (username: demo_admin, password: demo123)')
+
+        # Create demo brokers for the user
+        from app.models import Broker
+        brokers = [
+            {'name': 'Proton Brokerage', 'email': 'cbouy@protonmail.com'},
+            {'name': 'iCloud Brokerage', 'email': 'chris.bouy@icloud.com'}
+        ]
+        for broker_data in brokers:
+            existing = session.query(Broker).filter_by(email=broker_data['email'], user_id=demo_user.id).first()
+            if not existing:
+                new_broker = Broker(
+                    user_id=demo_user.id,
+                    name=broker_data['name'],
+                    email=broker_data['email'],
+                    is_portal=False,
+                    is_enabled=True,
+                    email_body=f"Hello {broker_data['name']},\n\nPlease provide your best terms for the attached submission.\n\nThanks,\nDemo Admin"
+                )
+                session.add(new_broker)
+                print(f"✅ Added broker {broker_data['email']}")
+
+        session.commit()
+
+        # Create demo submissions and quotes
+        demo_submissions = [
+            {
+                'insured_name': 'Bayview Apartments LLC',
+                'effective_date': (datetime.now() + timedelta(days=75)).strftime('%Y-%m-%d'),
+                'state': 'CA',
+                'status': SubmissionStatus.SENT_TO_FINANCE,
+                'status_label': 'Bound — effective in 75 days',
+                'quoted': [
+                    {
+                        'carrier_name': 'Pacific Underwriters',
+                        'raw_document_path': 'documents/demo/bayview_bound_quote.pdf',
+                        'extracted_json': json.dumps({'premium': 22540, 'term': '12 months', 'coverage': 'Commercial Property', 'broker': 'cbouy@protonmail.com'}),
+                        'status': QuoteStatus.CHOSEN,
+                        'quote_outcome': 'WON'
+                    }
+                ]
+            },
+            {
+                'insured_name': 'Redwood Timberworks LLC',
+                'effective_date': (datetime.now() + timedelta(days=22)).strftime('%Y-%m-%d'),
+                'state': 'OR',
+                'status': SubmissionStatus.IN_PROGRESS,
+                'status_label': 'New submission — 1 of 2 broker quotes received',
+                'quoted': [
+                    {
+                        'carrier_name': 'Cascade Mutual',
+                        'raw_document_path': 'documents/demo/redwood_quote_1.pdf',
+                        'extracted_json': json.dumps({'premium': 18750, 'coverage': 'General Liability', 'broker': 'chris.bouy@icloud.com'}),
+                        'status': QuoteStatus.RECEIVED,
+                        'quote_outcome': None
+                    }
+                ]
+            },
+            {
+                'insured_name': 'Beacon Logistics',
+                'effective_date': (datetime.now() + timedelta(days=14)).strftime('%Y-%m-%d'),
+                'state': 'NV',
+                'status': SubmissionStatus.IN_PROGRESS,
+                'status_label': 'Renewal — 1 of 2 broker quotes received',
+                'quoted': [
+                    {
+                        'carrier_name': 'Summit Renewal Partners',
+                        'raw_document_path': 'documents/demo/beacon_logistics_quote_1.pdf',
+                        'extracted_json': json.dumps({'premium': 18200, 'coverage': 'Commercial Property Renewal', 'broker': 'chris.bouy@icloud.com'}),
+                        'status': QuoteStatus.RECEIVED,
+                        'quote_outcome': None
+                    }
+                ]
+            }
+        ]
+
+        for submission_data in demo_submissions:
+            existing_submission = session.query(Submission).filter_by(insured_name=submission_data['insured_name']).first()
+            if existing_submission:
+                continue
+
+            submission = Submission(
+                insured_name=submission_data['insured_name'],
+                effective_date=submission_data['effective_date'],
+                state=submission_data['state'],
+                status=submission_data['status'],
+                status_label=submission_data['status_label'],
+                assigned_to=demo_user.id
+            )
+            session.add(submission)
+            session.flush()
+
+            for quote_data in submission_data['quoted']:
+                quote = Quote(
+                    submission_id=submission.id,
+                    carrier_name=quote_data['carrier_name'],
+                    raw_document_path=quote_data['raw_document_path'],
+                    extracted_json=quote_data['extracted_json'],
+                    status=quote_data['status'],
+                    quote_outcome=quote_data['quote_outcome']
+                )
+                session.add(quote)
+
+        session.commit()
+        print('✅ Production database seeded with demo submissions and brokers')
+    except Exception as e:
+        session.rollback()
+        print(f'❌ Error seeding production database: {e}')
+        raise
+    finally:
+        session.close()
+
+
 def clear_database(db_name):
     """Clear all data from a database"""
     if db_name not in Config.DATABASES:
@@ -178,12 +314,13 @@ Usage:
 Commands:
     list                    - List all available databases
     init <db_name>          - Initialize a database
-    seed use_cases          - Seed use_cases database with test scenarios
+    seed <db_name>          - Seed a database with demo/test data
     clear <db_name>         - Clear and reinitialize a database
     
 Examples:
     python utils/db_manager.py list
-    python utils/db_manager.py init use_cases
+    python utils/db_manager.py init dev
+    python utils/db_manager.py seed production
     python utils/db_manager.py seed use_cases
     python utils/db_manager.py clear test
         """)
@@ -208,6 +345,8 @@ Examples:
         db_name = sys.argv[2]
         if db_name == 'use_cases':
             seed_use_cases_db()
+        elif db_name == 'production':
+            seed_production_db()
         else:
             print(f"❌ No seed data available for {db_name}")
     

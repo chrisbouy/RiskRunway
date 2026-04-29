@@ -15,7 +15,7 @@ import pytesseract
 from google import genai
 
 import settings
-from app.parsers.llm_parsers import GeminiClient, GroqClient
+from app.parsers.llm_parsers import BedrockClient, GeminiClient, GroqClient
 from app.parsers.two_pass_parser import groq_request_with_backoff, _is_text_garbage
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -83,6 +83,8 @@ PASS2_APPLICATION_PROMPT = dedent(
 def _get_llm_client():
     if settings.LLM_PROVIDER == "groq":
         return GroqClient(settings.GROQ_API_KEY)
+    if settings.LLM_PROVIDER == "bedrock":
+        return BedrockClient()
     if settings.LLM_PROVIDER == "gemini":
         return GeminiClient(genai.Client(api_key=settings.GEMINI_API_KEY), DEFAULT_MODEL)
     raise ValueError("Unknown LLM provider")

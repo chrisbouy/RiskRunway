@@ -59,7 +59,7 @@ class Database:
 
 # Global database instances
 _db = None
-_current_db_name = 'production'  # Default database
+_current_db_name = 'dev'  # Default local development database
 _db_instances = {}  # Cache for database instances
 
 

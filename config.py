@@ -18,12 +18,14 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 
     # Database settings
-    DATABASE_PATH = os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db')
+    # Default local development database
+    DATABASE_PATH = os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'dev.db')
     SQLALCHEMY_EXPIRE_ON_COMMIT = False
 
     # Multiple database support
     DATABASES = {
-        'production': os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db'),
+        'dev': os.environ.get('DEV_DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'dev.db'),
+        'production': os.environ.get('PRODUCTION_DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db'),
         'use_cases': os.environ.get('USE_CASE_DB_PATH') or os.path.join(Path(__file__).parent, 'data', 'use_cases.db'),
         'test': os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'e2e-ipfs-mapper.db')
     }
