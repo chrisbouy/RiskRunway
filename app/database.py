@@ -59,7 +59,7 @@ class Database:
 
 # Global database instances
 _db = None
-_current_db_name = 'dev'  # Default local development database
+_current_db_name = os.environ.get('FLASK_ENV', 'dev') == 'production' and 'production' or 'dev'
 _db_instances = {}  # Cache for database instances
 
 
