@@ -599,13 +599,10 @@
             <!-- Spacer to push bottom items down -->
             <div style="flex: 1;"></div>
 
-            <!-- Database & User Section at Bottom -->
+            <!-- Database selector (read-only in production) -->
             <div class="left-divider"></div>
-            <select id="databaseSelect" class="left-control" style="margin-bottom: 8px;">
-                <option value="dev">Development DB</option>
-                <option value="production">Production DB</option>
-                <option value="use_cases">Use Cases DB</option>
-                <option value="test">Test DB</option>
+            <select id="databaseSelect" class="left-control" style="margin-bottom: 8px;" title="Current database">
+                <option value="production">Production Database</option>
             </select>
 
             <div class="user-block">

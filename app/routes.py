@@ -11,6 +11,7 @@ import uuid
 import shutil
 from functools import wraps
 from werkzeug.utils import secure_filename
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.parsers.two_pass_parser import process_quote_two_pass
 from app.parsers.application_parser import process_application_two_pass
@@ -34,6 +35,20 @@ from app.oauth_services import get_oauth_service
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
+
+# Health check endpoint for load balancers
+@bp.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint for ALB / Kubernetes probes"""
+    try:
+        from app.database import get_db
+        db = get_db()
+        with db.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return jsonify({'status': 'healthy', 'database': 'connected'}), 200
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+
 
 # Server-side OAuth flow cache — avoids Flask cookie 4KB size limit
 # The MSAL flow object (with PKCE verifier) is too large for cookie-based sessions

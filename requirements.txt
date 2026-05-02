@@ -29,4 +29,5 @@ PyJWT
 pyautogui
 pynput
 pyperclip
-requests
+psycopg2-binary
+gunicorn

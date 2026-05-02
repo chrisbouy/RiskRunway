@@ -8,27 +8,20 @@ load_dotenv()
 class Config:
     # Flask settings
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-123'
-    # Session cookie settings - required for OAuth cross-site redirects
     SESSION_COOKIE_SAMESITE = 'Lax'
-    SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+    SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_HTTPONLY = True
+    
     # File upload settings
     UPLOAD_FOLDER = os.path.join(Path(__file__).parent, 'uploads')
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 
-    # Database settings
-    # Default local development database
+    # Database — PostgreSQL via DATABASE_URL (required in production)
+    # Local development can still use SQLite by setting DATABASE_PATH
     DATABASE_PATH = os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'dev.db')
-    SQLALCHEMY_EXPIRE_ON_COMMIT = False
-
-    # Multiple database support
-    DATABASES = {
-        'dev': os.environ.get('DEV_DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'dev.db'),
-        'production': os.environ.get('PRODUCTION_DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'ipfs_mapper.db'),
-        'use_cases': os.environ.get('USE_CASE_DB_PATH') or os.path.join(Path(__file__).parent, 'data', 'use_cases.db'),
-        'test': os.environ.get('DATABASE_PATH') or os.path.join(Path(__file__).parent, 'data', 'e2e-ipfs-mapper.db')
-    }
+    
+# ... rest of config (email, oauth, storage, rules) remains unchanged below ...
 
     # Email settings (using SendGrid HTTP API for both bug reports and broker submissions)
     BUG_REPORT_RECIPIENT = os.environ.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
