@@ -63,7 +63,8 @@ class Database:
 
 # Global database instances, keyed by configured database name.
 _db_cache = {}
-_current_db_name = ContextVar('current_db_name', default='production')
+_current_db_name = ContextVar('current_db_name', default='development')
+_LOCAL_DATABASE_NAMES = ('development', 'use_cases', 'test')
 
 
 def _is_truthy(value):
@@ -111,8 +112,11 @@ def _derive_database_url(base_url, suffix):
 def get_configured_databases():
     """Return Postgres database targets configured for this environment."""
     production_url = os.environ.get('DATABASE_URL')
+
+    if is_production_environment():
+        return {'production': production_url} if production_url else {}
+
     databases = {
-        'production': production_url,
         'development': (
             os.environ.get('DEVELOPMENT_DATABASE_URL')
             or os.environ.get('DEV_DATABASE_URL')
@@ -241,7 +245,7 @@ def get_current_db_name():
     if not is_database_switching_enabled():
         return 'production'
     db_name = _current_db_name.get()
-    return db_name if db_name in get_available_databases() else 'production'
+    return db_name if db_name in get_available_databases() else 'development'
 
 
 def set_current_db(db_name):
@@ -266,7 +270,8 @@ def get_available_databases():
     """Get list of available database names."""
     if not is_database_switching_enabled():
         return ['production']
-    return list(get_configured_databases().keys())
+    configured = get_configured_databases()
+    return [name for name in _LOCAL_DATABASE_NAMES if name in configured]
 
 
 # Helper functions for common operations

@@ -132,6 +132,10 @@
             border-color: var(--blue);
         }
 
+        #databaseSwitcher {
+            display: none;
+        }
+
         #databaseSelect:disabled {
             opacity: 0.75;
             cursor: default;
@@ -604,11 +608,12 @@
             <!-- Spacer to push bottom items down -->
             <div style="flex: 1;"></div>
 
-            <!-- Database selector (read-only in production) -->
-            <div class="left-divider"></div>
-            <select id="databaseSelect" class="left-control" style="margin-bottom: 8px;" title="Current database">
-                <option value="production">Production Database</option>
-            </select>
+            <div id="databaseSwitcher">
+                <div class="left-divider"></div>
+                <select id="databaseSelect" class="left-control" style="margin-bottom: 8px;" title="Current database">
+                    <option value="development">Development Database</option>
+                </select>
+            </div>
 
             <div class="user-block">
                 <div class="user-label">Logged in as</div>
@@ -952,8 +957,16 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    const dbSwitcher = document.getElementById('databaseSwitcher');
                     const dbSelect = document.getElementById('databaseSelect');
-                    const databases = data.available_databases || ['production'];
+                    const databases = data.available_databases || ['development'];
+
+                    if (!data.switching_enabled) {
+                        dbSwitcher.style.display = 'none';
+                        return;
+                    }
+
+                    dbSwitcher.style.display = '';
                     dbSelect.innerHTML = '';
 
                     databases.forEach(dbName => {
@@ -964,9 +977,9 @@
                     });
 
                     dbSelect.value = data.current_database;
-                    dbSelect.disabled = !data.switching_enabled || databases.length <= 1;
+                    dbSelect.disabled = databases.length <= 1;
                     dbSelect.title = dbSelect.disabled
-                        ? 'Production database is locked in this environment'
+                        ? 'Only one local database is configured'
                         : 'Select database';
                 }
             } catch (error) {

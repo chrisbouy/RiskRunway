@@ -46,10 +46,10 @@ def select_database_for_request():
         set_current_db('production')
         return
 
-    db_name = session.get('current_database', 'production')
+    db_name = session.get('current_database', 'development')
     if not set_current_db(db_name):
-        session['current_database'] = 'production'
-        set_current_db('production')
+        session['current_database'] = 'development'
+        set_current_db('development')
 
 # Health check endpoint for load balancers
 @bp.route('/health', methods=['GET'])
