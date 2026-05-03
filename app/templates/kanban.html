@@ -132,6 +132,11 @@
             border-color: var(--blue);
         }
 
+        #databaseSelect:disabled {
+            opacity: 0.75;
+            cursor: default;
+        }
+
         .left-checkbox-row {
             display: flex;
             align-items: center;
@@ -937,6 +942,10 @@
         }
 
         // Database switching
+        function formatDatabaseLabel(dbName) {
+            return `${dbName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} Database`;
+        }
+
         async function loadCurrentDatabase() {
             try {
                 const response = await fetch('/api/database/current');
@@ -944,7 +953,21 @@
 
                 if (data.success) {
                     const dbSelect = document.getElementById('databaseSelect');
+                    const databases = data.available_databases || ['production'];
+                    dbSelect.innerHTML = '';
+
+                    databases.forEach(dbName => {
+                        const option = document.createElement('option');
+                        option.value = dbName;
+                        option.textContent = formatDatabaseLabel(dbName);
+                        dbSelect.appendChild(option);
+                    });
+
                     dbSelect.value = data.current_database;
+                    dbSelect.disabled = !data.switching_enabled || databases.length <= 1;
+                    dbSelect.title = dbSelect.disabled
+                        ? 'Production database is locked in this environment'
+                        : 'Select database';
                 }
             } catch (error) {
                 console.error('Error loading current database:', error);
@@ -963,14 +986,17 @@
 
                 if (data.success) {
                     console.log(`Switched to ${dbName} database`);
+                    await loadCurrentDatabase();
                     // Reload submissions from new database
                     await loadSubmissions();
                 } else {
                     alert(`Error switching database: ${data.error}`);
+                    await loadCurrentDatabase();
                 }
             } catch (error) {
                 console.error('Error switching database:', error);
                 alert('Error switching database');
+                await loadCurrentDatabase();
             }
         }
 

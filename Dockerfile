@@ -11,8 +11,6 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libssl-dev \
     libffi-dev \
-    rust \
-    cargo \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -27,12 +25,10 @@ FROM python:3.11-slim
 
 # Install runtime dependencies only (no compilers)
 RUN apt-get update && apt-get install -y \
-    libpq1 \
-    # For tesseract OCR if used
+    libpq5 \
     tesseract-ocr \
-    libmagic1 \
-    # For image processing
-    libjpeg62-turbo \
+    poppler-utils \
+    libjpeg62 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security

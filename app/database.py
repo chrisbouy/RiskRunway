@@ -1,6 +1,8 @@
 # app/database.py
 import os
+from contextvars import ContextVar
 from sqlalchemy import create_engine, event, text, inspect
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
 from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment, ConnectedAccount, UserRole, SubmissionStatus, QuoteStatus, EmailProvider, ConnectedAccountStatus, DocumentType
@@ -59,17 +61,88 @@ class Database:
         self.Session.remove()
 
 
-# Global database instance
-_db = None
+# Global database instances, keyed by configured database name.
+_db_cache = {}
+_current_db_name = ContextVar('current_db_name', default='production')
+
+
+def _is_truthy(value):
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _is_falsey(value):
+    return str(value or '').strip().lower() in ('0', 'false', 'no', 'off')
+
+
+def is_production_environment():
+    """Return True when the app is running in a deployed/production environment."""
+    env_name = (
+        os.environ.get('FLASK_ENV')
+        or os.environ.get('APP_ENV')
+        or os.environ.get('ENVIRONMENT')
+        or ''
+    ).strip().lower()
+    return env_name in ('production', 'prod') or _is_truthy(os.environ.get('RENDER'))
+
+
+def is_database_switching_enabled():
+    """Database switching is available in dev/local only, unless explicitly disabled."""
+    if is_production_environment():
+        return False
+    return not _is_falsey(os.environ.get('ALLOW_DATABASE_SWITCHING'))
+
+
+def _derive_database_url(base_url, suffix):
+    """Derive a sibling Postgres database URL by appending a suffix to the DB name."""
+    if not base_url:
+        return None
+
+    try:
+        url = make_url(base_url)
+    except Exception:
+        return None
+
+    if not url.get_backend_name().startswith('postgresql') or not url.database:
+        return None
+
+    return url.set(database=f"{url.database}_{suffix}").render_as_string(hide_password=False)
+
+
+def get_configured_databases():
+    """Return Postgres database targets configured for this environment."""
+    production_url = os.environ.get('DATABASE_URL')
+    databases = {
+        'production': production_url,
+        'development': (
+            os.environ.get('DEVELOPMENT_DATABASE_URL')
+            or os.environ.get('DEV_DATABASE_URL')
+            or os.environ.get('LOCAL_DATABASE_URL')
+            or _derive_database_url(production_url, 'dev')
+        ),
+        'use_cases': (
+            os.environ.get('USE_CASES_DATABASE_URL')
+            or os.environ.get('USE_CASE_DATABASE_URL')
+            or _derive_database_url(production_url, 'use_cases')
+        ),
+        'test': (
+            os.environ.get('TEST_DATABASE_URL')
+            or _derive_database_url(production_url, 'test')
+        ),
+    }
+    return {name: url for name, url in databases.items() if url}
 
 
 def get_db():
-    """Get the database instance (singleton)"""
-    global _db
-    if _db is None:
-        _db = Database()
-        _db.init_db()
-    return _db
+    """Get the selected database instance for this request/context."""
+    db_name = get_current_db_name()
+    db_url = get_configured_databases().get(db_name)
+    if not db_url:
+        raise ValueError(f"Database is not configured: {db_name}")
+
+    if db_name not in _db_cache:
+        _db_cache[db_name] = Database(db_url)
+        _db_cache[db_name].init_db()
+    return _db_cache[db_name]
 
 
 def get_session():
@@ -163,26 +236,37 @@ def _add_missing_columns(conn, inspector):
             print("Added column: email_messages.connected_account_id")
 
 
-# Database switching functions (kept for UI compatibility; always on production)
 def get_current_db_name():
-    """Get the name of the currently active database (always 'production')"""
-    return 'production'
+    """Get the name of the currently active database."""
+    if not is_database_switching_enabled():
+        return 'production'
+    db_name = _current_db_name.get()
+    return db_name if db_name in get_available_databases() else 'production'
 
 
 def set_current_db(db_name):
     """
-    Switch to a different database.
-    In PostgreSQL-only mode, this is a no-op (always on production).
+    Select a configured Postgres database for this request/context.
+    Production environments are always pinned to production.
     
     Returns:
         bool: True if successful, False if database name is invalid
     """
+    if not is_database_switching_enabled():
+        return db_name == 'production'
+
+    if db_name not in get_available_databases():
+        return False
+
+    _current_db_name.set(db_name)
     return True
 
 
 def get_available_databases():
-    """Get list of available database names (only production)"""
-    return ['production']
+    """Get list of available database names."""
+    if not is_database_switching_enabled():
+        return ['production']
+    return list(get_configured_databases().keys())
 
 
 # Helper functions for common operations

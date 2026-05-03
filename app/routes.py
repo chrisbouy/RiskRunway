@@ -25,7 +25,8 @@ from app.database import (
     get_session,
     get_current_db_name,
     set_current_db,
-    get_available_databases
+    get_available_databases,
+    is_database_switching_enabled
 )
 from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus, AmsExportJob
 from app.email_scraper import EmailScraper  # IMAP-based scraping (active)
@@ -35,6 +36,20 @@ from app.oauth_services import get_oauth_service
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('main', __name__)
+
+
+@bp.before_app_request
+def select_database_for_request():
+    """Apply the session's selected database before route handlers run."""
+    if not is_database_switching_enabled():
+        session.pop('current_database', None)
+        set_current_db('production')
+        return
+
+    db_name = session.get('current_database', 'production')
+    if not set_current_db(db_name):
+        session['current_database'] = 'production'
+        set_current_db('production')
 
 # Health check endpoint for load balancers
 @bp.route('/health', methods=['GET'])
@@ -381,7 +396,8 @@ def get_current_database():
         return jsonify({
             'success': True,
             'current_database': get_current_db_name(),
-            'available_databases': get_available_databases()
+            'available_databases': get_available_databases(),
+            'switching_enabled': is_database_switching_enabled()
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
