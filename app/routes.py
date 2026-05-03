@@ -109,9 +109,8 @@ def _build_storage_key(submission_id, document_type, filename, user_id=None, ins
     else:
         base = ""
     
-    if insured_name:
-        safe_insured = secure_filename(insured_name).replace(' ', '_')
-        # base = f"{base}/{safe_insured}" if base else safe_insured
+    safe_insured = secure_filename(insured_name or 'unknown_insured').replace(' ', '_')
+    # base = f"{base}/{safe_insured}" if base else safe_insured
     
     print(f"base: {base}, safe_insured: {safe_insured}, safe_name: {safe_name}")
     return f"{base}{safe_insured}/{document_type}_{safe_name}"
@@ -1634,7 +1633,7 @@ def ingest_quote_to_submission(email_id, submission_id):
             # Get PDF attachments - query separately to avoid session issues
             attachments = db_session.query(EmailAttachment).filter(
                 EmailAttachment.email_id == email_id,
-                EmailAttachment.filename.like('%.pdf')
+                EmailAttachment.filename.ilike('%.pdf')
             ).all()
             logger.info(f"Found {len(attachments)} PDF attachments for email_id {email_id}")
             if not attachments:
@@ -1674,42 +1673,57 @@ def ingest_quote_to_submission(email_id, submission_id):
                     if not effective_date:
                         effective_date = submission.effective_date
                     logger.info(f"Parsed quote data for email_id {email_id}: carrier={carrier_name}, effective_date={effective_date}")
-                    # Create quote record
-                    quote_id = create_quote(
+                    # Create quote/document records in this same session. get_session()
+                    # is scoped, so calling helpers that close their own session here
+                    # can detach the EmailAttachment objects still being processed.
+                    quote = Quote(
                         submission_id=submission_id,
                         carrier_name=carrier_name,
                         raw_document_path=filepath,
                         extracted_json=json.dumps(parsed_data),
                         pass1_layout_json=json.dumps(layout_data),
-                        user=session.get('username')
+                        status=QuoteStatus.RECEIVED
                     )
+                    db_session.add(quote)
+                    db_session.flush()
+                    quote_id = quote.id
+
+                    db_session.add(AuditLog(
+                        entity_type='quote',
+                        entity_id=quote_id,
+                        submission_id=submission_id,
+                        quote_id=quote_id,
+                        action='uploaded',
+                        user=session.get('username'),
+                        details=f"Uploaded quote from {carrier_name or 'unknown carrier'}"
+                    ))
                     logger.info(f"Created quote record with id {quote_id} for email_id {email_id}")
-                    # Create document record - need to get a new session
-                    quote_session = get_session()
-                    try:
-                        logger.info(f"Uploading quote document for quote_id {quote_id}, submission_id {submission_id}")
-                        quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, filename, session.get('user_id'))
-                        storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att.content_type)
-                        doc = Document(
-                            submission_id=submission_id,
-                            quote_id=quote_id,
-                            document_type=DocumentType.QUOTE,
-                            carrier=carrier_name,
-                            term_key=effective_date,
-                            version=1,
-                            is_active=True,
-                            storage_provider=storage_provider,
-                            storage_key=storage_key,
-                            original_filename=filename,
-                            content_type=att.content_type,
-                            size_bytes=att.size_bytes,
-                            uploaded_by=session.get('username')
-                        )
-                        logger.info(f"Creating document record for quote_id {quote_id}, submission_id {submission_id}")
-                        quote_session.add(doc)
-                        quote_session.commit()
-                    finally:
-                        quote_session.close()
+                    logger.info(f"Uploading quote document for quote_id {quote_id}, submission_id {submission_id}")
+                    quote_doc_key = _build_storage_key(
+                        submission_id,
+                        DocumentType.QUOTE.name,
+                        filename,
+                        session.get('user_id'),
+                        submission.insured_name
+                    )
+                    storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att.content_type)
+                    doc = Document(
+                        submission_id=submission_id,
+                        quote_id=quote_id,
+                        document_type=DocumentType.QUOTE,
+                        carrier=carrier_name,
+                        term_key=effective_date,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider,
+                        storage_key=storage_key,
+                        original_filename=filename,
+                        content_type=att.content_type,
+                        size_bytes=att.size_bytes,
+                        uploaded_by=session.get('username')
+                    )
+                    logger.info(f"Creating document record for quote_id {quote_id}, submission_id {submission_id}")
+                    db_session.add(doc)
                     
                     created_quotes.append({
                         'quote_id': quote_id,
@@ -1723,15 +1737,14 @@ def ingest_quote_to_submission(email_id, submission_id):
                     except Exception as e:
                         print(f"Warning: Could not delete temp file {filepath}: {e}")
                         
-                    # Log action
-                    log_action(
+                    db_session.add(AuditLog(
                         entity_type='quote',
                         entity_id=quote_id,
                         action='email_quote_ingested',
                         submission_id=submission_id,
                         quote_id=quote_id,
                         details=json.dumps({'email_id': email_id, 'filename': filename})
-                    )
+                    ))
                     
                 except Exception as e:
                     print(f"Error processing quote {att.filename}: {e}")
