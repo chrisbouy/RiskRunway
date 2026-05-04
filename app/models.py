@@ -112,7 +112,7 @@ class Submission(Base):
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="submission", cascade="all, delete-orphan")
-    audit_logs = relationship("AuditLog", back_populates="submission", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="submission", passive_deletes=True)
     assigned_user = relationship("User", back_populates="assigned_submissions")
 
     def __repr__(self):
@@ -172,7 +172,7 @@ class Quote(Base):
     # Relationships
     submission = relationship("Submission", back_populates="quotes")
     documents = relationship("Document", back_populates="quote", cascade="all, delete-orphan")
-    audit_logs = relationship("AuditLog", back_populates="quote", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="quote", passive_deletes=True)
 
     def __repr__(self):
         return f"<Quote(id={self.id}, submission_id={self.submission_id}, carrier='{self.carrier_name}')>"
@@ -211,8 +211,8 @@ class AuditLog(Base):
     details = Column(Text, nullable=True)  # Optional JSON details
     
     # Optional foreign keys for easier querying
-    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=True, index=True)
-    quote_id = Column(Integer, ForeignKey('quotes.id'), nullable=True, index=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id', ondelete='SET NULL'), nullable=True, index=True)
+    quote_id = Column(Integer, ForeignKey('quotes.id', ondelete='SET NULL'), nullable=True, index=True)
     
     # Relationships
     submission = relationship("Submission", back_populates="audit_logs")

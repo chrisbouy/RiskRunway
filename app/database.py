@@ -194,6 +194,7 @@ def _ensure_schema_updates(engine):
         
         # Add any missing columns
         _add_missing_columns(conn, inspector)
+        _ensure_audit_log_delete_constraints(conn, inspector)
 
 
 def _add_missing_columns(conn, inspector):
@@ -238,6 +239,49 @@ def _add_missing_columns(conn, inspector):
         if 'connected_account_id' not in email_columns:
             conn.execute(text("ALTER TABLE email_messages ADD COLUMN connected_account_id INTEGER"))
             print("Added column: email_messages.connected_account_id")
+
+
+def _ensure_audit_log_delete_constraints(conn, inspector):
+    """Keep audit history when its submission or quote is deleted."""
+    table_names = inspector.get_table_names()
+    if 'audit_logs' not in table_names:
+        return
+
+    expected_constraints = {
+        'submission_id': 'submissions',
+        'quote_id': 'quotes',
+    }
+    foreign_keys = inspector.get_foreign_keys('audit_logs')
+
+    for column_name, referred_table in expected_constraints.items():
+        matching_fk = next(
+            (
+                fk for fk in foreign_keys
+                if fk.get('constrained_columns') == [column_name]
+                and fk.get('referred_table') == referred_table
+            ),
+            None
+        )
+        if not matching_fk:
+            continue
+
+        options = matching_fk.get('options') or {}
+        if str(options.get('ondelete') or '').upper() == 'SET NULL':
+            continue
+
+        constraint_name = matching_fk.get('name')
+        if not constraint_name:
+            continue
+
+        conn.execute(text(f'ALTER TABLE audit_logs DROP CONSTRAINT "{constraint_name}"'))
+        conn.execute(text(
+            f'ALTER TABLE audit_logs '
+            f'ADD CONSTRAINT "{constraint_name}" '
+            f'FOREIGN KEY ({column_name}) '
+            f'REFERENCES {referred_table}(id) '
+            f'ON DELETE SET NULL'
+        ))
+        print(f"Updated constraint: audit_logs.{column_name} ON DELETE SET NULL")
 
 
 def get_current_db_name():

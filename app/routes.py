@@ -2395,14 +2395,14 @@ def delete_submission(submission_id):
         # Delete the submission (cascade will delete quotes due to relationship)
         db_session.delete(submission)
 
-        # Log the deletion
-        log_action(
+        # Keep a deletion audit entry without an FK to the row being removed.
+        db_session.add(AuditLog(
             entity_type='submission',
             entity_id=submission_id,
             action='deleted',
-            submission_id=submission_id,
+            submission_id=None,
             details=f"Deleted submission for {insured_name}"
-        )
+        ))
 
         db_session.commit()
         db_session.close()
@@ -2452,14 +2452,14 @@ def delete_quote(quote_id):
 
         # Delete the quote (cascade will delete documents due to relationship)
         db_session.delete(quote)
-        log_action(
+        db_session.add(AuditLog(
             entity_type='quote',
             entity_id=quote_id,
             action='deleted',
             submission_id=submission_id,
-            quote_id=quote_id,
+            quote_id=None,
             details="Deleted quote and associated documents"
-        )
+        ))
 
         db_session.commit()
         db_session.close()
