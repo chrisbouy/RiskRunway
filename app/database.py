@@ -156,8 +156,7 @@ def get_session():
 
 def init_db():
     """Initialize the database (create tables)"""
-    db = get_db()
-    db.init_db()
+    get_db()
 
 
 def _ensure_schema_updates(engine):

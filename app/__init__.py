@@ -1,5 +1,5 @@
 # app/__init__.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from config import Config
 import traceback
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import atexit
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
+from werkzeug.exceptions import HTTPException
 
 def create_app():
     app = Flask(__name__)
@@ -171,9 +172,23 @@ def create_app():
         
         print(f"[EMAIL SCRAPER] Polling scheduler started - runs every {app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)} minutes")
 
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(e):
+        """Let normal HTTP errors behave normally, without noisy tracebacks."""
+        if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
+            return jsonify({
+                'success': False,
+                'error': e.description
+            }), e.code
+
+        return e
+
     # Global error handler to return JSON instead of HTML
     @app.errorhandler(Exception)
     def handle_exception(e):
+        if isinstance(e, HTTPException):
+            return handle_http_exception(e)
+
         # Log the full traceback
         print(f"[FLASK ERROR] Unhandled exception: {type(e).__name__}: {str(e)}")
         traceback.print_exc()

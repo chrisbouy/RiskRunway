@@ -955,18 +955,22 @@
             try {
                 const response = await fetch('/api/database/current');
                 const data = await response.json();
-
+                console.log('Current database info:', data);
                 if (data.success) {
                     const dbSwitcher = document.getElementById('databaseSwitcher');
                     const dbSelect = document.getElementById('databaseSelect');
                     const databases = data.available_databases || ['development'];
+
+                    if (!dbSwitcher || !dbSelect) {
+                        return;
+                    }
 
                     if (!data.switching_enabled) {
                         dbSwitcher.style.display = 'none';
                         return;
                     }
 
-                    dbSwitcher.style.display = '';
+                    dbSwitcher.style.display = 'block';
                     dbSelect.innerHTML = '';
 
                     databases.forEach(dbName => {
