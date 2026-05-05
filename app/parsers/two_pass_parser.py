@@ -20,7 +20,6 @@ import settings
 import pdfplumber
 import pytesseract
 
-DEFAULT_MODEL = "gemini-2.5-flash"
 
 # ============================================================================
 # PASS 1: OCR and Layout Extraction
@@ -534,53 +533,6 @@ def pass2_normalize_quote_data(layout_data):
 
     return json.loads(result_text.strip())
 
-def pass3_classify_intent(normalized_data, existing_quotes=None):
-    """
-    Pass 3: Classify quote intent and determine comparison strategy
-
-    Args:
-        normalized_data: Output from pass2_normalize_data
-        existing_quotes: List of existing quote data in the submission (optional)
-
-    Returns:
-        dict: Intent classification data
-    """
-    # client = genai.Client(api_key=settings.GEMINI_API_KEY)
-
-    # # Build context about existing quotes
-    context = {
-        "new_quote": normalized_data,
-        "existing_quotes": existing_quotes or []
-    }
-
-    # # Create prompt with context
-    # prompt = PASS3_INTENT_PROMPT + "\n\nContext:\n" + json.dumps(context, indent=2)
-
-    # response = client.models.generate_content(
-    #     model=DEFAULT_MODEL,
-    #     contents=prompt,
-    #     config=types.GenerateContentConfig(
-    #         temperature=0.1,
-    #         response_mime_type="application/json"
-    #     )
-    # )
-    # llm = GroqClient(api_key=settings.GROQ_API_KEY)
-    llm = get_llm_client()
-
-    prompt = PASS3_INTENT_PROMPT + "\n\nContext:\n" + json.dumps(context, indent=2)
-
-    normalized_data = llm.generate_json(prompt)
-
-    # Parse response
-    # result_text = response.text.strip()
-    result_text = json.dumps(normalized_data)
-    if result_text.startswith("```json"):
-        result_text = result_text[7:]
-    if result_text.endswith("```"):
-        result_text = result_text[:-3]
-
-    return json.loads(result_text.strip())
-
 def process_quote_two_pass(pdf_path, existing_quotes=None):
 
     import time
@@ -603,14 +555,6 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     metadata['pass2_duration'] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
     print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
-
-    # Pass 3: Classify intent
-    # print("Pass 3: Classifying quote intent...")
-    # pass3_start = time.time()
-    # intent_data = pass3_classify_intent(normalized_data, existing_quotes)
-    # metadata['pass3_duration'] = time.time() - pass3_start
-    # print(f"  ✓ Pass 3 complete ({metadata['pass3_duration']:.2f}s)")
-    # print(f"  Pass 3 data: {json.dumps(intent_data, indent=2)}")
 
     metadata['total_duration'] = time.time() - start_time
     print(f"✓ All quote passes complete ({metadata['total_duration']:.2f}s)")

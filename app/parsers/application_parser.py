@@ -101,20 +101,16 @@ def _ocr_page_with_fallback(page):
         return ""
 
 
-def pass1_extract_application_layout(pdf_path):
-    import gc
+def pass1_extract_application_layout(pdf_path, max_pages=3):
     pages_data = []
-
-    # First, find the last relevant page to avoid processing useless pages
-    last_page_to_process = _find_last_relevant_page(pdf_path)
-
+    import gc
     with pdfplumber.open(pdf_path) as pdf:
-        for page_num, page in enumerate(pdf.pages, start=1):
-            # Skip pages after financial data
-            if page_num > last_page_to_process:
-                print(f"  Skipping page {page_num} (after financial data)")
-                continue
+        pages_to_process = min(max_pages, len(pdf.pages))
+        print(f"  Processing first {pages_to_process} pages...")
 
+        for page_num, page in enumerate(pdf.pages, start=1):
+            if page_num > pages_to_process:
+                break
             print(f"  Processing page {page_num}...")
 
             # Try text extraction first (for digital PDFs)
@@ -284,7 +280,7 @@ def process_application_two_pass(pdf_path):
     # Pass 1: Extract layout and OCR
     print("Pass 1 of application_parser.process_application_two_pass: Extracting layout and OCR...")
     pass1_start = time.time()
-    layout = pass1_extract_application_layout(pdf_path)
+    layout = pass1_extract_application_layout(pdf_path, max_pages=3)
     metadata["pass1_duration"] = time.time() - pass1_start
     print(f"  ✓ Pass 1 (application) complete ({metadata['pass1_duration']:.2f}s)")
     print(f"  Pass 1 data: {json.dumps(layout, indent=2)}")
