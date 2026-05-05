@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import settings
 from app.parsers import two_pass_parser
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -111,6 +112,29 @@ class TestTwoPassParser(unittest.TestCase):
         mock_pass1.assert_called_once_with(str(fake_pdf_path))
         self.assertEqual(result['pass1_layout'], fake_layout)
         self.assertEqual(result['pass2_normalized'], fake_normalized)
+
+    def test_get_llm_client_uses_groq_when_configured(self):
+        with patch.object(settings, 'LLM_PROVIDER', 'groq'), \
+             patch.object(settings, 'GROQ_API_KEY', 'test-groq-key'), \
+             patch.object(settings, 'GROQ_MODEL', 'test-groq-model'), \
+             patch.object(two_pass_parser, 'GroqClient') as mock_groq_client:
+            client = two_pass_parser.get_llm_client()
+
+        mock_groq_client.assert_called_once_with('test-groq-key', model='test-groq-model')
+        self.assertEqual(client, mock_groq_client.return_value)
+
+    def test_get_llm_client_keeps_bedrock_available(self):
+        with patch.object(settings, 'LLM_PROVIDER', 'bedrock'), \
+             patch.object(settings, 'BEDROCK_MODEL', 'test-bedrock-model'), \
+             patch.object(settings, 'BEDROCK_REGION', 'test-region'), \
+             patch.object(two_pass_parser, 'BedrockClient') as mock_bedrock_client:
+            client = two_pass_parser.get_llm_client()
+
+        mock_bedrock_client.assert_called_once_with(
+            model='test-bedrock-model',
+            region='test-region'
+        )
+        self.assertEqual(client, mock_bedrock_client.return_value)
 
 
 if __name__ == '__main__':

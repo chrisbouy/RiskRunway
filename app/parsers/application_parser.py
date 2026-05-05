@@ -18,7 +18,7 @@ import settings
 from app.parsers.llm_parsers import BedrockClient, GeminiClient, GroqClient
 from app.parsers.two_pass_parser import groq_request_with_backoff, _is_text_garbage
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = settings.GEMINI_MODEL
 
 PASS2_APPLICATION_PROMPT = dedent(
     """
@@ -81,13 +81,16 @@ PASS2_APPLICATION_PROMPT = dedent(
 
 
 def _get_llm_client():
-    if settings.LLM_PROVIDER == "groq":
-        return GroqClient(settings.GROQ_API_KEY)
-    if settings.LLM_PROVIDER == "bedrock":
-        return BedrockClient()
-    if settings.LLM_PROVIDER == "gemini":
+    provider = settings.LLM_PROVIDER.lower()
+    if provider == "groq":
+        if not settings.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
+        return GroqClient(settings.GROQ_API_KEY, model=settings.GROQ_MODEL)
+    if provider == "bedrock":
+        return BedrockClient(model=settings.BEDROCK_MODEL, region=settings.BEDROCK_REGION)
+    if provider == "gemini":
         return GeminiClient(genai.Client(api_key=settings.GEMINI_API_KEY), DEFAULT_MODEL)
-    raise ValueError("Unknown LLM provider")
+    raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
 
 
 def _ocr_page_with_fallback(page):
@@ -301,4 +304,3 @@ def process_application_two_pass(pdf_path):
         "pass2_normalized": normalized,
         "processing_metadata": metadata
     }
-

@@ -20,6 +20,8 @@ import settings
 import pdfplumber
 import pytesseract
 
+DEFAULT_MODEL = settings.GEMINI_MODEL
+
 
 # ============================================================================
 # PASS 1: OCR and Layout Extraction
@@ -309,15 +311,16 @@ PASS3_INTENT_PROMPT = dedent(
 )
 
 def get_llm_client():
-    if settings.LLM_PROVIDER == "groq":
-        # Legacy Groq provider is commented out while the two-pass parser uses AWS Bedrock.
-        # return GroqClient(settings.GROQ_API_KEY)
-        raise ValueError("Groq provider is disabled for two_pass_parser. Use bedrock or gemini.")
-    if settings.LLM_PROVIDER == "bedrock":
-        return BedrockClient()
-    if settings.LLM_PROVIDER == "gemini":
+    provider = settings.LLM_PROVIDER.lower()
+    if provider == "groq":
+        if not settings.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
+        return GroqClient(settings.GROQ_API_KEY, model=settings.GROQ_MODEL)
+    if provider == "bedrock":
+        return BedrockClient(model=settings.BEDROCK_MODEL, region=settings.BEDROCK_REGION)
+    if provider == "gemini":
         return GeminiClient(genai.Client(api_key=settings.GEMINI_API_KEY), DEFAULT_MODEL)
-    raise ValueError("Unknown LLM provider")
+    raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
 # ============================================================================
 # Processing Functions
 # ============================================================================
@@ -598,5 +601,4 @@ def groq_request_with_backoff(fn, max_retries=5):
             else:
                 raise
     raise RuntimeError("Groq rate limit exceeded after retries")
-
 
