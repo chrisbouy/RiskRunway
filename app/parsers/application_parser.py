@@ -286,7 +286,7 @@ def process_application_two_pass(pdf_path):
     layout = pass1_extract_application_layout(pdf_path, max_pages=3)
     metadata["pass1_duration"] = time.time() - pass1_start
     print(f"  ✓ Pass 1 (application) complete ({metadata['pass1_duration']:.2f}s)")
-    print(f"  Pass 1 data: {json.dumps(layout, indent=2)}")
+    # print(f"  Pass 1 data: {json.dumps(layout, indent=2)}")
 
     # Pass 2: Normalize to JSON
     print("Pass 2 of application_parser.process_application_two_pass: Normalizing to JSON schema...")
@@ -294,7 +294,7 @@ def process_application_two_pass(pdf_path):
     normalized = pass2_normalize_application_data(layout)
     metadata["pass2_duration"] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (application) complete ({metadata['pass2_duration']:.2f}s)")
-    print(f"  Pass 2 data: {json.dumps(normalized, indent=2)}")
+    # print(f"  Pass 2 data: {json.dumps(normalized, indent=2)}")
 
     metadata["total_duration"] = time.time() - start
     print(f"✓ All application passes complete ({metadata['total_duration']:.2f}s)")

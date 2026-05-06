@@ -581,7 +581,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     layout_data = pass1_extract_quote_layout(pdf_path)
     metadata['pass1_duration'] = time.time() - pass1_start
     print(f"  ✓ Pass 1 (quote) complete ({metadata['pass1_duration']:.2f}s)")
-    print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
+    # print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
 
     # Pass 2: Normalize to JSON
     print("Pass 2 of two_pass_parser.process_quote_two_pass: Normalizing to JSON schema...")
@@ -589,7 +589,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     normalized_data = pass2_normalize_quote_data(layout_data)
     metadata['pass2_duration'] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
-    print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
+    # print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
 
     metadata['total_duration'] = time.time() - start_time
     print(f"✓ All quote passes complete ({metadata['total_duration']:.2f}s)")
