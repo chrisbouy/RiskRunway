@@ -101,11 +101,29 @@ RETAIL AGENT ...
   • Usually located in the SAME STATE as the insured
   • May have a "Producer Code" or "Agent Code"
   • Only fill this field when a separate retail/producing agent is explicitly identified.
-
+  • IMPORTANT: On wholesale broker proposals/cover letters, the retail agent is often 
+    the "To:" recipient at the top of the document — the company the proposal is 
+    addressed to. If a company name and address appear in a "To:" block, treat that 
+    as the retail agent.
+  • "Attn:" following a company name indicates a contact person, not the company name itself.
+  
 GENERAL AGENT / WHOLESALE BROKER ...
   • This is the producer/proposer of the quote. Company that originally created the document.
   • If only one agency appears on the quote and there is no separately labeled retail/producer agency, assume this agency is the quote producer/wholesale broker.
   • Do not use the same agency for `retail_agent` unless the document explicitly names it as the customer's retail agent.
+  • Address may appear as "Company Name - City, State" format on a single line
+    (e.g. "Amwins - Baton Rouge, LA"). In this case extract city and state only,
+    street should be null.
+  • Do NOT extract city name as street address.
+  • If no street number is present, street must be null.
+  
+ADDRESSES:
+  • If a zip code appears joined to a state abbreviation (e.g. LA70002), treat as state=LA zip=70002
+  • Suite/Floor/Unit on the line immediately following a street address should be 
+    appended to the street field with a comma (e.g. "3850 N. Causeway Blvd., Suite 1150")
+  • Never insert spaces into quote numbers, policy numbers, or reference numbers
+    even if they appear to have missing spaces
+    
 COVERAGE TYPE:
   • Normalize to standard terms:
     - "General Liability" (from: CGL, Commercial General Liability, GL)
@@ -182,6 +200,12 @@ DOWN PAYMENT / FINANCING:
   • May appear as: "Down Payment", "Deposit", "Required Down", "Initial Payment"
   • Amount Financed may be calculated as: Grand Total - Down Payment
   • Often NOT shown on quotes (return null if not present)
+  • "Minimum and Deposit" or "Annual Minimum and Deposit" is NOT a down payment — 
+    it refers to the minimum earned premium requirement, not a financing arrangement.
+  • Only populate down_payment when an explicit installment/financing plan is shown
+    with language like "Down Payment", "Initial Payment", "Amount Due at Inception"
+    alongside remaining installment amounts.
+  • If no financing schedule is present, both down_payment and amount_financed should be null.
 
 NOTES:
 - If a phone number follows an address, it's likely a contact number for that entity. 
@@ -196,7 +220,7 @@ Return this EXACT structure (all fields required, use null if not found):
     "insured": {
         "name": "string or null",
         "address": {
-            "street": "string or null"(include suite or floor if shown),
+            "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
             "city": "string or null",
             "state": "string or null",
             "zip": "string or null"
@@ -206,7 +230,7 @@ Return this EXACT structure (all fields required, use null if not found):
         "name": "string or null (company name)",
         "code": "string or null",
         "address": {
-            "street": "string or null"(include suite or floor if shown),
+            "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
             "city": "string or null",
             "state": "string or null",
             "zip": "string or null"
@@ -216,7 +240,7 @@ Return this EXACT structure (all fields required, use null if not found):
     "general_agent_or_wholesale_broker": {
         "name": "string or null (company name)",
         "address": {
-            "street": "string or null"(include suite or floor if shown),
+            "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
             "city": "string or null",
             "state": "string or null",
             "zip": "string or null"
@@ -461,7 +485,7 @@ def pass1_extract_quote_layout(pdf_path):
                 print(f"    ✓ Extracted {len(page_text)} chars via text extraction")
                 pages_data.append({
                     "page_number": page_num,
-                    "text": page_text
+                    "text": _fix_pdf_spacing(page_text)
                 })
                 # Clean up memory after each page
                 del page_text
@@ -487,7 +511,7 @@ def pass1_extract_quote_layout(pdf_path):
 
                     pages_data.append({
                         "page_number": page_num,
-                        "text": text
+                        "text": _fix_pdf_spacing(text)
                     })
 
                     # Clean up memory
@@ -508,6 +532,14 @@ def pass1_extract_quote_layout(pdf_path):
     return {
         "pages": pages_data
     }
+
+def _fix_pdf_spacing(text):
+    import re
+    # Fix missing space between word and capitalized word (CausewayBlvd → Causeway Blvd)
+    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+    # Fix missing space between US state abbreviation and zip code (LA70002 → LA 70002)
+    text = re.sub(r'\b([A-Z]{2})(\d{5})\b', r'\1 \2', text)
+    return text
 
 def pass2_normalize_quote_data(layout_data):
     """

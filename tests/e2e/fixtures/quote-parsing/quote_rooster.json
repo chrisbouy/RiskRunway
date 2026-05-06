@@ -31,7 +31,6 @@
     "fax": null
   },
   "quote_number": "6184689",
-  "account_number": null,
   "policies": [
     {
       "coverage_type": "Media Liability",
@@ -39,8 +38,8 @@
       "policy_number": null,
       "effective_date": null,
       "expiration_date": null,
-      "policy_term": "12 months",
-      "annual_premium": 800,
+      "policy_term": 12,
+      "annual_premium": 800.00,
       "tax": null,
       "fee": null,
       "broker_fee": null,
@@ -53,8 +52,8 @@
       "policy_number": null,
       "effective_date": null,
       "expiration_date": null,
-      "policy_term": "12 months",
-      "annual_premium": 1750,
+      "policy_term": 12,
+      "annual_premium": 1750.00,
       "tax": null,
       "fee": null,
       "broker_fee": null,
@@ -63,11 +62,11 @@
     }
   ],
   "totals": {
-    "total_premium": 2550,
-    "total_tax": 125.2,
-    "total_fee": 580,
-    "total_broker_fee": 255,
-    "grand_total": 3255.2
+    "total_premium": 2550.00,
+    "total_tax": 125.20,
+    "total_fee": 580.00,
+    "total_broker_fee": 255.00,
+    "grand_total": 3255.20
   },
   "financing": {
     "down_payment": null,

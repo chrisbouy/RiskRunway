@@ -1,15 +1,15 @@
 import json
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from app.parsers import two_pass_parser
-from app.parsers.llm_parsers import BedrockClient
 import settings
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_DOCS_DIR = ROOT / 'sample_docs'
-FIXTURES_DIR = ROOT / 'tests' / 'e2e' / 'fixtures' / 'quote-parsing'
+FIXTURES_DIR = ROOT / 'tests' / 'e2e' / 'fixtures' / 'frog-quote-parsing'
 
 
 def find_pdf_for_fixture(base_name: str) -> Path:
@@ -21,13 +21,23 @@ def find_pdf_for_fixture(base_name: str) -> Path:
         f'Could not find PDF for fixture {base_name} in {SAMPLE_DOCS_DIR}'
     )
 
-class TestTwoPassParserBedrock(unittest.TestCase):
+class TestTwoPassParserLiveLLM(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Ensure the parser uses Bedrock for this test run.
-        cls.patch_provider = patch.object(settings, 'LLM_PROVIDER', 'bedrock')
+        # Defaults to Groq for fast regression checks. Set
+        # QUOTE_PARSER_TEST_PROVIDER=bedrock to run the same fixture suite
+        # against Bedrock without removing that path.
+        cls.provider = os.getenv('QUOTE_PARSER_TEST_PROVIDER', 'groq').lower()
+        if cls.provider not in {'groq', 'bedrock'}:
+            raise ValueError(
+                'QUOTE_PARSER_TEST_PROVIDER must be either "groq" or "bedrock"'
+            )
+
+        if cls.provider == 'groq' and not settings.GROQ_API_KEY:
+            raise unittest.SkipTest('GROQ_API_KEY is required for Groq parser fixtures')
+
+        cls.patch_provider = patch.object(settings, 'LLM_PROVIDER', cls.provider)
         cls.patch_provider.start()
-        cls.bedrock_client = BedrockClient()
 
     @classmethod
     def tearDownClass(cls):
@@ -41,7 +51,7 @@ class TestTwoPassParserBedrock(unittest.TestCase):
         for fixture_file in fixture_files:
             base_name = fixture_file.stem
             pdf_path = find_pdf_for_fixture(base_name)
-            with self.subTest(pdf=pdf_path.name):
+            with self.subTest(provider=self.provider, pdf=pdf_path.name):
                 expected = json.loads(fixture_file.read_text(encoding='utf-8'))
                 result = two_pass_parser.process_quote_two_pass(str(pdf_path))
                 self.assertIn('pass2_normalized', result)
