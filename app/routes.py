@@ -719,6 +719,7 @@ def create_submission_entry():
     try:
         print(f"Received submission creation request with form data: {request.form} and files: {request.files}")
         insured_name = (request.form.get('insured_name') or '').strip()
+        coverage_type_requested = (request.form.get('coverage_type_requested') or '').strip()
         file = request.files.get('file')
         has_file = bool(file and file.filename)
 
@@ -770,7 +771,7 @@ def create_submission_entry():
                 'retail_agent': None,
                 'quote_number': None,
                 'account_number': None,
-                'coverage_types': [],
+                'coverage_types': [coverage_type_requested] if coverage_type_requested else [],
                 'effective_date': effective_date
             }
 

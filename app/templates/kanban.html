@@ -677,32 +677,51 @@
 
     <!-- New Submission Modal -->
     <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
-        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl border border-gray-700">
-            <h2 class="text-2xl font-bold mb-3 text-white">Create Submission</h2>
-            <p class="text-gray-600 mb-4">Enter insured name, or drop an application to prefill client/submission info.</p>
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl border border-gray-700">
+            <h2 class="text-2xl font-bold mb-2 text-white">Create Submission</h2>
+            <p class="text-gray-400 mb-5">This will not submit to markets.</p>
 
-            <div class="mb-4">
-                <label for="insuredNameInput" class="block text-sm font-semibold text-gray-300 mb-1">Insured Name</label>
-                <input id="insuredNameInput"
-                       type="text"
-                       class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
-                       placeholder="Type insured name (optional if uploading application)">
-            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="border border-gray-700 rounded-lg p-4 bg-gray-900 bg-opacity-40">
+                    <h3 class="text-sm font-bold uppercase tracking-wide text-gray-200 mb-4">Option 1: Manually Add</h3>
 
-            <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-6 text-center min-h-[160px]">
-                <div class="dz-message" data-dz-message>
-                    <p class="text-gray-600">Drag & drop application here or click to browse</p>
-                    <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG (optional)</p>
+                    <div class="mb-4">
+                        <label for="insuredNameInput" class="block text-sm font-semibold text-gray-300 mb-1">Insured Name</label>
+                        <input id="insuredNameInput"
+                               type="text"
+                               class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
+                               placeholder="Type insured name">
+                    </div>
+
+                    <div class="mb-5">
+                        <label for="coverageTypeInput" class="block text-sm font-semibold text-gray-300 mb-1">Coverage Type Requested</label>
+                        <input id="coverageTypeInput"
+                               type="text"
+                               class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
+                               placeholder="Optional">
+                    </div>
+
+                    <div class="flex justify-end gap-2">
+                        <button id="cancelNewSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                            Cancel
+                        </button>
+                        <button id="createSubmissionBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                            Create Submission
+                        </button>
+                    </div>
                 </div>
-            </form>
 
-            <div class="flex justify-end gap-2 mt-4">
-                <button id="cancelNewSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
-                    Cancel
-                </button>
-                <button id="createSubmissionBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-                    Create Submission
-                </button>
+                <div class="border border-gray-700 rounded-lg p-4 bg-gray-900 bg-opacity-40">
+                    <h3 class="text-sm font-bold uppercase tracking-wide text-gray-200 mb-4">Option 2: Upload an Application</h3>
+                    <form id="newSubmissionForm" class="dropzone border-2 border-dashed rounded-lg p-6 text-center min-h-[214px] flex items-center justify-center">
+                        <div class="dz-message" data-dz-message>
+                            <p class="text-gray-300 font-semibold">Drop application here</p>
+                            <p class="text-sm text-gray-400 mt-2">PDF, PNG, JPG</p>
+                            <p class="text-xs text-gray-500 mt-3">Submission is created immediately after upload.</p>
+                        </div>
+                    </form>
+                    <p id="applicationUploadStatus" class="mt-3 text-sm text-blue-300 min-h-[20px]"></p>
+                </div>
             </div>
         </div>
     </div>
@@ -1481,6 +1500,8 @@
             maxFiles: 1,
             addRemoveLinks: true
         });
+        let isCreatingSubmission = false;
+        const applicationUploadStatus = document.getElementById('applicationUploadStatus');
 
         // New Submission Modal
         document.getElementById('newSubmissionBtn').addEventListener('click', () => {
@@ -1490,6 +1511,8 @@
         document.getElementById('cancelNewSubmission').addEventListener('click', () => {
             document.getElementById('newSubmissionModal').classList.add('hidden');
             document.getElementById('insuredNameInput').value = '';
+            document.getElementById('coverageTypeInput').value = '';
+            applicationUploadStatus.textContent = '';
             newSubmissionDropzone.removeAllFiles(true);
         });
 
@@ -1498,25 +1521,20 @@
             this.addFile(file);
         });
 
-        document.getElementById('createSubmissionBtn').addEventListener('click', async function() {
-            const insuredName = document.getElementById('insuredNameInput').value.trim();
-            const file = newSubmissionDropzone.files[0];
+        async function createSubmission(formData, options = {}) {
+            const { button = null, processingText = 'Creating...' } = options;
+            if (isCreatingSubmission) return;
 
-            if (!insuredName && !file) {
-                alert('Enter insured name or upload an application.');
-                return;
-            }
+            isCreatingSubmission = true;
+            const originalText = button ? button.textContent : null;
+            const createButton = document.getElementById('createSubmissionBtn');
 
-            const btn = this;
-            btn.disabled = true;
-            btn.textContent = 'Creating...';
-
-            const formData = new FormData();
-            if (insuredName) {
-                formData.append('insured_name', insuredName);
-            }
-            if (file) {
-                formData.append('file', file);
+            if (button) {
+                button.disabled = true;
+                button.textContent = processingText;
+            } else {
+                createButton.disabled = true;
+                applicationUploadStatus.textContent = 'Creating submission from application...';
             }
 
             try {
@@ -1528,16 +1546,50 @@
 
                 if (data.success) {
                     window.location.href = `/submission/${data.submission_id}`;
-                } else {
-                    alert('Error: ' + data.error);
+                    return;
                 }
+
+                alert('Error: ' + data.error);
+                newSubmissionDropzone.removeAllFiles(true);
             } catch (error) {
                 console.error('Submission create failed:', error);
                 alert('Failed to create submission.');
+                newSubmissionDropzone.removeAllFiles(true);
             } finally {
-                btn.disabled = false;
-                btn.textContent = 'Create Submission';
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                } else {
+                    createButton.disabled = false;
+                    applicationUploadStatus.textContent = '';
+                }
+                isCreatingSubmission = false;
             }
+        }
+
+        newSubmissionDropzone.on("addedfile", function(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            createSubmission(formData);
+        });
+
+        document.getElementById('createSubmissionBtn').addEventListener('click', async function() {
+            const insuredName = document.getElementById('insuredNameInput').value.trim();
+            const coverageType = document.getElementById('coverageTypeInput').value.trim();
+
+            if (!insuredName) {
+                alert('Enter insured name.');
+                return;
+            }
+
+            const btn = this;
+            const formData = new FormData();
+            formData.append('insured_name', insuredName);
+            if (coverageType) {
+                formData.append('coverage_type_requested', coverageType);
+            }
+
+            await createSubmission(formData, { button: btn });
         });
 
         // ============================================================================
