@@ -64,6 +64,7 @@ class User(Base):
     role = Column(Enum(UserRole), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    signature = Column(Text, nullable=True)  # Email signature for follow-ups
 
     # Relationships
     assigned_submissions = relationship("Submission", back_populates="assigned_user")
@@ -88,6 +89,7 @@ class User(Base):
             'full_name': self.full_name,
             'role': self.role.value,
             'is_active': self.is_active,
+            'signature': self.signature,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

@@ -213,6 +213,13 @@ def _add_missing_columns(conn, inspector):
             conn.execute(text("ALTER TABLE submissions ADD COLUMN status_label VARCHAR(255)"))
             print("Added column: submissions.status_label")
     
+    # users.signature
+    if 'users' in inspector.get_table_names():
+        user_columns = [c['name'] for c in inspector.get_columns('users')]
+        if 'signature' not in user_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN signature TEXT"))
+            print("Added column: users.signature")
+
     # brokers: letterhead, email_body, created_at, updated_at
     if 'brokers' in inspector.get_table_names():
         broker_columns = [c['name'] for c in inspector.get_columns('brokers')]

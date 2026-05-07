@@ -3910,6 +3910,181 @@ def favicon():
     return '', 204
 
 # ============================================================================
+# USER SIGNATURE (for follow-up emails)
+# ============================================================================
+
+
+@bp.route('/api/user/signature', methods=['GET'])
+@login_required
+def get_user_signature():
+    """Get the current user's saved signature."""
+    try:
+        user_id = session.get('user_id')
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            return jsonify({'success': True, 'signature': user.signature or ''})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/user/signature', methods=['PUT'])
+@login_required
+def save_user_signature():
+    """Save the current user's signature."""
+    try:
+        user_id = session.get('user_id')
+        data = request.get_json() or {}
+        signature = (data.get('signature') or '').strip()
+
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user.signature = signature if signature else None
+            db_session.commit()
+            return jsonify({'success': True, 'signature': user.signature or ''})
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/submission/<int:submission_id>/send_follow_up', methods=['POST'])
+@login_required
+def send_follow_up(submission_id):
+    """
+    Send a follow-up email to one or more brokers for a submission.
+    Uses the connected OAuth account (Outlook/Gmail) to send.
+    """
+    try:
+        user_id = session.get('user_id')
+        data = request.get_json() or {}
+        broker_entries = data.get('broker_entries', [])  # [{id, body}, ...]
+        signature = (data.get('signature') or '').strip()
+
+        print(f"[SEND FOLLOW-UP] Received request for submission {submission_id}")
+        print(f"[SEND FOLLOW-UP] Broker entries count: {len(broker_entries)}")
+        for i, entry in enumerate(broker_entries):
+            print(f"[SEND FOLLOW-UP] Entry {i}: broker_id={entry.get('id')}, body length={len((entry.get('body') or ''))}")
+            print(f"[SEND FOLLOW-UP] Entry {i} body preview: {(entry.get('body') or '')[:100]}...")
+        print(f"[SEND FOLLOW-UP] Signature length: {len(signature)}")
+
+        if not broker_entries:
+            return jsonify({'success': False, 'error': 'No broker entries provided'}), 400
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            results = {'sent': [], 'failed': []}
+
+            # Get the connected Outlook/Gmail account
+            connected_account = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+            ).first()
+
+            if not connected_account:
+                return jsonify({'success': False, 'error': 'No connected email account found. Connect Outlook or Gmail first.'}), 400
+
+            tokens = connected_account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+            if not access_token:
+                return jsonify({'success': False, 'error': 'No valid access token for connected account'}), 400
+
+            provider = connected_account.provider.value.lower()
+            config = {
+                'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+                'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+                'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+                'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+                'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+                'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+                'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+            }
+
+            oauth_service = get_oauth_service(provider, config)
+
+            for entry in broker_entries:
+                try:
+                    broker_id = entry.get('id')
+                    body_text = (entry.get('body') or '').strip()
+                    broker = db_session.query(Broker).filter_by(
+                        id=broker_id, user_id=user_id, is_enabled=True
+                    ).first()
+
+                    if not broker or broker.is_portal:
+                        results['failed'].append({
+                            'broker_id': broker_id,
+                            'error': 'Broker not found or is portal-based'
+                        })
+                        continue
+
+                    # Build full email body with signature
+                    full_body = body_text
+                    if signature:
+                        full_body += f"\n\n{signature}"
+
+                    subject = f"Follow-up: {submission.insured_name}"
+
+                    # Send using the OAuth service
+                    if provider == 'outlook':
+                        oauth_service.send_email(
+                            access_token=access_token,
+                            to_recipients=[broker.email],
+                            subject=subject,
+                            body_text=full_body
+                        )
+                    elif provider == 'gmail':
+                        oauth_service.send_email(
+                            access_token=access_token,
+                            to_recipients=[broker.email],
+                            subject=subject,
+                            body_text=full_body
+                        )
+
+                    results['sent'].append({
+                        'broker_id': broker_id,
+                        'broker_name': broker.name,
+                        'email': broker.email
+                    })
+
+                    log_action(
+                        entity_type='submission',
+                        entity_id=submission_id,
+                        action='follow_up_sent',
+                        user=session.get('username'),
+                        submission_id=submission_id,
+                        details=f"Follow-up sent to {broker.name} ({broker.email})"
+                    )
+
+                except Exception as broker_error:
+                    results['failed'].append({
+                        'broker_id': broker_id,
+                        'error': str(broker_error)
+                    })
+
+            db_session.commit()
+
+            return jsonify({
+                'success': True,
+                'results': results
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
