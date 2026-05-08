@@ -1060,9 +1060,8 @@
 
         .edit-toolbar {
             display: flex;
-            justify-content: flex-end;
+            align-items: center;
             gap: 0.5rem;
-            margin-bottom: 1rem;
         }
 
         .edit-toolbar.hidden {
@@ -1119,6 +1118,12 @@
                 <div id="appetiteScoreBadge" style="display: none;">
                     <!-- Appetite score will be inserted here -->
                 </div>
+                <!-- Edit buttons -->
+                <div id="editToolbar" class="edit-toolbar{% if not is_admin %} hidden{% endif %}">
+                    <button id="editQuotesBtn" class="primary-btn">Edit</button>
+                    <button id="saveQuotesBtn" class="success-btn hidden">Save</button>
+                    <button id="cancelEditBtn" class="secondary-btn hidden">Cancel</button>
+                </div>
                 <!-- Hamburger menu -->
                 <div class="menu-container">
                     <button id="menuToggleBtn" class="menu-toggle-btn" title="Menu">
@@ -1146,11 +1151,6 @@
     </div>
 
     <div id="bugCaptureRoot" class="main-container">
-        <div id="editToolbar" class="edit-toolbar{% if not is_admin %} hidden{% endif %}">
-            <button id="editQuotesBtn" class="primary-btn">Edit</button>
-            <button id="saveQuotesBtn" class="success-btn hidden">Save</button>
-            <button id="cancelEditBtn" class="secondary-btn hidden">Cancel</button>
-        </div>
 
         <div id="submissionStageSection" class="stage-section">
             <div class="card" style="margin-bottom: 1rem;">
