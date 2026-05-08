@@ -962,85 +962,6 @@
         }
 
         /* Stage-based layout */
-        .stage-progress {
-            display: flex;
-            background: #f0f2f7;
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            overflow: hidden;
-            margin-bottom: 1rem;
-        }
-
-        .stage-step {
-            flex: 1;
-            padding: 0.625rem 0.875rem;
-            font-size: 0.75rem;
-            font-weight: 700;
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border-right: 1px solid var(--border-color);
-            background: #f8fafc;
-        }
-
-        .stage-step:last-child {
-            border-right: none;
-        }
-
-        .stage-dot {
-            width: 20px;
-            height: 20px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.688rem;
-            font-weight: 700;
-            background: #dbe3ef;
-            color: #64748b;
-        }
-
-        .stage-step.done {
-            color: #166534;
-            background: #ecfdf5;
-        }
-
-        .stage-step.done .stage-dot {
-            background: #166534;
-            color: #fff;
-        }
-
-        .stage-step.current-submission {
-            color: #1e3a8a;
-            background: #eef2ff;
-        }
-
-        .stage-step.current-submission .stage-dot {
-            background: #1e3a8a;
-            color: #fff;
-        }
-
-        .stage-step.current-quoting {
-            color: #9a3412;
-            background: #fff7ed;
-        }
-
-        .stage-step.current-quoting .stage-dot {
-            background: #c2410c;
-            color: #fff;
-        }
-
-        .stage-step.current-bind {
-            color: #14532d;
-            background: #f0fdf4;
-        }
-
-        .stage-step.current-bind .stage-dot {
-            background: #166534;
-            color: #fff;
-        }
-
         .stage-section {
             display: none;
         }
@@ -1229,21 +1150,6 @@
             <button id="editQuotesBtn" class="primary-btn">Edit</button>
             <button id="saveQuotesBtn" class="success-btn hidden">Save</button>
             <button id="cancelEditBtn" class="secondary-btn hidden">Cancel</button>
-        </div>
-
-        <div class="stage-progress" id="stageProgress">
-            <div class="stage-step" data-stage="submission">
-                <span class="stage-dot">1</span>
-                <span>Submission</span>
-            </div>
-            <div class="stage-step" data-stage="quoting">
-                <span class="stage-dot">2</span>
-                <span>Quoting</span>
-            </div>
-            <div class="stage-step" data-stage="bind">
-                <span class="stage-dot">3</span>
-                <span>Bound</span>
-            </div>
         </div>
 
         <div id="submissionStageSection" class="stage-section">
@@ -1724,44 +1630,12 @@
             return 'bind';
         }
 
-        function setStageProgress(stageKey) {
-            const currentStage = stageKey;
-            const stageOrder = ['submission', 'quoting', 'bind'];
-            const currentIndex = stageOrder.indexOf(currentStage);
-            const steps = document.querySelectorAll('#stageProgress .stage-step');
-
-            steps.forEach((step) => {
-                const stage = step.dataset.stage;
-                const index = stageOrder.indexOf(stage);
-                const dot = step.querySelector('.stage-dot');
-                step.classList.remove('done', 'current-submission', 'current-quoting', 'current-bind');
-
-                if (index < currentIndex) {
-                    step.classList.add('done');
-                    if (dot) dot.textContent = '✓';
-                    return;
-                }
-
-                if (index === currentIndex) {
-                    step.classList.add(`current-${currentStage}`);
-                    if (dot) dot.textContent = String(index + 1);
-                    return;
-                }
-
-                if (dot) dot.textContent = String(index + 1);
-            });
-        }
-
         function applyStageView(statusValue, effectiveDate) {
             const stage = statusToStage(statusValue, effectiveDate || submissionData?.effective_date);
-            const stageProgress = document.getElementById('stageProgress');
-            if (stageProgress) {
-                stageProgress.style.display = stage === 'quoting' ? 'none' : 'flex';
-            }
             document.getElementById('submissionStageSection').classList.toggle('active', stage === 'submission');
             document.getElementById('quotingStageSection').classList.toggle('active', stage === 'quoting');
             document.getElementById('bindStageSection').classList.toggle('active', stage === 'bind');
-            setStageProgress(stage);
+        
         }
 
         function stageField(label, value, options = {}) {
@@ -3001,7 +2875,6 @@
                 const statusDropdown = document.getElementById('statusDropdown');
                 statusDropdown.value = 'IN_PROGRESS';
                 applyStageView('IN_PROGRESS', submissionData?.effective_date);
-                setStageProgress('quoting');
                 
                 // Show the quoting stage section explicitly
                 document.getElementById('submissionStageSection').classList.remove('active');
@@ -3295,9 +3168,6 @@
                 // Force show bind section
                 const newStatus = document.getElementById('statusDropdown').value;
                 applyStageView(newStatus, submissionData?.effective_date);
-                
-                // Also update stage progress manually to ensure it shows
-                setStageProgress('bind');
                 
                 // Show bind section explicitly
                 document.getElementById('submissionStageSection').classList.remove('active');
