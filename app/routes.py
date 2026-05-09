@@ -3116,274 +3116,169 @@ def delete_user(user_id):
 def submit_to_market(submission_id):
     """
     Submit a submission to selected brokers.
-    Sends emails to email brokers and generates zip files for portal brokers.
+    Accepts per-broker email bodies and optional document_ids for attachments.
+    Sends individual file attachments (not zipped) via SendGrid.
     """
     try:
         user_id = session.get('user_id')
         data = request.get_json() or {}
-        broker_ids = data.get('broker_ids', [])
+        broker_entries = data.get('broker_entries', [])  # [{id, body, document_ids}, ...]
+        signature = (data.get('signature') or '').strip()
 
-        if not broker_ids:
+        if not broker_entries:
             return jsonify({'success': False, 'error': 'No brokers selected'}), 400
 
         db_session = get_session()
         try:
-            # Get submission
             submission = db_session.query(Submission).filter_by(id=submission_id).first()
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
 
-            # Get selected brokers
-            brokers = db_session.query(Broker).filter(
-                Broker.id.in_(broker_ids),
-                Broker.user_id == user_id,
-                Broker.is_enabled == True
+            # Get all submission documents for reference
+            all_documents = db_session.query(Document).filter(
+                Document.submission_id == submission_id
             ).all()
+            doc_map = {doc.id: doc for doc in all_documents}
 
-            if not brokers:
-                return jsonify({'success': False, 'error': 'No valid brokers selected'}), 400
+            results = {'sent': [], 'failed': [], 'portal_downloads': []}
 
-            # Get submission documents (applications, SOVs, loss runs)
-            documents = db_session.query(Document).filter(
-                Document.submission_id == submission_id,
-                Document.document_type.in_([DocumentType.APPLICATION, DocumentType.SOV, DocumentType.LOSS_RUN])
-            ).all()
-
-            # Separate email and portal brokers
-            email_brokers = [b for b in brokers if not b.is_portal]
-            portal_brokers = [b for b in brokers if b.is_portal]
-
-            results = {
-                'emails_sent': [],
-                'portal_downloads': []
-            }
-
-            # Send emails to email brokers
-            for broker in email_brokers:
+            for entry in broker_entries:
                 try:
-                    _send_broker_email(submission, broker, documents)
-                    results['emails_sent'].append(broker.name)
+                    broker_id = entry.get('id')
+                    body_text = (entry.get('body') or '').strip()
+                    document_ids = entry.get('document_ids', [])
 
-                    # Log individual broker submission for tracking
+                    broker = db_session.query(Broker).filter_by(
+                        id=broker_id, user_id=user_id, is_enabled=True
+                    ).first()
+
+                    if not broker:
+                        results['failed'].append({'broker_id': broker_id, 'error': 'Broker not found'})
+                        continue
+
+                    # Portal brokers get zip download
+                    if broker.is_portal:
+                        documents = [doc_map[did] for did in document_ids if did in doc_map] if document_ids else [
+                            d for d in all_documents if d.document_type in [DocumentType.APPLICATION, DocumentType.SOV, DocumentType.LOSS_RUN]
+                        ]
+                        zip_path = _generate_broker_zip(submission, broker, documents)
+                        results['portal_downloads'].append({
+                            'broker_name': broker.name,
+                            'broker_id': broker.id,
+                            'zip_path': zip_path
+                        })
+                        log_action(
+                            entity_type='submission', entity_id=submission_id,
+                            action='broker_submission_sent', submission_id=submission_id,
+                            user=session.get('username'),
+                            details=f"Generated zip for portal broker: {broker.name} ({broker.portal_name})"
+                        )
+                        continue
+
+                    # Email brokers: build body with signature
+                    full_body = body_text
+                    if signature:
+                        full_body += f"\n\n{signature}"
+
+                    # Resolve documents to attach
+                    documents = [doc_map[did] for did in document_ids if did in doc_map] if document_ids else [
+                        d for d in all_documents if d.document_type in [DocumentType.APPLICATION, DocumentType.SOV, DocumentType.LOSS_RUN]
+                    ]
+
+                    subject = f"Insurance Submission - {submission.insured_name}"
+
+                    _send_email_via_sendgrid(
+                        to_email=broker.email,
+                        subject=subject,
+                        body=full_body,
+                        documents=documents
+                    )
+
+                    results['sent'].append(broker.name)
+
                     log_action(
-                        entity_type='submission',
-                        entity_id=submission_id,
-                        action='broker_submission_sent',
-                        submission_id=submission_id,
+                        entity_type='submission', entity_id=submission_id,
+                        action='broker_submission_sent', submission_id=submission_id,
                         user=session.get('username'),
                         details=f"Sent to broker: {broker.name} ({broker.email})"
                     )
                 except Exception as e:
-                    print(f"Error sending email to {broker.name}: {e}")
+                    print(f"Error sending email to broker {entry.get('id')}: {e}")
+                    results['failed'].append({'broker_id': entry.get('id'), 'error': str(e)})
 
-            # Generate zip files for portal brokers
-            for broker in portal_brokers:
-                try:
-                    zip_path = _generate_broker_zip(submission, broker, documents)
-                    results['portal_downloads'].append({
-                        'broker_name': broker.name,
-                        'zip_path': zip_path
-                    })
-
-                    # Log individual broker submission for tracking (portal brokers)
-                    log_action(
-                        entity_type='submission',
-                        entity_id=submission_id,
-                        action='broker_submission_sent',
-                        submission_id=submission_id,
-                        user=session.get('username'),
-                        details=f"Generated zip for portal broker: {broker.name} ({broker.portal_name})"
-                    )
-                except Exception as e:
-                    print(f"Error generating zip for {broker.name}: {e}")
-
-            # Log action
             log_action(
-                entity_type='submission',
-                entity_id=submission_id,
-                action='submitted_to_market',
-                submission_id=submission_id,
-                details=f"Submitted to {len(brokers)} brokers"
+                entity_type='submission', entity_id=submission_id,
+                action='submitted_to_market', submission_id=submission_id,
+                details=f"Submitted to {len(broker_entries)} brokers"
             )
 
-            return jsonify({
-                'success': True,
-                'results': results
-            })
+            return jsonify({'success': True, 'results': results})
         finally:
             db_session.close()
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _send_broker_email(submission, broker, documents):
+def _send_email_via_sendgrid(to_email, subject, body, documents=None):
     """
-    Send email to broker with zip file attachment.
-    Uses connected OAuth account (Outlook/Gmail) if available, falls back to SendGrid.
-    """
-    import base64
-    
-    # Create zip file
-    zip_path = _generate_broker_zip(submission, broker, documents)
-    
-    try:
-        # Try to use connected OAuth account first
-        user_id = session.get('user_id')
-        db_session = get_session()
-        
-        try:
-            # Look for a connected Outlook account
-            outlook_account = db_session.query(ConnectedAccount).filter(
-                ConnectedAccount.user_id == user_id,
-                ConnectedAccount.provider == EmailProvider.OUTLOOK,
-                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
-            ).first()
-            
-            if outlook_account:
-                tokens = outlook_account.get_decrypted_tokens()
-                access_token = tokens.get('access_token')
-                
-                if access_token:
-                    print(f"[BROKER EMAIL] Using OAuth account: {outlook_account.email_address}")
-                    
-                    # Prepare email body
-                    if broker.email_body:
-                        body = broker.email_body
-                    else:
-                        body = f"""Hello {broker.name},
-
-Please find attached the insurance submission documents for {submission.insured_name}.
-
-Effective Date: {submission.effective_date}
-State: {submission.state}
-
-Best regards,
-Insurance Placement System"""
-                    
-                    # Add letterhead if configured
-                    if broker.letterhead:
-                        body = f"{body}\n\n{broker.letterhead}"
-                    
-                    # Read and encode zip file for attachment
-                    with open(zip_path, 'rb') as f:
-                        zip_data = f.read()
-                    
-                    zip_base64 = base64.b64encode(zip_data).decode()
-                    
-                    # Send via Graph API
-                    config = {
-                        'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
-                        'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
-                        'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
-                        'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
-                    }
-                    
-                    oauth_service = get_oauth_service('outlook', config)
-                    
-                    # Send email with attachment
-                    message_id = oauth_service.send_email(
-                        access_token=access_token,
-                        to_recipients=[broker.email],
-                        subject=f"Insurance Submission - {submission.insured_name}",
-                        body_text=body,
-                        attachments=[{
-                            'filename': os.path.basename(zip_path),
-                            'content_base64': zip_base64,
-                            'content_type': 'application/zip'
-                        }]
-                    )
-                    
-                    print(f"[BROKER EMAIL] Successfully sent via OAuth from {outlook_account.email_address}")
-                    return message_id
-        
-        except Exception as oauth_error:
-            print(f"[BROKER EMAIL] OAuth send failed: {oauth_error}")
-            logger.error(f"OAuth email send error: {oauth_error}")
-            # Fall through to SendGrid fallback
-        
-        finally:
-            db_session.close()
-        
-        # Fall back to SendGrid if no OAuth account available
-        print(f"[BROKER EMAIL] Falling back to SendGrid")
-        return _send_broker_email_with_sendgrid(submission, broker, documents, zip_path)
-        
-    except Exception as e:
-        print(f"[BROKER EMAIL] FAILED to send to {broker.name}: {type(e).__name__}: {str(e)}")
-        raise
-    
-    finally:
-        # Clean up zip file
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
-
-
-def _send_broker_email_with_sendgrid(submission, broker, documents, zip_path):
-    """
-    Fallback: Send email to broker using SendGrid HTTP API.
-    Only used if no OAuth account is connected.
+    Send email via SendGrid with individual file attachments (not zipped).
+    Used by both submit_to_market and send_follow_up.
     """
     import base64
     from sendgrid import SendGridAPIClient
     from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+    import mimetypes
 
     try:
-        # Email configuration
         api_key = current_app.config.get('SENDGRID_API_KEY')
-        # Use broker-specific sender email, with fallback to bug report sender
         sender_email = current_app.config.get('BROKER_EMAIL_SENDER') or current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
 
         if not api_key:
             raise ValueError("SendGrid API key is not configured. Set SENDGRID_API_KEY environment variable.")
 
-        # Build email body
-        if broker.email_body:
-            body = broker.email_body
-        else:
-            body = f"""Hello {broker.name},
-
-Please find attached the insurance submission documents for {submission.insured_name}.
-
-Effective Date: {submission.effective_date}
-State: {submission.state}
-
-Best regards,
-Insurance Placement System"""
-
-        # Add letterhead if configured
-        if broker.letterhead:
-            body = f"{body}\n\n{broker.letterhead}"
-
-        # Create the email message
         message = Mail(
             from_email=sender_email,
-            to_emails=broker.email,
-            subject=f"Insurance Submission - {submission.insured_name}",
+            to_emails=to_email,
+            subject=subject,
             plain_text_content=body
         )
 
-        # Read and attach zip file
-        with open(zip_path, 'rb') as f:
-            zip_data = f.read()
+        # Attach individual documents (not zipped)
+        if documents:
+            for doc in documents:
+                file_path = None
+                if doc.storage_provider == 'local':
+                    if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
+                        file_path = doc.storage_key
+                    else:
+                        file_path = os.path.join(
+                            current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER']),
+                            doc.storage_key
+                        )
 
-        encoded_file = base64.b64encode(zip_data).decode()
-        attached_file = Attachment(
-            FileContent(encoded_file),
-            FileName(os.path.basename(zip_path)),
-            FileType('application/zip'),
-            Disposition('attachment')
-        )
-        message.attachment = attached_file
+                if file_path and os.path.exists(file_path):
+                    with open(file_path, 'rb') as f:
+                        file_data = f.read()
 
-        # Send via SendGrid HTTP API
-        print(f"[BROKER EMAIL] Sending via SendGrid from {sender_email}...")
+                    encoded_file = base64.b64encode(file_data).decode()
+                    mime_type = mimetypes.guess_type(doc.original_filename or file_path)[0] or 'application/octet-stream'
+
+                    attached_file = Attachment(
+                        FileContent(encoded_file),
+                        FileName(doc.original_filename or os.path.basename(file_path)),
+                        FileType(mime_type),
+                        Disposition('attachment')
+                    )
+                    message.add_attachment(attached_file)
+
+        print(f"[EMAIL] Sending via SendGrid to {to_email} from {sender_email}...")
         sg = SendGridAPIClient(api_key)
         response = sg.send(message)
-        print(f"[BROKER EMAIL] SendGrid success! Status code: {response.status_code}")
+        print(f"[EMAIL] SendGrid success! Status code: {response.status_code}")
         return response
 
     except Exception as e:
-        print(f"[BROKER EMAIL] SendGrid FAILED to send to {broker.name}: {type(e).__name__}: {str(e)}")
+        print(f"[EMAIL] SendGrid FAILED to send to {to_email}: {type(e).__name__}: {str(e)}")
         raise
 
 
@@ -3961,20 +3856,16 @@ def save_user_signature():
 def send_follow_up(submission_id):
     """
     Send a follow-up email to one or more brokers for a submission.
-    Uses the connected OAuth account (Outlook/Gmail) to send.
+    Uses SendGrid to send. Supports optional document attachments.
     """
     try:
         user_id = session.get('user_id')
         data = request.get_json() or {}
-        broker_entries = data.get('broker_entries', [])  # [{id, body}, ...]
+        broker_entries = data.get('broker_entries', [])  # [{id, body, document_ids}, ...]
         signature = (data.get('signature') or '').strip()
 
         print(f"[SEND FOLLOW-UP] Received request for submission {submission_id}")
         print(f"[SEND FOLLOW-UP] Broker entries count: {len(broker_entries)}")
-        for i, entry in enumerate(broker_entries):
-            print(f"[SEND FOLLOW-UP] Entry {i}: broker_id={entry.get('id')}, body length={len((entry.get('body') or ''))}")
-            print(f"[SEND FOLLOW-UP] Entry {i} body preview: {(entry.get('body') or '')[:100]}...")
-        print(f"[SEND FOLLOW-UP] Signature length: {len(signature)}")
 
         if not broker_entries:
             return jsonify({'success': False, 'error': 'No broker entries provided'}), 400
@@ -3985,39 +3876,20 @@ def send_follow_up(submission_id):
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
 
+            # Get all submission documents for reference
+            all_documents = db_session.query(Document).filter(
+                Document.submission_id == submission_id
+            ).all()
+            doc_map = {doc.id: doc for doc in all_documents}
+
             results = {'sent': [], 'failed': []}
-
-            # Get the connected Outlook/Gmail account
-            connected_account = db_session.query(ConnectedAccount).filter(
-                ConnectedAccount.user_id == user_id,
-                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
-            ).first()
-
-            if not connected_account:
-                return jsonify({'success': False, 'error': 'No connected email account found. Connect Outlook or Gmail first.'}), 400
-
-            tokens = connected_account.get_decrypted_tokens()
-            access_token = tokens.get('access_token')
-            if not access_token:
-                return jsonify({'success': False, 'error': 'No valid access token for connected account'}), 400
-
-            provider = connected_account.provider.value.lower()
-            config = {
-                'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
-                'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
-                'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
-                'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
-                'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
-                'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
-                'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
-            }
-
-            oauth_service = get_oauth_service(provider, config)
 
             for entry in broker_entries:
                 try:
                     broker_id = entry.get('id')
                     body_text = (entry.get('body') or '').strip()
+                    document_ids = entry.get('document_ids', [])
+
                     broker = db_session.query(Broker).filter_by(
                         id=broker_id, user_id=user_id, is_enabled=True
                     ).first()
@@ -4036,21 +3908,15 @@ def send_follow_up(submission_id):
 
                     subject = f"Follow-up: {submission.insured_name}"
 
-                    # Send using the OAuth service
-                    if provider == 'outlook':
-                        oauth_service.send_email(
-                            access_token=access_token,
-                            to_recipients=[broker.email],
-                            subject=subject,
-                            body_text=full_body
-                        )
-                    elif provider == 'gmail':
-                        oauth_service.send_email(
-                            access_token=access_token,
-                            to_recipients=[broker.email],
-                            subject=subject,
-                            body_text=full_body
-                        )
+                    # Resolve documents to attach
+                    documents = [doc_map[did] for did in document_ids if did in doc_map] if document_ids else None
+
+                    _send_email_via_sendgrid(
+                        to_email=broker.email,
+                        subject=subject,
+                        body=full_body,
+                        documents=documents
+                    )
 
                     results['sent'].append({
                         'broker_id': broker_id,

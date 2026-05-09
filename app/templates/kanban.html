@@ -767,11 +767,6 @@
                 </div>
 
                 <div class="mb-3">
-                    <label for="brokerEmailBody" class="block text-sm font-semibold text-gray-300 mb-1">Email Body (optional)</label>
-                    <textarea id="brokerEmailBody" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="4" placeholder="Custom email message. Leave blank for default message."></textarea>
-                </div>
-
-                <div class="mb-3">
                     <label for="brokerLetterhead" class="block text-sm font-semibold text-gray-300 mb-1">Letterhead/Signature (optional)</label>
                     <textarea id="brokerLetterhead" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="3" placeholder="Your signature or letterhead to append to emails"></textarea>
                 </div>
@@ -802,11 +797,6 @@
             <div class="mb-3">
                 <label for="editBrokerContact" class="block text-sm font-semibold text-gray-300 mb-1">Contact</label>
                 <input id="editBrokerContact" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" readonly>
-            </div>
-
-            <div class="mb-3">
-                <label for="editBrokerEmailBody" class="block text-sm font-semibold text-gray-300 mb-1">Email Body (optional)</label>
-                <textarea id="editBrokerEmailBody" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" rows="4" placeholder="Custom email message. Leave blank for default message."></textarea>
             </div>
 
             <div class="mb-3">
@@ -2169,7 +2159,6 @@
             const name = document.getElementById('brokerName').value.trim();
             const email = document.getElementById('brokerEmail').value.trim();
             const portalName = document.getElementById('brokerPortalName').value.trim();
-            const emailBody = document.getElementById('brokerEmailBody').value.trim();
             const letterhead = document.getElementById('brokerLetterhead').value.trim();
 
             if (brokerType === 'email' && !email) {
@@ -2191,7 +2180,6 @@
                         email: brokerType === 'email' ? email : '',
                         portal_name: brokerType === 'portal' ? portalName : '',
                         is_portal: brokerType === 'portal',
-                        email_body: emailBody,
                         letterhead: letterhead
                     })
                 });
@@ -2205,7 +2193,6 @@
                     document.getElementById('brokerName').value = '';
                     document.getElementById('brokerEmail').value = '';
                     document.getElementById('brokerPortalName').value = '';
-                    document.getElementById('brokerEmailBody').value = '';
                     document.getElementById('brokerLetterhead').value = '';
                     document.getElementById('brokerTypeEmail').checked = true;
                     document.getElementById('emailSection').classList.remove('hidden');
@@ -2266,7 +2253,6 @@
             document.getElementById('editBrokerContact').value = broker.is_portal
                 ? `Portal: ${broker.portal_name}`
                 : `Email: ${broker.email}`;
-            document.getElementById('editBrokerEmailBody').value = broker.email_body || '';
             document.getElementById('editBrokerLetterhead').value = broker.letterhead || '';
             document.getElementById('editBrokerModal').classList.remove('hidden');
         }
@@ -2279,12 +2265,10 @@
         document.getElementById('saveEditBrokerBtn').addEventListener('click', async () => {
             if (!currentEditingBrokerId) return;
 
-            const emailBody = document.getElementById('editBrokerEmailBody').value.trim();
             const letterhead = document.getElementById('editBrokerLetterhead').value.trim();
 
             try {
                 await updateBroker(currentEditingBrokerId, {
-                    email_body: emailBody,
                     letterhead: letterhead
                 });
 
