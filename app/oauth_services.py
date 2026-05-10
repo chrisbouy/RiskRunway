@@ -679,9 +679,9 @@ class OutlookOAuthService:
         
         filter_query = ' and '.join(filters)
         
-        # Get messages
+        # Get messages (inbox only)
         response = requests.get(
-            'https://graph.microsoft.com/v1.0/me/messages',
+            'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages',
             headers={'Authorization': f'Bearer {access_token}'},
             params={
                 '$top': max_results,

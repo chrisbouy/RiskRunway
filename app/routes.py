@@ -1089,6 +1089,8 @@ def trigger_email_scrape():
             # Try OAuth accounts first
             if oauth_accounts:
                 print(f"Processing {len(oauth_accounts)} OAuth accounts")
+                needs_reauth = False
+                reauth_provider = None
                 for account in oauth_accounts:
                     try:
                         result = _scrape_emails_with_oauth(account, db_session, user_id)
@@ -1103,9 +1105,22 @@ def trigger_email_scrape():
                             if 'email_details' not in results:
                                 results['email_details'] = []
                             results['email_details'].extend(result.get('email_details', []))
+                        elif result.get('needs_reauth'):
+                            needs_reauth = True
+                            reauth_provider = result.get('provider', account.provider.value.lower())
                     except Exception as oauth_error:
                         logger.error(f"OAuth email scraping failed for {account.email_address}: {oauth_error}")
                         results['accounts_checked'].append(f"{account.provider.value}: {account.email_address} (failed: {str(oauth_error)})")
+                
+                # If re-auth is needed and no accounts succeeded, tell the frontend
+                if needs_reauth and not results.get('source'):
+                    db_session.close()
+                    return jsonify({
+                        'success': False,
+                        'needs_reauth': True,
+                        'provider': reauth_provider,
+                        'error': 'Email account token expired. Re-authenticating...'
+                    })
                 
                 # If we successfully processed at least one OAuth account, return success
                 if results['accounts_checked']:
@@ -1141,7 +1156,8 @@ def trigger_email_scrape():
             else:
                 if not oauth_accounts:
                     results['success'] = False
-                    results['error'] = 'No OAuth accounts connected and IMAP not configured'
+                    results['error'] = 'No email account connected. Please connect your email account first.'
+                    results['needs_connect'] = True
             
             db_session.close()
             
@@ -1205,6 +1221,7 @@ def _get_user_quote_subjects(db_session: Session, user_id: int) -> List[str]:
 def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, user_id: int) -> Dict:
     """
     Scrape emails using OAuth credentials from a connected account.
+    Automatically refreshes expired tokens before fetching.
     Filters emails by broker senders and quote subjects.
     """
     from datetime import timedelta
@@ -1224,21 +1241,48 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
         
         # Get tokens
         tokens = account.get_decrypted_tokens()
-        # print(f"Decrypted tokens for {account.email_address}: {tokens}")
         access_token = tokens.get('access_token') if tokens else None
-        
-        if not access_token:
-            logger.warning(f"No valid access token for OAuth account {account.email_address} (provider: {account.provider.value})")
-            return {
-                'success': False,
-                'error': f'No valid access token for {account.email_address}',
-                'provider': account.provider.value.lower()
-            }
+        refresh_token = tokens.get('refresh_token') if tokens else None
         
         # Get OAuth service
         provider_str = account.provider.value.lower()
         print(f"Getting OAuth service for {provider_str}")
         oauth_service = get_oauth_service(provider_str, config)
+        
+        # Auto-refresh token if expired or missing
+        if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+            if not refresh_token:
+                logger.warning(f"No refresh token for OAuth account {account.email_address} - re-auth required")
+                return {
+                    'success': False,
+                    'error': f'Re-authentication required for {account.email_address}',
+                    'needs_reauth': True,
+                    'provider': provider_str
+                }
+            
+            logger.info(f"Access token expired for {account.email_address}, refreshing...")
+            try:
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                # Update expires_at
+                expires_in = new_tokens.get('expires_in', 3600)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                account.status = ConnectedAccountStatus.ACTIVE
+                account.last_error = None
+                db_session.commit()
+                access_token = new_tokens.get('access_token')
+                logger.info(f"Token refreshed successfully for {account.email_address}")
+            except Exception as refresh_err:
+                logger.error(f"Token refresh failed for {account.email_address}: {refresh_err}")
+                account.status = ConnectedAccountStatus.ERROR
+                account.last_error = f"Token refresh failed: {str(refresh_err)}"
+                db_session.commit()
+                return {
+                    'success': False,
+                    'error': f'Token refresh failed for {account.email_address}. Please re-connect your email account.',
+                    'needs_reauth': True,
+                    'provider': provider_str
+                }
         
         
         
@@ -1888,6 +1932,11 @@ def oauth_connect(provider):
         if provider not in ['gmail', 'outlook']:
             return jsonify({'success': False, 'error': 'Invalid provider'}), 400
         
+        # Store return URL if provided (so callback can redirect back)
+        return_url = request.args.get('return_url')
+        if return_url:
+            session['oauth_return_url'] = return_url
+        
         user_id = session.get('user_id')
         
         # Get OAuth config
@@ -2025,6 +2074,12 @@ def oauth_callback(provider):
             db_session.commit()
             db_session.close()
 
+            # Redirect back to where the user came from (stored in session), or default to kanban
+            return_url = session.pop('oauth_return_url', None)
+            if return_url:
+                # Append oauth_success param so the page knows to auto-trigger actions
+                separator = '&' if '?' in return_url else '?'
+                return redirect(f"{return_url}{separator}oauth_success=1")
             return redirect(url_for('main.kanban', oauth_success=f'{provider.capitalize()} account connected successfully!'))
 
         except Exception as db_error:
@@ -3117,7 +3172,7 @@ def submit_to_market(submission_id):
     """
     Submit a submission to selected brokers.
     Accepts per-broker email bodies and optional document_ids for attachments.
-    Sends individual file attachments (not zipped) via SendGrid.
+    Sends individual file attachments via OAuth (Outlook Graph API).
     """
     try:
         user_id = session.get('user_id')
@@ -3187,7 +3242,7 @@ def submit_to_market(submission_id):
 
                     subject = f"Insurance Submission - {submission.insured_name}"
 
-                    _send_email_via_sendgrid(
+                    _send_email_via_oauth(
                         to_email=broker.email,
                         subject=subject,
                         body=full_body,
@@ -3203,8 +3258,17 @@ def submit_to_market(submission_id):
                         details=f"Sent to broker: {broker.name} ({broker.email})"
                     )
                 except Exception as e:
-                    print(f"Error sending email to broker {entry.get('id')}: {e}")
-                    results['failed'].append({'broker_id': entry.get('id'), 'error': str(e)})
+                    error_msg = str(e)
+                    print(f"Error sending email to broker {entry.get('id')}: {error_msg}")
+                    # Check if this is an auth/token issue
+                    if 're-connect' in error_msg.lower() or 'token' in error_msg.lower() or 'no connected email' in error_msg.lower():
+                        return jsonify({
+                            'success': False,
+                            'needs_reauth': True,
+                            'provider': 'outlook',
+                            'error': error_msg
+                        })
+                    results['failed'].append({'broker_id': entry.get('id'), 'error': error_msg})
 
             log_action(
                 entity_type='submission', entity_id=submission_id,
@@ -3219,66 +3283,120 @@ def submit_to_market(submission_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _send_email_via_sendgrid(to_email, subject, body, documents=None):
+def _send_email_via_oauth(to_email, subject, body, documents=None):
     """
-    Send email via SendGrid with individual file attachments (not zipped).
-    Used by both submit_to_market and send_follow_up.
+    Send email via OAuth (Outlook Graph API) using the user's connected account.
+    Automatically refreshes tokens if expired.
+    Falls back to error if no connected account is available.
     """
     import base64
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
     import mimetypes
+    from app.oauth_services import get_oauth_service
 
     try:
-        api_key = current_app.config.get('SENDGRID_API_KEY')
-        sender_email = current_app.config.get('BROKER_EMAIL_SENDER') or current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
+        user_id = session.get('user_id')
+        db_session = get_session()
 
-        if not api_key:
-            raise ValueError("SendGrid API key is not configured. Set SENDGRID_API_KEY environment variable.")
+        try:
+            # Get the user's active connected account
+            account = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+            ).first()
 
-        message = Mail(
-            from_email=sender_email,
-            to_emails=to_email,
-            subject=subject,
-            plain_text_content=body
-        )
+            if not account:
+                raise ValueError("No connected email account. Please connect your email account first.")
 
-        # Attach individual documents (not zipped)
-        if documents:
-            for doc in documents:
-                file_path = None
-                if doc.storage_provider == 'local':
-                    if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
-                        file_path = doc.storage_key
-                    else:
-                        file_path = os.path.join(
-                            current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER']),
-                            doc.storage_key
-                        )
+            # Get tokens
+            tokens = account.get_decrypted_tokens()
+            if not tokens:
+                # Token decryption failed - need re-auth
+                account.status = ConnectedAccountStatus.ERROR
+                account.last_error = "Token decryption failed - re-authentication required"
+                db_session.commit()
+                raise ValueError("Email account tokens could not be read. Please re-connect your email account via Check Email.")
 
-                if file_path and os.path.exists(file_path):
-                    with open(file_path, 'rb') as f:
-                        file_data = f.read()
+            access_token = tokens.get('access_token')
+            refresh_token = tokens.get('refresh_token')
 
-                    encoded_file = base64.b64encode(file_data).decode()
-                    mime_type = mimetypes.guess_type(doc.original_filename or file_path)[0] or 'application/octet-stream'
+            # Get OAuth service
+            provider_str = account.provider.value.lower()
+            config = {
+                'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+                'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+                'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+                'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+                'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+                'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+                'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+            }
+            oauth_service = get_oauth_service(provider_str, config)
 
-                    attached_file = Attachment(
-                        FileContent(encoded_file),
-                        FileName(doc.original_filename or os.path.basename(file_path)),
-                        FileType(mime_type),
-                        Disposition('attachment')
-                    )
-                    message.add_attachment(attached_file)
+            # Auto-refresh token if expired
+            if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                if not refresh_token:
+                    raise ValueError("Email token expired and no refresh token available. Please re-connect your email account.")
 
-        print(f"[EMAIL] Sending via SendGrid to {to_email} from {sender_email}...")
-        sg = SendGridAPIClient(api_key)
-        response = sg.send(message)
-        print(f"[EMAIL] SendGrid success! Status code: {response.status_code}")
-        return response
+                print(f"[EMAIL] Access token expired for {account.email_address}, refreshing...")
+                from datetime import timedelta
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                expires_in = new_tokens.get('expires_in', 3600)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                account.status = ConnectedAccountStatus.ACTIVE
+                account.last_error = None
+                db_session.commit()
+                access_token = new_tokens.get('access_token')
+                print(f"[EMAIL] Token refreshed successfully for {account.email_address}")
+
+            # Build attachments list
+            attachment_list = None
+            if documents:
+                attachment_list = []
+                for doc in documents:
+                    file_path = None
+                    if doc.storage_provider == 'local':
+                        if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
+                            file_path = doc.storage_key
+                        else:
+                            file_path = os.path.join(
+                                current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER']),
+                                doc.storage_key
+                            )
+
+                    if file_path and os.path.exists(file_path):
+                        with open(file_path, 'rb') as f:
+                            file_data = f.read()
+
+                        mime_type = mimetypes.guess_type(doc.original_filename or file_path)[0] or 'application/octet-stream'
+                        attachment_list.append({
+                            'filename': doc.original_filename or os.path.basename(file_path),
+                            'content_base64': base64.b64encode(file_data).decode(),
+                            'content_type': mime_type
+                        })
+
+            # Send via OAuth
+            if provider_str == 'outlook':
+                print(f"[EMAIL] Sending via Outlook Graph API to {to_email} from {account.email_address}...")
+                oauth_service.send_email(
+                    access_token=access_token,
+                    to_recipients=[to_email],
+                    subject=subject,
+                    body_text=body,
+                    attachments=attachment_list
+                )
+                print(f"[EMAIL] Outlook send success to {to_email}")
+            elif provider_str == 'gmail':
+                # TODO: Implement Gmail send via API
+                raise ValueError("Gmail sending not yet implemented. Please connect an Outlook account.")
+            else:
+                raise ValueError(f"Unsupported email provider: {provider_str}")
+
+        finally:
+            db_session.close()
 
     except Exception as e:
-        print(f"[EMAIL] SendGrid FAILED to send to {to_email}: {type(e).__name__}: {str(e)}")
+        print(f"[EMAIL] OAuth send FAILED to {to_email}: {type(e).__name__}: {str(e)}")
         raise
 
 
@@ -3856,7 +3974,7 @@ def save_user_signature():
 def send_follow_up(submission_id):
     """
     Send a follow-up email to one or more brokers for a submission.
-    Uses SendGrid to send. Supports optional document attachments.
+    Uses OAuth (Outlook Graph API) to send. Supports optional document attachments.
     """
     try:
         user_id = session.get('user_id')
@@ -3911,7 +4029,7 @@ def send_follow_up(submission_id):
                     # Resolve documents to attach
                     documents = [doc_map[did] for did in document_ids if did in doc_map] if document_ids else None
 
-                    _send_email_via_sendgrid(
+                    _send_email_via_oauth(
                         to_email=broker.email,
                         subject=subject,
                         body=full_body,
@@ -3934,9 +4052,18 @@ def send_follow_up(submission_id):
                     )
 
                 except Exception as broker_error:
+                    error_msg = str(broker_error)
+                    # Check if this is an auth/token issue
+                    if 're-connect' in error_msg.lower() or 'token' in error_msg.lower() or 'no connected email' in error_msg.lower():
+                        return jsonify({
+                            'success': False,
+                            'needs_reauth': True,
+                            'provider': 'outlook',
+                            'error': error_msg
+                        })
                     results['failed'].append({
                         'broker_id': broker_id,
-                        'error': str(broker_error)
+                        'error': error_msg
                     })
 
             db_session.commit()

@@ -1143,7 +1143,7 @@
                         </div>
                         <button id="deleteSubmissionBtn" class="menu-action-btn">Delete Submission</button>
                         <button id="reportBugBtn" class="menu-action-btn">Report Bug</button>
-                        <a href="/logout" class="menu-action-btn">Logout</a>
+                        <button id="logoutBtn" class="menu-action-btn">Logout</button>
                     </div>
                 </div>
             </div>
@@ -2953,6 +2953,10 @@ Thank you for your attention to this matter.`;
                             body: JSON.stringify({ broker_entries: [{ id: entry.id, body: entry.body, document_ids: entry.document_ids }], signature })
                         });
                         const data = await response.json();
+                        if (!data.success && data.needs_reauth) {
+                            await handleNeedsReauth(data.provider || 'outlook');
+                            return;
+                        }
                         if (data.success) {
                             alert('Sent!');
                         } else {
@@ -3015,6 +3019,10 @@ Thank you for your attention to this matter.`;
                 });
 
                 const submitData = await submitResponse.json();
+                if (!submitData.success && submitData.needs_reauth) {
+                    await handleNeedsReauth(submitData.provider || 'outlook');
+                    return;
+                }
                 if (!submitData.success) {
                     throw new Error(submitData.error || 'Failed to submit to market');
                 }
@@ -3087,6 +3095,22 @@ Thank you for your attention to this matter.`;
         // Report bug handlers
         document.getElementById('reportBugBtn').addEventListener('click', function() {
             openBugModal();
+        });
+
+        // Logout handler
+        document.getElementById('logoutBtn').addEventListener('click', async function() {
+            if (confirm('Are you sure you want to logout?')) {
+                try {
+                    const response = await fetch('/logout', { method: 'POST' });
+                    const data = await response.json();
+                    if (data.success) {
+                        window.location.href = '/login';
+                    }
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    window.location.href = '/login';
+                }
+            }
         });
 
         document.getElementById('closeBugModalBtn').addEventListener('click', function() {
@@ -3971,7 +3995,27 @@ Thank you for your attention to this matter.`;
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ broker_entries: brokerEntries, signature })
             });
-            return await response.json();
+            const data = await response.json();
+            if (!data.success && data.needs_reauth) {
+                await handleNeedsReauth(data.provider || 'outlook');
+                return { success: false, error: 'Re-authenticating... please try again after signing in.' };
+            }
+            return data;
+        }
+
+        async function handleNeedsReauth(provider) {
+            try {
+                const returnUrl = encodeURIComponent(window.location.href);
+                const response = await fetch(`/api/oauth/connect/${provider}?return_url=${returnUrl}`);
+                const data = await response.json();
+                if (data.success && data.authorization_url) {
+                    window.location.href = data.authorization_url;
+                } else {
+                    alert('Failed to start re-authentication: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Re-authentication failed: ' + error.message);
+            }
         }
 
         // Load submission data on page load
