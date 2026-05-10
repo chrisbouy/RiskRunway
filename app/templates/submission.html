@@ -1356,12 +1356,6 @@
                 No email brokers configured. <a href="#" id="configureSubmitBrokersLink" class="text-blue-600 hover:underline">Configure brokers</a>
             </div>
 
-            <!-- Shared Signature -->
-            <div class="mb-4">
-                <label class="block text-sm font-semibold text-gray-700 mb-1">Email Signature (shared):</label>
-                <textarea id="submitToMarketSignature" rows="3" class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900" placeholder="Best regards,&#10;Your Name&#10;Your Title"></textarea>
-            </div>
-
             <!-- Send All Button Row -->
             <div class="flex justify-end gap-2 pt-3 border-t border-gray-200">
                 <button id="cancelSubmitToMarket" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
@@ -1460,12 +1454,6 @@
 
             <div id="noFollowUpBrokersMessage" class="text-gray-500 text-sm mb-4" style="display:none;">
                 No email brokers configured. <a href="#" id="configureFollowUpBrokersLink" class="text-blue-600 hover:underline">Configure brokers</a>
-            </div>
-
-            <!-- Shared Signature -->
-            <div class="mb-4">
-                <label class="block text-sm font-semibold text-gray-700 mb-1">Email Signature (shared):</label>
-                <textarea id="followUpSignature" rows="3" class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900" placeholder="Best regards,&#10;Your Name&#10;Your Title"></textarea>
             </div>
 
             <!-- Send All Button Row -->
@@ -2946,11 +2934,10 @@ Thank you for your attention to this matter.`;
                     this.disabled = true;
                     this.textContent = 'Sending...';
                     try {
-                        const signature = document.getElementById('submitToMarketSignature').value.trim();
                         const response = await fetch(`/api/submission/${submissionId}/submit_to_market`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ broker_entries: [{ id: entry.id, body: entry.body, document_ids: entry.document_ids }], signature })
+                            body: JSON.stringify({ broker_entries: [{ id: entry.id, body: entry.body, document_ids: entry.document_ids }] })
                         });
                         const data = await response.json();
                         if (!data.success && data.needs_reauth) {
@@ -2973,13 +2960,7 @@ Thank you for your attention to this matter.`;
         }
 
         async function loadSubmitToMarketSignature() {
-            try {
-                const response = await fetch('/api/user/signature');
-                const data = await response.json();
-                if (data.success && data.signature) {
-                    document.getElementById('submitToMarketSignature').value = data.signature;
-                }
-            } catch (error) {}
+            // Signature is now managed in Configure Brokers - no-op
         }
 
         document.getElementById('sendToMarketsBtn').addEventListener('click', async function() {
@@ -3008,13 +2989,11 @@ Thank you for your attention to this matter.`;
                 }
 
                 // Then, submit to selected brokers
-                const signature = document.getElementById('submitToMarketSignature').value.trim();
                 const submitResponse = await fetch(`/api/submission/${submissionId}/submit_to_market`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        broker_entries: checkedEntries.map(e => ({ id: e.id, body: e.body, document_ids: e.document_ids })),
-                        signature
+                        broker_entries: checkedEntries.map(e => ({ id: e.id, body: e.body, document_ids: e.document_ids }))
                     })
                 });
 
@@ -3726,12 +3705,6 @@ Thank you for your attention to this matter.`;
 
         function closeFollowUpModal() {
             document.getElementById('followUpModal').classList.add('hidden');
-            const signature = document.getElementById('followUpSignature').value.trim();
-            fetch('/api/user/signature', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ signature })
-            }).catch(() => {});
         }
 
         document.getElementById('closeFollowUpModal').addEventListener('click', closeFollowUpModal);
@@ -3919,15 +3892,7 @@ Thank you for your attention to this matter.`;
         }
 
         async function loadFollowUpSignature() {
-            try {
-                const response = await fetch('/api/user/signature');
-                const data = await response.json();
-                if (data.success && data.signature) {
-                    document.getElementById('followUpSignature').value = data.signature;
-                }
-            } catch (error) {
-                console.error('Error loading signature:', error);
-            }
+            // Signature is now managed in Configure Brokers - no-op
         }
 
         async function sendFollowUpSingle(index) {
@@ -3939,8 +3904,7 @@ Thank you for your attention to this matter.`;
             if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
 
             try {
-                const signature = document.getElementById('followUpSignature').value.trim();
-                const result = await sendFollowUpApi([entry], signature);
+                const result = await sendFollowUpApi([entry]);
                 if (result.success) {
                     alert(`Follow-up sent!`);
                 } else {
@@ -3966,17 +3930,11 @@ Thank you for your attention to this matter.`;
             btn.textContent = 'Sending...';
 
             try {
-                const signature = document.getElementById('followUpSignature').value.trim();
-                const result = await sendFollowUpApi(checkedEntries, signature);
+                const result = await sendFollowUpApi(checkedEntries);
                 if (result.success) {
                     const sent = result.results?.sent?.length || 0;
                     const failed = result.results?.failed?.length || 0;
                     alert(`Follow-ups sent to ${sent} broker(s).${failed ? ` ${failed} failed.` : ''}`);
-                    await fetch('/api/user/signature', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ signature })
-                    }).catch(() => {});
                 } else {
                     alert('Failed to send: ' + (result.error || 'Unknown error'));
                 }
@@ -3988,12 +3946,12 @@ Thank you for your attention to this matter.`;
             }
         });
 
-        async function sendFollowUpApi(entries, signature) {
+        async function sendFollowUpApi(entries) {
             const brokerEntries = entries.map(e => ({ id: e.id, body: e.body, document_ids: e.document_ids }));
             const response = await fetch(`/api/submission/${submissionId}/send_follow_up`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ broker_entries: brokerEntries, signature })
+                body: JSON.stringify({ broker_entries: brokerEntries })
             });
             const data = await response.json();
             if (!data.success && data.needs_reauth) {

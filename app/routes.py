@@ -3178,13 +3178,16 @@ def submit_to_market(submission_id):
         user_id = session.get('user_id')
         data = request.get_json() or {}
         broker_entries = data.get('broker_entries', [])  # [{id, body, document_ids}, ...]
-        signature = (data.get('signature') or '').strip()
 
         if not broker_entries:
             return jsonify({'success': False, 'error': 'No brokers selected'}), 400
 
         db_session = get_session()
         try:
+            # Get user's saved signature
+            user = db_session.query(User).filter_by(id=user_id).first()
+            signature = (user.signature or '').strip() if user else ''
+
             submission = db_session.query(Submission).filter_by(id=submission_id).first()
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
@@ -3980,7 +3983,6 @@ def send_follow_up(submission_id):
         user_id = session.get('user_id')
         data = request.get_json() or {}
         broker_entries = data.get('broker_entries', [])  # [{id, body, document_ids}, ...]
-        signature = (data.get('signature') or '').strip()
 
         print(f"[SEND FOLLOW-UP] Received request for submission {submission_id}")
         print(f"[SEND FOLLOW-UP] Broker entries count: {len(broker_entries)}")
@@ -3990,6 +3992,10 @@ def send_follow_up(submission_id):
 
         db_session = get_session()
         try:
+            # Get user's saved signature
+            user = db_session.query(User).filter_by(id=user_id).first()
+            signature = (user.signature or '').strip() if user else ''
+
             submission = db_session.query(Submission).filter_by(id=submission_id).first()
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
