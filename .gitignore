@@ -53,9 +53,9 @@ media/students/
 *.pth
 
 #images
-*.png
-*.jpg
-*.jpeg
+# *.png
+# *.jpg
+# *.jpeg
 
 #quotes
 *.pdf

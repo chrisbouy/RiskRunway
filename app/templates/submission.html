@@ -847,10 +847,10 @@
         .bug-modal {
             width: min(1200px, 100%);
             max-height: 92vh;
-            background: white;
+            background: var(--card-bg);
             border-radius: 0.5rem;
-            border: 1px solid var(--color-neutral-200);
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
             display: grid;
             grid-template-rows: auto auto 1fr auto;
             overflow: hidden;
@@ -858,7 +858,7 @@
 
         .bug-modal-header {
             padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--color-neutral-200);
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -875,41 +875,48 @@
             flex-wrap: wrap;
             gap: 0.5rem;
             padding: 0.625rem 1rem;
-            border-bottom: 1px solid var(--color-neutral-200);
+            border-bottom: 1px solid var(--border-color);
             background: var(--color-neutral-50);
         }
 
         .bug-toolbar button {
-            background: white;
+            background: var(--color-neutral-100);
             color: var(--color-neutral-700);
             border: 1px solid var(--color-neutral-300);
             font-size: 0.75rem;
             padding: 0.313rem 0.625rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+
+        .bug-toolbar button:hover {
+            border-color: var(--color-neutral-400);
+            background: var(--color-neutral-200);
         }
 
         .bug-toolbar button.active {
             border-color: var(--color-primary);
             color: var(--color-primary);
-            background: #eff6ff;
+            background: rgba(74, 158, 255, 0.15);
         }
 
         .bug-canvas-wrap {
             overflow: auto;
             padding: 0.75rem;
-            background: #eef2ff;
+            background: var(--color-neutral-100);
             text-align: center;
         }
 
         #bugCanvas {
             max-width: 100%;
             border: 1px solid var(--color-neutral-300);
-            background: white;
+            background: var(--color-neutral-50);
             cursor: crosshair;
         }
 
         .bug-modal-footer {
             padding: 0.75rem 1rem;
-            border-top: 1px solid var(--color-neutral-200);
+            border-top: 1px solid var(--border-color);
             display: grid;
             gap: 0.625rem;
         }
@@ -933,7 +940,8 @@
             padding: 0.5rem 0.625rem;
             font-size: 0.813rem;
             font-family: 'IBM Plex Sans', sans-serif;
-            background: white;
+            background: var(--color-neutral-100);
+            color: var(--text-primary);
         }
 
         .bug-form-row textarea {

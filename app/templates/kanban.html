@@ -68,9 +68,15 @@
             font-weight: 300;
             letter-spacing: 0.02em;
             color: var(--rail-text);
-            padding: 12px 8px 8px;
-            margin-bottom: 8px;
+            padding: 0;
+            margin: -10px -8px -9px;
             line-height: 1.2;
+        }
+        .left-title img {
+            max-width: none;
+            width: calc(100% + 20px);
+            height: auto;
+            display: block;
         }
         .left-title .title-risk {
             font-weight: 600;
@@ -550,7 +556,7 @@
     <div class="page-layout">
         <aside class="left-rail">
             <div class="left-title">
-                <span class="title-risk">Risk</span><span class="title-runway">Runway</span>
+                <img src="{{ url_for('static', filename='images/title_bluebg.png') }}" alt="Risk Runway" style="max-width: 100%; height: auto;">
             </div>
             <div class="left-divider"></div>
 
