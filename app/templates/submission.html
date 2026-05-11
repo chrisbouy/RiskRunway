@@ -1129,6 +1129,7 @@
                 <!-- Edit buttons -->
                 <div id="editToolbar" class="edit-toolbar{% if not is_admin %} hidden{% endif %}">
                     <button id="editQuotesBtn" class="primary-btn">Edit</button>
+                    <span id="boundLabel" style="display: none; font-size: 0.875rem; font-weight: 700; color: #059669; letter-spacing: 0.05em;">BOUND</span>
                     <button id="saveQuotesBtn" class="success-btn hidden">Save</button>
                     <button id="cancelEditBtn" class="secondary-btn hidden">Cancel</button>
                 </div>
@@ -1326,15 +1327,22 @@
                 <div class="card-header">
                     <h2 class="card-title">Bind Actions</h2>
                 </div>
-                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                    <button id="followUpBtn3" class="follow-up-btn" style="background:#475569;color:white;">Send Follow-up(s)</button>
-                    <button id="moveBackToQuotingBtn">Back to Quoting</button>
-                    <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload insurance binder (proof of coverage)">
-                    <button id="uploadBinderBtn">Upload Binder</button>
-                    <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload premium finance agreement">
-                    <button id="uploadFinanceBtn">Upload Finance Agreement</button>
-                    <button id="markBoundBtn" style="background: #059669; color: white; margin-left: auto;">Mark as Bound</button>
-                    <button id="generateExportBtn" style="background: #059669; color: white;">📤 Generate Export</button>
+                <div style="padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <!-- Row 1: Upload Binder, Upload Finance Agreement -->
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center;">
+                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--color-neutral-600);">Upload Binder:</label>
+                        <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload insurance binder (proof of coverage)">
+                        <span style="width: 1rem;"></span>
+                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--color-neutral-600);">Upload Finance Agreement:</label>
+                        <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload premium finance agreement">
+                    </div>
+                    <!-- Row 2: Action buttons centered -->
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center;">
+                        <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;">Back to Quoting</button>
+                        <button id="markBoundBtn" style="background: #059669; color: white;">Mark as Bound</button>
+                        <button id="downloadCsvBtn" style="background: #2563eb; color: white;">📥 Download as CSV</button>
+                        <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled>☁️ Export to AMS</button>
+                    </div>
                 </div>
             </div>
             <div class="card">
@@ -1406,45 +1414,7 @@
         </div>
     </div>
 
-    <!-- AMS Export Modal -->
-    <div id="amsExportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden border border-gray-700 flex flex-col">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-white">AMS Export Data</h2>
-                <button id="closeAmsExportModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
-            </div>
-            <p class="text-gray-400 mb-4">Preview of data to be exported to AMS:</p>
-            
-            <!-- CSV Grid -->
-            <div id="exportGridContainer" class="flex-1 overflow-auto border border-gray-600 rounded bg-gray-900">
-                <table id="exportGrid" class="w-full text-sm">
-                    <thead class="bg-gray-700 sticky top-0">
-                        <tr id="exportGridHeader"></tr>
-                    </thead>
-                    <tbody id="exportGridBody" class="divide-y divide-gray-700"></tbody>
-                </table>
-            </div>
-            
-            <!-- Empty state -->
-            <div id="exportEmptyState" class="hidden text-center py-8 text-gray-500">
-                No chosen quote available for this submission.
-            </div>
-            
-            <div class="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
-                <div class="text-sm text-gray-400">
-                    <span id="exportRecordCount">0</span> records
-                </div>
-                <div class="flex gap-2">
-                    <button id="downloadCsvBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-                        📥 Download CSV
-                    </button>
-                    <button id="exportToAmsBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-                        ☁️ Export to AMS
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Send Follow-up(s) Modal -->
     <div id="followUpModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1639,7 +1609,8 @@
             document.getElementById('submissionStageSection').classList.toggle('active', stage === 'submission');
             document.getElementById('quotingStageSection').classList.toggle('active', stage === 'quoting');
             document.getElementById('bindStageSection').classList.toggle('active', stage === 'bind');
-        
+            // Always sync bound visual state when stage view changes
+            applyBoundVisualState(statusValue);
         }
 
         function stageField(label, value, options = {}) {
@@ -2162,8 +2133,8 @@
             url: "/api/upload_quote",
             autoProcessQueue: false,
             acceptedFiles: ".pdf,.png,.jpg,.jpeg",
-            addRemoveLinks: false
-            //previewTemplate: '<div style="display:none"></div>'
+            addRemoveLinks: false,
+            previewTemplate: '<div style="display:none"></div>'
         });
 
         myDropzone.on("addedfile", function(file) {
@@ -3250,9 +3221,55 @@ Thank you for your attention to this matter.`;
             }
         });
 
+        // Apply bound visual state (green borders + Unbind button) based on status
+        function applyBoundVisualState(status) {
+            const btn = document.getElementById('markBoundBtn');
+            const bindSection = document.getElementById('bindStageSection');
+            const exportBtn = document.getElementById('exportToAmsBtn');
+            const editBtn = document.getElementById('editQuotesBtn');
+            const boundLabel = document.getElementById('boundLabel');
+            if (!btn || !bindSection) return;
+            const cards = bindSection.querySelectorAll('.card');
+            
+            if (status === 'SENT_TO_FINANCE') {
+                btn.textContent = 'Unbind';
+                btn.style.background = '#dc2626';
+                cards.forEach(card => { card.style.borderColor = '#059669'; });
+                // Enable Export to AMS
+                if (exportBtn) {
+                    exportBtn.disabled = false;
+                    exportBtn.style.opacity = '1';
+                    exportBtn.style.cursor = 'pointer';
+                }
+                // Swap Edit btn for BOUND label
+                if (editBtn) editBtn.classList.add('hidden');
+                if (boundLabel) boundLabel.style.display = 'inline';
+            } else {
+                btn.textContent = 'Mark as Bound';
+                btn.style.background = '#059669';
+                cards.forEach(card => { card.style.borderColor = ''; });
+                // Disable Export to AMS
+                if (exportBtn) {
+                    exportBtn.disabled = true;
+                    exportBtn.style.opacity = '0.5';
+                    exportBtn.style.cursor = 'not-allowed';
+                }
+                // Swap BOUND label back to Edit btn
+                if (editBtn) editBtn.classList.remove('hidden');
+                if (boundLabel) boundLabel.style.display = 'none';
+            }
+        }
+
         document.getElementById('markBoundBtn').addEventListener('click', function() {
-            document.getElementById('statusDropdown').value = 'SENT_TO_FINANCE';
-            document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+            const btn = this;
+            
+            if (btn.textContent.trim() === 'Mark as Bound') {
+                document.getElementById('statusDropdown').value = 'SENT_TO_FINANCE';
+                document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+            } else {
+                document.getElementById('statusDropdown').value = 'CHOSEN';
+                document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
+            }
         });
 
         document.getElementById('moveBackToQuotingBtn').addEventListener('click', function() {
@@ -3277,32 +3294,24 @@ Thank you for your attention to this matter.`;
             }
         });
 
-        document.getElementById('uploadBinderBtn').addEventListener('click', async function() {
-            const fileInput = document.getElementById('binderDocFile');
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Select binder document first.');
-                return;
-            }
+        document.getElementById('binderDocFile').addEventListener('change', async function() {
+            const file = this.files[0];
+            if (!file) return;
             try {
                 await uploadSubmissionDocument(file, 'BINDER', { term_key: submissionData?.effective_date });
-                fileInput.value = '';
+                this.value = '';
                 await loadSubmission();
             } catch (error) {
                 alert(error.message);
             }
         });
 
-        document.getElementById('uploadFinanceBtn').addEventListener('click', async function() {
-            const fileInput = document.getElementById('financeDocFile');
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Select finance agreement file first.');
-                return;
-            }
+        document.getElementById('financeDocFile').addEventListener('change', async function() {
+            const file = this.files[0];
+            if (!file) return;
             try {
                 await uploadSubmissionDocument(file, 'FINANCE_AGREEMENT', { term_key: submissionData?.effective_date });
-                fileInput.value = '';
+                this.value = '';
                 await loadDocuments();
             } catch (error) {
                 alert(error.message);
@@ -3382,24 +3391,12 @@ Thank you for your attention to this matter.`;
         
         let exportData = [];
         
-        // Open AMS Export Modal
-        document.getElementById('generateExportBtn').addEventListener('click', async function() {
-            await generateExportData();
-            document.getElementById('amsExportModal').classList.remove('hidden');
-        });
-        
-        // Close AMS Export Modal
-        document.getElementById('closeAmsExportModal').addEventListener('click', function() {
-            document.getElementById('amsExportModal').classList.add('hidden');
-        });
-        
-        // Generate export data from current submission's quotes
+        // Generate export data from current submission's quotes (called before CSV/AMS actions)
         async function generateExportData() {
             try {
                 // Use the already loaded submission data and quotes
                 if (!submissionData || !quotes || quotes.length === 0) {
                     exportData = [];
-                    renderExportGrid();
                     return;
                 }
                 
@@ -3492,79 +3489,17 @@ Thank you for your attention to this matter.`;
                     }
                 }
                 
-                renderExportGrid();
-                
+
             } catch (error) {
                 console.error('Error generating export data:', error);
                 alert('Error generating export data: ' + error.message);
             }
         }
         
-        // Render the export data in a grid
-        function renderExportGrid() {
-            const headerRow = document.getElementById('exportGridHeader');
-            const body = document.getElementById('exportGridBody');
-            const container = document.getElementById('exportGridContainer');
-            const emptyState = document.getElementById('exportEmptyState');
-            const recordCount = document.getElementById('exportRecordCount');
+        // Download CSV - generates data then downloads directly
+        document.getElementById('downloadCsvBtn').addEventListener('click', async function() {
+            await generateExportData();
             
-            recordCount.textContent = exportData.length;
-            
-            if (exportData.length === 0) {
-                container.classList.add('hidden');
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            
-            container.classList.remove('hidden');
-            emptyState.classList.add('hidden');
-            
-            // Get columns for display
-            const columns = [
-                'insured_name', 'state', 'effective_date', 'expiration_date',
-                'coverage_type', 'carrier', 'policy_number', 'quote_number',
-                'annual_premium', 'total_premium', 'grand_total', 'down_payment',
-                'retail_agent_name', 'quote_outcome'
-            ];
-            
-            // Build header
-            const headerLabels = {
-                insured_name: 'Insured Name',
-                state: 'State',
-                effective_date: 'Effective Date',
-                expiration_date: 'Expiration Date',
-                coverage_type: 'Coverage Type',
-                carrier: 'Carrier',
-                policy_number: 'Policy #',
-                quote_number: 'Quote #',
-                annual_premium: 'Annual Premium',
-                total_premium: 'Total Premium',
-                grand_total: 'Grand Total',
-                down_payment: 'Down Payment',
-                retail_agent_name: 'Retail Agent',
-                quote_outcome: 'Outcome'
-            };
-            
-            headerRow.innerHTML = columns.map(col => 
-                `<th class="px-3 py-2 text-left text-gray-200 font-semibold">${headerLabels[col] || col}</th>`
-            ).join('');
-            
-            // Build body with click-to-copy functionality
-            body.innerHTML = exportData.map(row => 
-                `<tr class="hover:bg-gray-800">` + 
-                columns.map(col => {
-                    let value = row[col];
-                    if (value === null || value === undefined) value = '';
-                    if (typeof value === 'number') value = value.toLocaleString('en-US', {style: 'currency', currency: 'USD'});
-                    const cellValue = value === '' ? '<span class="text-gray-500">null</span>' : escapeHtml(String(value));
-                    return `<td class="px-3 py-2 text-gray-300 whitespace-nowrap cursor-pointer hover:text-blue-400" onclick="copyToClipboard('${escapeHtml(String(value)).replace(/'/g, "\\'")}', this)">${cellValue}</td>`;
-                }).join('') +
-                `</tr>`
-            ).join('');
-        }
-        
-        // Download CSV
-        document.getElementById('downloadCsvBtn').addEventListener('click', function() {
             if (exportData.length === 0) {
                 alert('No data to export');
                 return;
@@ -3632,11 +3567,13 @@ Thank you for your attention to this matter.`;
             URL.revokeObjectURL(url);
         });
         
-        // Export to AMS - Create job and trigger local agent via protocol handler
+        // Export to AMS - generates data then creates job and triggers local agent
         let amsExportJobId = null;
         let amsExportPollInterval = null;
         
         document.getElementById('exportToAmsBtn').addEventListener('click', async function() {
+            await generateExportData();
+            
             if (exportData.length === 0) {
                 alert('No data to export');
                 return;
@@ -3667,27 +3604,23 @@ Thank you for your attention to this matter.`;
                 btn.textContent = 'Opening agent...';
                 
                 // Build the protocol URL to trigger the local agent
-                // Include job_id and server URL so launcher can spawn agent with correct job
                 const serverUrl = window.location.origin;
                 const protocolUrl = `riskrunway://export?job_id=${amsExportJobId}&server=${encodeURIComponent(serverUrl)}`;
                 
                 console.log('Triggering local agent:', protocolUrl, 'Job ID:', amsExportJobId);
                 
                 // Open the protocol URL to spawn the local agent
-                // Use a hidden iframe to avoid leaving the page
                 const iframe = document.createElement('iframe');
                 iframe.style.display = 'none';
                 iframe.src = protocolUrl;
                 document.body.appendChild(iframe);
                 setTimeout(() => document.body.removeChild(iframe), 1000);
                 
-                // Close the AMS Export modal and reload the app after a short delay.
-                document.getElementById('amsExportModal').classList.add('hidden');
+                // Reload the app after a short delay
                 setTimeout(() => {
                     window.location.reload();
                 }, 800);
                 
-                // Update button text while the app reloads
                 btn.textContent = 'Check your desktop...';
                 
             } catch (error) {

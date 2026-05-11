@@ -1344,7 +1344,7 @@
             if (stageKey === 'submission') {
                 status = submission.api_status === 'submission' ? 'app in progress' : 'app sent';
             } else if (stageKey === 'quoting') {
-                status = `quotes: ${quoteReceivedCount}/${quoteSentCount}`;
+                status = quoteSentCount > 0 ? `quotes: ${quoteReceivedCount}/${quoteSentCount}` : `quotes: ${quoteReceivedCount}`;
             } else if (stageKey === 'bind') {
                 status = `Bound`;
             }
