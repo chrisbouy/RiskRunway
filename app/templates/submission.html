@@ -1316,15 +1316,6 @@
             </div>
             <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
-                    <h2 class="card-title">Premium Finance Decision</h2>
-                </div>
-                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items:center;">
-                    <label><input type="radio" name="pfDecision" value="yes"> Yes - generate finance agreement</label>
-                    <label><input type="radio" name="pfDecision" value="no"> No - client paying in full</label>
-                </div>
-            </div>
-            <div class="card" style="margin-bottom: 1rem;">
-                <div class="card-header">
                     <h2 class="card-title">Bind Actions</h2>
                 </div>
                 <div style="padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
@@ -1345,11 +1336,20 @@
                     </div>
                 </div>
             </div>
-            <div class="card">
+            <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
                     <h2 class="card-title">Binder / Finance Documents</h2>
                 </div>
                 <div id="bindDocsList" class="doc-list"></div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Premium Finance Decision</h2>
+                </div>
+                <div style="padding: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items:center;">
+                    <label><input type="radio" name="pfDecision" value="yes"> Yes - generate finance agreement</label>
+                    <label><input type="radio" name="pfDecision" value="no"> No - client paying in full</label>
+                </div>
             </div>
         </div>
     </div>
@@ -2378,20 +2378,51 @@
 
             if (allPDFInfo.length === 0) return;
 
-            // Create headers
-            const headers = ['View', 'MGA / Wholesale Broker', 'Quote #', 'Grand Total', '% Min Earned', 'Deposit', 'Amount Financed'];
-            headers.forEach(headerText => {
+            // Define all possible columns
+            const allColumns = [
+                { header: 'View', getValue: () => null, path: null, isView: true },
+                { header: 'MGA / Wholesale Broker', getValue: (data) => data.general_agent_or_wholesale_broker?.name || null, path: 'general_agent_or_wholesale_broker.name' },
+                { header: 'Quote #', getValue: (data) => data.quote_number || null, path: 'quote_number' },
+                { header: 'Grand Total', getValue: (data) => data.totals?.grand_total || null, path: 'totals.grand_total' },
+                { header: '% Min Earned', getValue: (data) => {
+                    if (data.policies && Array.isArray(data.policies) && data.policies.length > 0) {
+                        const percentages = data.policies.map(p => p.minimum_earned_percent).filter(p => p !== null && p !== undefined);
+                        if (percentages.length > 0) {
+                            const avg = percentages.reduce((a, b) => parseFloat(a) + parseFloat(b), 0) / percentages.length;
+                            return avg.toFixed(1) + '%';
+                        }
+                    }
+                    return null;
+                }, path: null },
+                { header: 'Deposit', getValue: (data) => data.financing?.down_payment || null, path: 'financing.down_payment' },
+                { header: 'Amount Financed', getValue: (data) => data.financing?.amount_financed || null, path: 'financing.amount_financed' }
+            ];
+
+            // Pre-compute values for each row/column
+            const rowValues = allPDFInfo.map(PDFInfo => allColumns.map(col => col.getValue(PDFInfo.data)));
+
+            // Determine which columns have at least one non-null value (always keep 'View')
+            const visibleIndices = [];
+            for (let i = 0; i < allColumns.length; i++) {
+                if (allColumns[i].isView) {
+                    visibleIndices.push(i);
+                } else if (rowValues.some(row => row[i] !== null)) {
+                    visibleIndices.push(i);
+                }
+            }
+
+            // Create headers for visible columns only
+            visibleIndices.forEach(i => {
                 const th = document.createElement('th');
-                th.textContent = headerText;
+                th.textContent = allColumns[i].header;
                 header.appendChild(th);
             });
 
             // Create a row for each quote/PDF
-            allPDFInfo.forEach((PDFInfo) => {
+            allPDFInfo.forEach((PDFInfo, rowIdx) => {
                 const data = PDFInfo.data;
                 const quoteIndex = PDFInfo.quoteIndex;
                 const quoteId = PDFInfo.quoteId;
-                const totals = data.totals;
 
                 const row = document.createElement('tr');
                 const colorClass = `quote-color-${quoteIndex % 8}`;
@@ -2404,58 +2435,41 @@
                     row.classList.add('row-muted');
                 }
 
-                const eyeCell = document.createElement('td');
-                eyeCell.style.width = '52px';
-                if (quoteId) {
-                    const eyeBtn = document.createElement('button');
-                    eyeBtn.className = 'eye-toggle-btn';
-                    eyeBtn.innerHTML = renderEyeIcon(isVisible);
-                    eyeBtn.title = isVisible ? 'Mark as lost' : 'Restore quote';
-                    eyeBtn.onclick = (event) => {
-                        event.stopPropagation();
-                        const currentlyVisible = quoteVisibilityById[quoteId] !== false;
-                        quoteVisibilityById[quoteId] = !currentlyVisible;
-                        eyeBtn.innerHTML = renderEyeIcon(!currentlyVisible);
-                        eyeBtn.title = !currentlyVisible ? 'Mark as lost' : 'Restore quote';
-                        syncQuoteMutedRows();
-                    };
-                    eyeCell.appendChild(eyeBtn);
-                } else {
-                    eyeCell.innerHTML = '<span class="text-gray-400">-</span>';
-                }
-                row.appendChild(eyeCell);
+                visibleIndices.forEach(i => {
+                    const col = allColumns[i];
 
-                // Calculate min earned percentage (average across all policies if multiple)
-                let minEarnedPercent = null;
-                if (data.policies && Array.isArray(data.policies) && data.policies.length > 0) {
-                    const percentages = data.policies
-                        .map(p => p.minimum_earned_percent)
-                        .filter(p => p !== null && p !== undefined);
-                    if (percentages.length > 0) {
-                        const avg = percentages.reduce((a, b) => parseFloat(a) + parseFloat(b), 0) / percentages.length;
-                        minEarnedPercent = avg.toFixed(1) + '%';
-                    }
-                }
-
-                const values = [
-                    { value: data.general_agent_or_wholesale_broker?.name || null, path: 'general_agent_or_wholesale_broker.name' },
-                    { value: data.quote_number || null, path: 'quote_number' },
-                    { value: totals?.grand_total || null, path: 'totals.grand_total' },
-                    { value: minEarnedPercent, path: null },
-                    { value: data.financing?.down_payment || null, path: 'financing.down_payment' },
-                    { value: data.financing?.amount_financed || null, path: 'financing.amount_financed' }
-                ];
-
-                values.forEach((entry) => {
-                    const td = document.createElement('td');
-                    const cellValue = entry.value || 'null';
-                    if (isAdmin && isEditMode && entry.path && quoteId) {
-                        td.innerHTML = renderMaybeEditableValue(quoteId, entry.path, entry.value);
+                    if (col.isView) {
+                        const eyeCell = document.createElement('td');
+                        eyeCell.style.width = '52px';
+                        if (quoteId) {
+                            const eyeBtn = document.createElement('button');
+                            eyeBtn.className = 'eye-toggle-btn';
+                            eyeBtn.innerHTML = renderEyeIcon(isVisible);
+                            eyeBtn.title = isVisible ? 'Mark as lost' : 'Restore quote';
+                            eyeBtn.onclick = (event) => {
+                                event.stopPropagation();
+                                const currentlyVisible = quoteVisibilityById[quoteId] !== false;
+                                quoteVisibilityById[quoteId] = !currentlyVisible;
+                                eyeBtn.innerHTML = renderEyeIcon(!currentlyVisible);
+                                eyeBtn.title = !currentlyVisible ? 'Mark as lost' : 'Restore quote';
+                                syncQuoteMutedRows();
+                            };
+                            eyeCell.appendChild(eyeBtn);
+                        } else {
+                            eyeCell.innerHTML = '<span class="text-gray-400">-</span>';
+                        }
+                        row.appendChild(eyeCell);
                     } else {
-                        td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
-                        td.onclick = () => copyToClipboard(cellValue, td);
+                        const td = document.createElement('td');
+                        const cellValue = rowValues[rowIdx][i] || 'null';
+                        if (isAdmin && isEditMode && col.path && quoteId) {
+                            td.innerHTML = renderMaybeEditableValue(quoteId, col.path, rowValues[rowIdx][i]);
+                        } else {
+                            td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
+                            td.onclick = () => copyToClipboard(cellValue, td);
+                        }
+                        row.appendChild(td);
                     }
-                    row.appendChild(td);
                 });
 
                 tbody.appendChild(row);
@@ -2467,11 +2481,32 @@
             const tbody = document.getElementById('policyDetailsBody');
             displayedPolicyRows = quotes.map((q) => ({ quote_id: q.quote_id, coverage: q.coverage }));
 
-            // Create headers
-            const headers = ['Coverage', 'Carrier', 'Policy #', 'Effective', 'Expiration', 'Term', 'Base Premium', 'Tax', 'Fee', 'Broker Fee'];
-            headers.forEach(headerText => {
+            // Define all possible columns
+            const allColumns = [
+                { header: 'Coverage', key: 'coverage', path: (q) => `policies.${q.policyIndex - 1}.coverage_type` },
+                { header: 'Carrier', key: 'carrier', path: (q) => `policies.${q.policyIndex - 1}.carrier` },
+                { header: 'Policy #', key: 'policyNumber', path: (q) => `policies.${q.policyIndex - 1}.policy_number` },
+                { header: 'Effective', key: 'effective', path: (q) => `policies.${q.policyIndex - 1}.effective_date` },
+                { header: 'Expiration', key: 'expiration', path: (q) => `policies.${q.policyIndex - 1}.expiration_date` },
+                { header: 'Term', key: 'term', path: (q) => `policies.${q.policyIndex - 1}.policy_term` },
+                { header: 'Base Premium', key: 'premium', path: (q) => `policies.${q.policyIndex - 1}.annual_premium` },
+                { header: 'Tax', key: 'tax', path: (q) => `policies.${q.policyIndex - 1}.tax` },
+                { header: 'Fee', key: 'fee', path: (q) => `policies.${q.policyIndex - 1}.fee` },
+                { header: 'Broker Fee', key: 'brokerFee', path: (q) => `policies.${q.policyIndex - 1}.broker_fee` }
+            ];
+
+            // Determine which columns have at least one non-null value
+            const visibleIndices = [];
+            for (let i = 0; i < allColumns.length; i++) {
+                if (quotes.some(q => q[allColumns[i].key] !== null && q[allColumns[i].key] !== undefined && q[allColumns[i].key] !== '')) {
+                    visibleIndices.push(i);
+                }
+            }
+
+            // Create headers for visible columns only
+            visibleIndices.forEach(i => {
                 const th = document.createElement('th');
-                th.textContent = headerText;
+                th.textContent = allColumns[i].header;
                 header.appendChild(th);
             });
 
@@ -2488,24 +2523,12 @@
                     }
                 }
 
-                const values = [
-                    { value: quote.coverage, path: `policies.${quote.policyIndex - 1}.coverage_type` },
-                    { value: quote.carrier, path: `policies.${quote.policyIndex - 1}.carrier` },
-                    { value: quote.policyNumber, path: `policies.${quote.policyIndex - 1}.policy_number` },
-                    { value: quote.effective, path: `policies.${quote.policyIndex - 1}.effective_date` },
-                    { value: quote.expiration, path: `policies.${quote.policyIndex - 1}.expiration_date` },
-                    { value: quote.term, path: `policies.${quote.policyIndex - 1}.policy_term` },
-                    { value: quote.premium, path: `policies.${quote.policyIndex - 1}.annual_premium` },
-                    { value: quote.tax, path: `policies.${quote.policyIndex - 1}.tax` },
-                    { value: quote.fee, path: `policies.${quote.policyIndex - 1}.fee` },
-                    { value: quote.brokerFee, path: `policies.${quote.policyIndex - 1}.broker_fee` }
-                ];
-
-                values.forEach((entry) => {
+                visibleIndices.forEach(i => {
+                    const col = allColumns[i];
                     const td = document.createElement('td');
-                    const cellValue = entry.value || 'null';
-                    if (isAdmin && isEditMode && quote.quote_id && entry.path) {
-                        td.innerHTML = renderMaybeEditableValue(quote.quote_id, entry.path, entry.value);
+                    const cellValue = quote[col.key] || 'null';
+                    if (isAdmin && isEditMode && quote.quote_id && col.path) {
+                        td.innerHTML = renderMaybeEditableValue(quote.quote_id, col.path(quote), quote[col.key]);
                     } else {
                         td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
                         td.onclick = () => copyToClipboard(cellValue, td);

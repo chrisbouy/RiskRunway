@@ -1140,9 +1140,9 @@
 
             // Show renewal countdown for all bound submissions
             if (daysUntilRenewal < 0) {
-                return 'Countdown till renewal: lapsed';
+                return 'Countdown: lapsed';
             }
-            return `Countdown till renewal: T-${daysUntilRenewal}d`;
+            return `Countdown: T-${daysUntilRenewal}d`;
         }
 
         // ============================================================================
@@ -1346,7 +1346,8 @@
             } else if (stageKey === 'quoting') {
                 status = quoteSentCount > 0 ? `quotes: ${quoteReceivedCount}/${quoteSentCount}` : `quotes: ${quoteReceivedCount}`;
             } else if (stageKey === 'bind') {
-                status = `Bound`;
+                const renewalCountdown = getRenewalCountdown(submission, stageKey, daysUntilRenewal);
+                status = renewalCountdown || 'Bound';
             }
 
             const docOptions = (submission.documents || []).map((doc) => {
@@ -1362,10 +1363,6 @@
                     </div>
                     <div class="card-right">
                         <div class="card-status">${escapeHtml(status)}</div>
-                        ${stageKey === 'bind' ? (() => {
-                            const renewalCountdown = getRenewalCountdown(submission, stageKey, daysUntilRenewal);
-                            return renewalCountdown ? `<div class="card-quotes-count">${renewalCountdown}</div>` : '';
-                        })() : ''}
                     </div>
                 </div>
                 <div class="card-row">
