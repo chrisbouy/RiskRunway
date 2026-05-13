@@ -453,9 +453,11 @@ def tb_fill(tb_dict: dict, region: dict, scale: float) -> set:
         abs_y = int(info["y"] / scale) + region["y"]
         try:
             pyautogui.click(abs_x, abs_y)
+            time.sleep(CLICK_DELAY)
+            pyautogui.hotkey(*SELECT_HOTKEY)   # select all existing text
             pyperclip.copy(value)
             logger.info(f"FILLING FIELD: json Path: {path} Value: {value} Coords: ({abs_x},{abs_y})")
-            pyautogui.hotkey(*PASTE_HOTKEY)    # paste
+            pyautogui.hotkey(*PASTE_HOTKEY)    # paste (overwrites selection)
             filled.add(label)
             # check for successful paste by taking another screenshot and looking for the value? log success and remove from json
         except Exception as e:

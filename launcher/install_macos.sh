@@ -40,6 +40,35 @@ echo "→ Registering riskrunway:// protocol handler..."
 echo ""
 echo "✓ Installation complete!"
 echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Permission Setup
+# ─────────────────────────────────────────────────────────────────────────────
+
+echo "→ Setting up required macOS permissions..."
+echo ""
+echo "  RiskRunway needs two permissions for Terminal to fill AMS forms:"
+echo "    1. Accessibility — to click and type into fields"
+echo "    2. Screen Recording — to see the AMS form fields"
+echo ""
+
+# Open Accessibility settings
+osascript -e 'display dialog "Step 1 of 2:\n\nSystem Settings will open to Accessibility.\nFind \"Terminal\" in the list and toggle it ON.\n\nClick Next when done." buttons {"Next"} default button "Next" with title "RiskRunway Setup (1/2)" with icon note'
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+
+osascript -e 'display dialog "Enable Terminal in the Accessibility list, then click Next." buttons {"Next"} default button "Next" with title "RiskRunway Setup (1/2)" with icon note'
+
+# Open Screen Recording settings
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+
+osascript -e 'display dialog "Step 2 of 2:\n\nEnable Terminal in the Screen Recording list, then click Done." buttons {"Done"} default button "Done" with title "RiskRunway Setup (2/2)" with icon note'
+
+# Mark permissions as granted so the launcher doesn't ask again
+mkdir -p "$HOME/.riskrunway"
+touch "$HOME/.riskrunway/.permissions_granted"
+
+echo "✓ Permissions configured!"
+echo ""
 echo "You can now use RiskRunway Export from your browser."
 echo ""
 echo "Test it:"
@@ -47,4 +76,5 @@ echo "  open 'riskrunway://export?job_id=123&server=https://example.com'"
 echo ""
 echo "To uninstall:"
 echo "  rm -rf /Applications/$APP_NAME.app"
+echo "  rm -rf ~/.riskrunway"
 echo ""

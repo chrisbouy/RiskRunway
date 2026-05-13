@@ -125,12 +125,110 @@ def show_info(message):
         f'display dialog "{message}" buttons {{"OK"}} default button "OK" with icon note'
     ])
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Permission Checking
+# ─────────────────────────────────────────────────────────────────────────────
+
+PERMISSIONS_GRANTED_FLAG = Path.home() / ".riskrunway" / ".permissions_granted"
+
+
+def permissions_previously_granted() -> bool:
+    """Check if user has already gone through the permission setup."""
+    return PERMISSIONS_GRANTED_FLAG.exists()
+
+
+def mark_permissions_granted():
+    """Mark that user has completed permission setup."""
+    PERMISSIONS_GRANTED_FLAG.parent.mkdir(parents=True, exist_ok=True)
+    PERMISSIONS_GRANTED_FLAG.write_text("ok")
+
+
+def open_accessibility_settings():
+    """Open System Settings to the Accessibility pane."""
+    subprocess.run([
+        "open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    ])
+
+
+def open_screen_recording_settings():
+    """Open System Settings to the Screen Recording pane."""
+    subprocess.run([
+        "open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+    ])
+
+
+def show_first_run_dialog() -> bool:
+    """
+    Show a one-time setup dialog on first launch explaining permissions.
+    Returns True if user clicks 'Open Settings', False if they cancel.
+    """
+    message = (
+        "Welcome to RiskRunway AMS Export!\\n\\n"
+        "Before first use, Terminal needs two permissions:\\n\\n"
+        "1. Screen Recording — to see AMS form fields\\n"
+        "2. Accessibility — to click and type into fields\\n\\n"
+        "Click 'Open Settings' and enable both for Terminal.\\n"
+        "You only need to do this once."
+    )
+    
+    result = subprocess.run(
+        ["osascript", "-e",
+         f'display dialog "{message}" buttons {{"Cancel", "Open Settings"}} '
+         f'default button "Open Settings" with title "RiskRunway — First Time Setup" with icon note'],
+        capture_output=True, text=True
+    )
+    
+    return result.returncode == 0
+
+
+def ensure_permissions() -> bool:
+    """
+    On first launch, guide user through granting permissions.
+    On subsequent launches, skip the check entirely.
+    Returns True to proceed, False if user cancelled.
+    """
+    # If user already completed setup, skip entirely
+    if permissions_previously_granted():
+        logger.info("Permissions previously granted — skipping check")
+        return True
+    
+    logger.info("First run — showing permission setup dialog")
+    
+    # Show the one-time dialog
+    user_wants_to_proceed = show_first_run_dialog()
+    if not user_wants_to_proceed:
+        logger.info("User cancelled permission setup")
+        return False
+    
+    # Open Accessibility settings first
+    open_accessibility_settings()
+    
+    subprocess.run([
+        "osascript", "-e",
+        'display dialog "Step 1 of 2:\\n\\nEnable Terminal in the Accessibility list, then click Next." '
+        'buttons {"Next"} default button "Next" with title "RiskRunway Setup (1/2)" with icon note'
+    ])
+    
+    # Now open Screen Recording settings
+    open_screen_recording_settings()
+    
+    subprocess.run([
+        "osascript", "-e",
+        'display dialog "Step 2 of 2:\\n\\nEnable Terminal in the Screen Recording list, then click Done." '
+        'buttons {"Done"} default button "Done" with title "RiskRunway Setup (2/2)" with icon note'
+    ])
+    
+    # Mark as done so we never ask again
+    mark_permissions_granted()
+    logger.info("Permission setup complete — marked as done")
+    return True
+
+
 def spawn_in_terminal(job_id, server_url, agent_path):
-    """Spawn local_agent in Terminal.app"""
+    """Spawn local_agent in a hidden Terminal window."""
     import shlex
     
     python = find_python_with_deps()
-    # Properly quote all paths for shell
     python_quoted = shlex.quote(python)
     agent_quoted = shlex.quote(str(agent_path))
     server_quoted = shlex.quote(server_url)
@@ -144,46 +242,34 @@ def spawn_in_terminal(job_id, server_url, agent_path):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
         script_path = f.name
         f.write('#!/bin/bash\n')
-        f.write(f'echo ""\n')
-        f.write(f'echo "🚀 Starting RiskRunway Export for Job #{job_id}"\n')
-        f.write(f'echo "   Server: {server_url}"\n')
-        f.write(f'echo ""\n')
         f.write(f'{cmd}\n')
-        f.write(f'echo ""\n')
-        f.write(f'echo "✓ Done. Press Enter to close..."\n')
-        f.write(f'read\n')
     
     os.chmod(script_path, 0o755)
     
-    # Use AppleScript to open Terminal with the script
-    applescript = f'do script "{script_path}" in front window'
-    
     try:
-        # First activate Terminal and make a new window
-        subprocess.run(["osascript", "-e", 'tell application "Terminal" to activate'], check=True)
+        # Use AppleScript to open a new Terminal window, run the script, then hide Terminal
+        applescript = (
+            'tell application "Terminal"\n'
+            f'    do script "{script_path}"\n'
+            '    set miniaturized of front window to true\n'
+            'end tell'
+        )
         result = subprocess.run(
-            ["osascript", "-e", f'tell application "Terminal" to {applescript}'],
+            ["osascript", "-e", applescript],
             capture_output=True,
             text=True,
             check=True
         )
-        logger.info("Terminal opened successfully")
+        logger.info("Terminal opened and minimized successfully")
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to open Terminal: {e}")
         logger.error(f"stderr: {e.stderr}")
-        # Fallback: run directly
-        logger.info("Attempting fallback: running agent directly...")
-        try:
-            subprocess.Popen(cmd, shell=True)
-            logger.info("Agent started in background (no Terminal window)")
-        except Exception as e2:
-            logger.error(f"Fallback also failed: {e2}")
-            show_error(f"Could not launch Terminal. Error: {e.stderr}")
+        show_error(f"Could not launch agent. Error: {e.stderr}")
     finally:
         # Clean up temp file after a delay
         def cleanup():
             import time
-            time.sleep(5)
+            time.sleep(10)
             try:
                 os.unlink(script_path)
             except:
@@ -230,6 +316,10 @@ def handle_url(url):
     
     if not agent_path:
         show_error("Could not find local_agent.py. Please reinstall RiskRunway.")
+        return 1
+    
+    # Check permissions before spawning
+    if not ensure_permissions():
         return 1
     
     # Spawn agent
@@ -385,6 +475,10 @@ def main():
                 server_url = server.rstrip('/')
                 logger.info(f"Using server from URL: {server_url}")
                 
+                # Check permissions before spawning
+                if not ensure_permissions():
+                    return 1
+                
                 # Find agent and spawn for specific job
                 _, _, resources_dir = get_app_directories()
                 agent_path = find_agent_path(resources_dir)
@@ -413,6 +507,10 @@ def main():
         return 1
     
     logger.info(f"Found job: {job['id']}")
+    
+    # Check permissions before spawning
+    if not ensure_permissions():
+        return 1
     
     # Find agent and spawn
     _, _, resources_dir = get_app_directories()
