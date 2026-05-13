@@ -202,6 +202,8 @@ def ensure_permissions() -> bool:
     
     # Open Accessibility settings first
     open_accessibility_settings()
+    import time
+    time.sleep(1)  # Give System Settings time to open
     
     subprocess.run([
         "osascript", "-e",
@@ -211,6 +213,7 @@ def ensure_permissions() -> bool:
     
     # Now open Screen Recording settings
     open_screen_recording_settings()
+    time.sleep(1)  # Give System Settings time to navigate
     
     subprocess.run([
         "osascript", "-e",
