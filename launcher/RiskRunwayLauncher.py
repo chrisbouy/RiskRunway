@@ -526,4 +526,9 @@ def main():
     return 0
 
 if __name__ == "__main__":
+    # Try PyObjC first — this properly receives riskrunway:// URLs via Apple Events
+    result = run_with_pyobjc()
+    if result is not None:
+        sys.exit(result)
+    # Fall back to argv-based handling if PyObjC isn't available
     sys.exit(main())

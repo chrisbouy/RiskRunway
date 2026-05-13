@@ -53,7 +53,7 @@ echo "    2. Screen Recording — to see the AMS form fields"
 echo ""
 
 # Open Accessibility settings
-osascript -e 'display dialog "Step 1 of 2:\n\nSystem Settings will open to Accessibility.\nFind \"Terminal\" in the list and toggle it ON.\n\nClick Next when done." buttons {"Next"} default button "Next" with title "RiskRunway Setup (1/2)" with icon note'
+osascript -e 'display dialog "Step 1 of 2:\n\nSystem Settings will open to Accessibility.\nFind \"Terminal\" in the list and toggle it ON.\n\nClicking Next will open settings" buttons {"Next"} default button "Next" with title "RiskRunway Setup (1/2)" with icon note'
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 
 osascript -e 'display dialog "Enable Terminal in the Accessibility list, then click Next." buttons {"Next"} default button "Next" with title "RiskRunway Setup (1/2)" with icon note'
