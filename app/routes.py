@@ -3784,6 +3784,10 @@ def get_windows_installer():
         ExpiresIn=600
     )
 
+    # Escape & for cmd.exe — without this, cmd treats & as a command separator
+    # and the presigned URL (which has &X-Amz-Date=...&X-Amz-Signature=...) breaks
+    download_url_escaped = download_url.replace('&', '^&')
+
     # Note: In the batch script, percent signs that are NOT variable references
     # must be doubled (%%) for literal use. But since this is a Python f-string
     # served as a download, single % is correct for the .bat file content.
@@ -3808,7 +3812,7 @@ mkdir "%TMPDIR%" 2>nul
 mkdir "%INSTALL_DIR%" 2>nul
 
 echo  [1/4] Downloading...
-powershell -Command "Invoke-WebRequest -Uri '{download_url}' -OutFile '%ZIP_FILE%'" 2>nul
+powershell -Command "Invoke-WebRequest -Uri '{download_url_escaped}' -OutFile '%ZIP_FILE%'" 2>nul
 if not exist "%ZIP_FILE%" (
     echo        ERROR: Download failed. Check your internet connection.
     pause
