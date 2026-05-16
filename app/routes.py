@@ -3789,7 +3789,8 @@ def get_windows_installer():
     # never sees the URL characters at all.
     import base64
     # PowerShell -EncodedCommand expects UTF-16LE Base64
-    ps_download_cmd = f"Invoke-WebRequest -Uri '{download_url}' -OutFile '$env:TEMP\\riskrunway_setup.zip'"
+    # Use Join-Path to avoid backslash escaping issues
+    ps_download_cmd = f"Invoke-WebRequest -Uri '{download_url}' -OutFile (Join-Path $env:TEMP 'riskrunway_setup.zip')"
     ps_encoded = base64.b64encode(ps_download_cmd.encode('utf-16-le')).decode('ascii')
 
     script = f'''@echo off
