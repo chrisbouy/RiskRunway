@@ -219,6 +219,9 @@ def _add_missing_columns(conn, inspector):
         if 'signature' not in user_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN signature TEXT"))
             print("Added column: users.signature")
+        if 'ams_agent_installed' not in user_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN ams_agent_installed BOOLEAN DEFAULT FALSE NOT NULL"))
+            print("Added column: users.ams_agent_installed")
 
     # brokers: letterhead, email_body, created_at, updated_at
     if 'brokers' in inspector.get_table_names():

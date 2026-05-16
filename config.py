@@ -68,6 +68,12 @@ class Config:
     S3_BUCKET = os.environ.get('S3_BUCKET', '')
     S3_REGION = os.environ.get('S3_REGION', 'us-east-1')
     S3_ENDPOINT_URL = os.environ.get('S3_ENDPOINT_URL', '')
+
+    # AMS Agent Setup Files (hosted on S3 for user download)
+    AMS_AGENT_S3_BUCKET = os.environ.get('AMS_AGENT_S3_BUCKET', os.environ.get('S3_BUCKET', ''))
+    AMS_AGENT_S3_PREFIX = os.environ.get('AMS_AGENT_S3_PREFIX', 'agent-setup/')  # S3 key prefix
+    AMS_AGENT_MACOS_FILENAME = 'RiskRunwayLauncher.app.zip'
+    AMS_AGENT_WINDOWS_FILENAME = 'RiskRunway-Windows-Setup.zip'
     # DOCUMENTS_LOCAL_FOLDER = os.path.join(UPLOAD_FOLDER, 'documents')
 
     # Premium Finance Appetite Scoring Rules

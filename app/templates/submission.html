@@ -3593,67 +3593,199 @@ Thank you for your attention to this matter.`;
         // Export to AMS - generates data then creates job and triggers local agent
         let amsExportJobId = null;
         let amsExportPollInterval = null;
-        
+
+        // ─── AMS Setup Wizard Logic ───────────────────────────────────────────────
+        const amsWizard = document.getElementById('amsSetupWizard');
+        const amsWizardStep1 = document.getElementById('amsWizardStep1');
+        const amsWizardStep2 = document.getElementById('amsWizardStep2');
+        const amsWizardStep3 = document.getElementById('amsWizardStep3');
+        const amsWizardStep3Win = document.getElementById('amsWizardStep3Win');
+        const amsWizardError = document.getElementById('amsWizardError');
+        let amsDetectedPlatform = 'windows';
+
+        function showWizardStep(step) {
+            [amsWizardStep1, amsWizardStep2, amsWizardStep3, amsWizardStep3Win, amsWizardError].forEach(el => el.style.display = 'none');
+            step.style.display = 'block';
+        }
+
+        function openAmsWizard() {
+            amsWizard.style.display = 'flex';
+            showWizardStep(amsWizardStep1);
+        }
+
+        function closeAmsWizard() {
+            amsWizard.style.display = 'none';
+        }
+
+        function showWizardError(msg) {
+            document.getElementById('amsWizardErrorMsg').textContent = msg;
+            showWizardStep(amsWizardError);
+        }
+
+        function detectPlatform() {
+            const ua = navigator.userAgent.toLowerCase();
+            if (ua.includes('mac')) return 'macos';
+            if (ua.includes('win')) return 'windows';
+            return 'windows'; // default to windows
+        }
+
+        // Close / cancel buttons
+        document.getElementById('amsWizardCloseBtn').addEventListener('click', closeAmsWizard);
+        document.getElementById('amsWizardCancelBtn1').addEventListener('click', closeAmsWizard);
+        document.getElementById('amsWizardErrorCloseBtn').addEventListener('click', closeAmsWizard);
+
+        // Step 1: "Set Up Now" — download the one-click installer
+        document.getElementById('amsWizardInstallBtn').addEventListener('click', async function() {
+            amsDetectedPlatform = detectPlatform();
+
+            try {
+                const resp = await fetch('/api/ams-agent/setup-info');
+                const data = await resp.json();
+
+                if (!data.success) {
+                    showWizardError(data.error || 'Could not fetch setup files.');
+                    return;
+                }
+
+                const platformInfo = data.platforms[amsDetectedPlatform];
+                if (!platformInfo) {
+                    showWizardError('No installer available for your system. Contact your administrator.');
+                    return;
+                }
+
+                // Trigger the download
+                const a = document.createElement('a');
+                a.href = platformInfo.url;
+                a.download = platformInfo.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // Show step 2 — "open the downloaded file"
+                document.getElementById('amsWizardFilename').textContent = platformInfo.filename;
+
+                // Show/hide SmartScreen note based on platform
+                const ssNote = document.getElementById('amsWizardSmartScreenNote');
+                if (amsDetectedPlatform === 'macos') {
+                    ssNote.innerHTML = '💡 <strong>Mac users:</strong> If you see "unidentified developer", right-click the file → Open → Open.';
+                }
+
+                showWizardStep(amsWizardStep2);
+
+            } catch (err) {
+                showWizardError('Network error: ' + err.message);
+            }
+        });
+
+        // Step 2: "I've Run It — Next" → go to permissions (mac) or done (windows)
+        document.getElementById('amsWizardStep2Next').addEventListener('click', function() {
+            if (amsDetectedPlatform === 'macos') {
+                showWizardStep(amsWizardStep3);
+            } else {
+                showWizardStep(amsWizardStep3Win);
+            }
+        });
+
+        // Step 3 (macOS): permission buttons open System Settings in a new tab
+        document.getElementById('amsPermBtn1').addEventListener('click', function() {
+            window.open('/api/ams-agent/open-settings?pane=accessibility', '_blank');
+            document.getElementById('amsPermBox1').classList.add('done');
+            this.textContent = '✓ Opened';
+        });
+
+        document.getElementById('amsPermBtn2').addEventListener('click', function() {
+            window.open('/api/ams-agent/open-settings?pane=screen_recording', '_blank');
+            document.getElementById('amsPermBox2').classList.add('done');
+            this.textContent = '✓ Opened';
+        });
+
+        // "Done — Export Now" (macOS)
+        document.getElementById('amsWizardDoneBtn').addEventListener('click', async function() {
+            await fetch('/api/ams-agent/mark-installed', { method: 'POST' });
+            closeAmsWizard();
+            executeAmsExport();
+        });
+
+        // "Export Now" (Windows)
+        document.getElementById('amsWizardDoneBtnWin').addEventListener('click', async function() {
+            await fetch('/api/ams-agent/mark-installed', { method: 'POST' });
+            closeAmsWizard();
+            executeAmsExport();
+        });
+
+        // ─── Main Export to AMS Click Handler ─────────────────────────────────────
         document.getElementById('exportToAmsBtn').addEventListener('click', async function() {
             await generateExportData();
-            
+
             if (exportData.length === 0) {
                 alert('No data to export');
                 return;
             }
-            
-            const btn = this;
+
+            // Check if agent is already installed (persisted in user table)
+            try {
+                const statusResp = await fetch('/api/ams-agent/install-status');
+                const statusData = await statusResp.json();
+
+                if (statusData.installed) {
+                    executeAmsExport();
+                } else {
+                    openAmsWizard();
+                }
+            } catch (err) {
+                openAmsWizard();
+            }
+        });
+
+        // ─── Actual Export Execution (after agent is confirmed installed) ──────────
+        async function executeAmsExport() {
+            const btn = document.getElementById('exportToAmsBtn');
             btn.disabled = true;
             btn.textContent = 'Starting...';
-            
+
             try {
-                // Create the AMS export job
                 const response = await fetch('/api/ams-export/jobs', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         submission_id: submissionId,
-                        quote_id: null  // Will export all chosen quotes
+                        quote_id: null
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (!data.success) {
                     throw new Error(data.error || 'Failed to create AMS export job');
                 }
-                
+
                 amsExportJobId = data.job.id;
                 btn.textContent = 'Opening agent...';
-                
-                // Build the protocol URL to trigger the local agent
+
                 const serverUrl = window.location.origin;
                 const protocolUrl = `riskrunway://export?job_id=${amsExportJobId}&server=${encodeURIComponent(serverUrl)}`;
-                
+
                 console.log('Triggering local agent:', protocolUrl, 'Job ID:', amsExportJobId);
-                
-                // Open the protocol URL to spawn the local agent
+
                 const iframe = document.createElement('iframe');
                 iframe.style.display = 'none';
                 iframe.src = protocolUrl;
                 document.body.appendChild(iframe);
                 setTimeout(() => document.body.removeChild(iframe), 1000);
-                
-                // document.getElementById('amsExportModal').classList.add('hidden');
-                // Reload the app after a short delay
+
                 setTimeout(() => {
                     window.location.reload();
                 }, 800);
-                
+
                 btn.textContent = 'Check your desktop...';
-                
+
             } catch (error) {
                 console.error('Error starting AMS export:', error);
                 alert('Error starting AMS export: ' + error.message);
                 btn.disabled = false;
                 btn.textContent = '☁️ Export to AMS';
             }
-        });
+        }
 
         // ============================================================================
         // SEND FOLLOW-UP(S) FUNCTIONALITY
@@ -3944,5 +4076,127 @@ Thank you for your attention to this matter.`;
         // Load submission data on page load
         loadSubmission();
     </script>
+
+    <!-- AMS Agent Setup Wizard Modal -->
+    <div id="amsSetupWizard" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.85); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:0.75rem; max-width:560px; width:100%; box-shadow:0 20px 40px rgba(0,0,0,0.4); overflow:hidden;">
+            <!-- Header -->
+            <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between;">
+                <h3 id="amsWizardTitle" style="font-size:1rem; font-weight:700; color:var(--color-neutral-800); margin:0;">🖥️ One-Time Setup</h3>
+                <button id="amsWizardCloseBtn" style="background:none; border:none; color:var(--color-neutral-500); font-size:1.25rem; cursor:pointer; padding:0.25rem;">&times;</button>
+            </div>
+
+            <!-- Step 1: Confirm Install -->
+            <div id="amsWizardStep1" style="padding:1.5rem 1.25rem;">
+                <p style="color:var(--color-neutral-700); font-size:0.9rem; margin-bottom:1.25rem; line-height:1.6;">
+                    To auto-fill your AMS, a small helper needs to be set up on this computer. This only takes a moment.
+                </p>
+                <div style="background:var(--color-neutral-50); border:1px solid var(--border-color); border-radius:0.5rem; padding:0.75rem 1rem; margin-bottom:1.5rem;">
+                    <p style="font-size:0.8rem; color:var(--color-neutral-600); margin:0; line-height:1.5;">
+                        <strong>What it does:</strong> Reads your AMS screen to find form fields, then types the policy data in for you. Only runs when you click Export.
+                    </p>
+                </div>
+                <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+                    <button id="amsWizardCancelBtn1" style="background:var(--color-neutral-200); color:var(--color-neutral-700); padding:0.5rem 1rem;">Cancel</button>
+                    <button id="amsWizardInstallBtn" style="background:#059669; color:white; padding:0.5rem 1.25rem; font-weight:600;">Set Up Now</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Download triggered, waiting for user to open it -->
+            <div id="amsWizardStep2" style="display:none; padding:1.5rem 1.25rem;">
+                <div style="text-align:center; margin-bottom:1.25rem;">
+                    <span style="font-size:2.5rem;">📂</span>
+                </div>
+                <p style="color:var(--color-neutral-700); font-size:0.9rem; margin-bottom:0.75rem; text-align:center; font-weight:600;">
+                    Open the downloaded file
+                </p>
+                <p style="color:var(--color-neutral-600); font-size:0.825rem; margin-bottom:1rem; text-align:center; line-height:1.5;">
+                    A file called <code id="amsWizardFilename" style="background:var(--color-neutral-100); padding:0.15rem 0.4rem; border-radius:3px; font-size:0.8rem;">Install-RiskRunway</code> was just downloaded.<br>
+                    <strong>Double-click it</strong> in your Downloads folder to install.
+                </p>
+                <div style="background:#fffbeb; border:1px solid #fbbf24; border-radius:0.5rem; padding:0.75rem 1rem; margin-bottom:1.25rem;">
+                    <p style="font-size:0.775rem; color:#92400e; margin:0; line-height:1.5;" id="amsWizardSmartScreenNote">
+                        💡 <strong>Windows users:</strong> If you see a SmartScreen warning, click "More info" → "Run anyway". This is normal for new apps.
+                    </p>
+                </div>
+                <p style="color:var(--color-neutral-500); font-size:0.775rem; margin-bottom:1.25rem; text-align:center;">
+                    The installer will download the agent files, put them in the right place, and set everything up automatically. It takes about 30 seconds.
+                </p>
+                <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+                    <button id="amsWizardStep2Next" style="background:#059669; color:white; padding:0.5rem 1.25rem; font-weight:600;">I've Run It — Next →</button>
+                </div>
+            </div>
+
+            <!-- Step 3: macOS Permissions -->
+            <div id="amsWizardStep3" style="display:none; padding:1.5rem 1.25rem;">
+                <p style="color:var(--color-neutral-700); font-size:0.875rem; margin-bottom:1rem; line-height:1.6;">
+                    Last step! macOS needs you to allow two permissions so the agent can read your screen and type into fields.
+                </p>
+
+                <!-- Permission 1: Accessibility -->
+                <div id="amsPermBox1" style="background:var(--color-neutral-50); border:2px solid var(--border-color); border-radius:0.5rem; padding:1rem; margin-bottom:0.75rem; transition: border-color 0.3s;">
+                    <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem;">
+                        <span style="font-size:1.25rem;">⌨️</span>
+                        <div>
+                            <p style="font-size:0.85rem; font-weight:600; color:var(--color-neutral-800); margin:0;">1. Accessibility</p>
+                            <p style="font-size:0.75rem; color:var(--color-neutral-500); margin:0;">So it can type into your AMS fields</p>
+                        </div>
+                    </div>
+                    <button id="amsPermBtn1" style="background:var(--color-primary); color:white; padding:0.4rem 0.75rem; font-size:0.8rem; width:100%;">Open Settings</button>
+                    <p style="font-size:0.7rem; color:var(--color-neutral-500); margin:0.4rem 0 0 0; text-align:center;">Find "Terminal" in the list → toggle ON</p>
+                </div>
+
+                <!-- Permission 2: Screen Recording -->
+                <div id="amsPermBox2" style="background:var(--color-neutral-50); border:2px solid var(--border-color); border-radius:0.5rem; padding:1rem; margin-bottom:1.25rem; transition: border-color 0.3s;">
+                    <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem;">
+                        <span style="font-size:1.25rem;">🖥️</span>
+                        <div>
+                            <p style="font-size:0.85rem; font-weight:600; color:var(--color-neutral-800); margin:0;">2. Screen Recording</p>
+                            <p style="font-size:0.75rem; color:var(--color-neutral-500); margin:0;">So it can read your AMS form labels</p>
+                        </div>
+                    </div>
+                    <button id="amsPermBtn2" style="background:var(--color-primary); color:white; padding:0.4rem 0.75rem; font-size:0.8rem; width:100%;">Open Settings</button>
+                    <p style="font-size:0.7rem; color:var(--color-neutral-500); margin:0.4rem 0 0 0; text-align:center;">Find "Terminal" in the list → toggle ON</p>
+                </div>
+
+                <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+                    <button id="amsWizardDoneBtn" style="background:#059669; color:white; padding:0.5rem 1.25rem; font-weight:600;">✓ Done — Export Now</button>
+                </div>
+            </div>
+
+            <!-- Step 3 alt (Windows): No permissions needed, just done -->
+            <div id="amsWizardStep3Win" style="display:none; padding:1.5rem 1.25rem; text-align:center;">
+                <div style="margin-bottom:1rem;">
+                    <span style="font-size:3rem;">✅</span>
+                </div>
+                <p style="color:var(--color-neutral-700); font-size:0.9rem; margin-bottom:0.5rem; font-weight:600;">You're all set!</p>
+                <p style="color:var(--color-neutral-500); font-size:0.825rem; margin-bottom:1.25rem;">
+                    The agent is installed. You won't see this again.
+                </p>
+                <button id="amsWizardDoneBtnWin" style="background:#059669; color:white; padding:0.5rem 1.25rem; font-weight:600;">✓ Export Now</button>
+            </div>
+
+            <!-- Error state -->
+            <div id="amsWizardError" style="display:none; padding:1.5rem 1.25rem; text-align:center;">
+                <p style="color:var(--color-danger); font-size:0.875rem; margin-bottom:1rem;" id="amsWizardErrorMsg">Something went wrong.</p>
+                <button id="amsWizardErrorCloseBtn" style="background:var(--color-neutral-200); color:var(--color-neutral-700); padding:0.5rem 1rem;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        #amsPermBox1.done, #amsPermBox2.done {
+            border-color: #059669;
+            background: #f0fdf4;
+        }
+        #amsPermBox1.done button, #amsPermBox2.done button {
+            background: #059669;
+            pointer-events: none;
+        }
+    </style>
 </body>
 </html>

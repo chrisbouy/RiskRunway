@@ -3623,6 +3623,330 @@ def delete_broker(broker_id):
 
 
 # ============================================================================
+# AMS AGENT SETUP - Download & Install Wizard
+# ============================================================================
+
+@bp.route('/api/ams-agent/setup-info', methods=['GET'])
+@login_required
+def get_ams_agent_setup_info():
+    """
+    Return download URLs for the AMS agent one-click installers.
+    macOS: serves a .command script that auto-installs everything.
+    Windows: serves a .bat script that auto-installs everything.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        bucket = current_app.config.get('AMS_AGENT_S3_BUCKET')
+        prefix = current_app.config.get('AMS_AGENT_S3_PREFIX', 'agent-setup/')
+        region = current_app.config.get('S3_REGION', 'us-east-1')
+        endpoint_url = current_app.config.get('S3_ENDPOINT_URL') or None
+
+        macos_filename = current_app.config.get('AMS_AGENT_MACOS_FILENAME', 'RiskRunwayLauncher.app.zip')
+        windows_filename = current_app.config.get('AMS_AGENT_WINDOWS_FILENAME', 'RiskRunway-Windows-Setup.zip')
+
+        if not bucket:
+            return jsonify({
+                'success': False,
+                'error': 'Agent setup files not configured. Contact your administrator.'
+            }), 500
+
+        # Verify the files exist on S3 before offering them
+        client = boto3.client('s3', region_name=region, endpoint_url=endpoint_url)
+        urls = {}
+
+        for platform_key, filename in [('macos', macos_filename), ('windows', windows_filename)]:
+            object_key = f"{prefix}{filename}"
+            try:
+                client.head_object(Bucket=bucket, Key=object_key)
+                # File exists — offer the one-click installer endpoint
+                if platform_key == 'macos':
+                    urls['macos'] = {
+                        'url': '/api/ams-agent/installer/macos',
+                        'filename': 'Install-RiskRunway.command'
+                    }
+                else:
+                    urls['windows'] = {
+                        'url': '/api/ams-agent/installer/windows',
+                        'filename': 'Install-RiskRunway.bat'
+                    }
+            except ClientError:
+                pass
+
+        if not urls:
+            return jsonify({
+                'success': False,
+                'error': 'No agent setup files found on server. Contact your administrator.'
+            }), 404
+
+        return jsonify({'success': True, 'platforms': urls})
+    except Exception as e:
+        logger.error(f"Error generating agent setup info: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams-agent/installer/macos', methods=['GET'])
+@login_required
+def get_macos_installer():
+    """
+    Serve a .command file that the user double-clicks in Finder.
+    It downloads the .app.zip from S3, unzips, moves to /Applications,
+    registers the protocol handler, and cleans up. Zero manual steps.
+    """
+    import boto3
+
+    bucket = current_app.config.get('AMS_AGENT_S3_BUCKET')
+    prefix = current_app.config.get('AMS_AGENT_S3_PREFIX', 'agent-setup/')
+    region = current_app.config.get('S3_REGION', 'us-east-1')
+    endpoint_url = current_app.config.get('S3_ENDPOINT_URL') or None
+    filename = current_app.config.get('AMS_AGENT_MACOS_FILENAME', 'RiskRunwayLauncher.app.zip')
+
+    client = boto3.client('s3', region_name=region, endpoint_url=endpoint_url)
+    download_url = client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': bucket, 'Key': f"{prefix}{filename}"},
+        ExpiresIn=600
+    )
+
+    script = f'''#!/bin/bash
+# RiskRunway AMS Agent — One-Click Installer for macOS
+# Double-click to install. You can delete this file afterwards.
+
+set -e
+
+echo ""
+echo "  ============================================"
+echo "   Installing RiskRunway AMS Agent..."
+echo "  ============================================"
+echo ""
+
+TMPDIR=$(mktemp -d)
+ZIP_FILE="$TMPDIR/RiskRunwayLauncher.app.zip"
+APP_NAME="RiskRunwayLauncher"
+
+echo "  → Downloading..."
+curl -sL -o "$ZIP_FILE" "{download_url}"
+
+echo "  → Extracting..."
+unzip -qo "$ZIP_FILE" -d "$TMPDIR"
+
+echo "  → Installing to /Applications..."
+rm -rf "/Applications/$APP_NAME.app"
+mv "$TMPDIR/$APP_NAME.app" "/Applications/$APP_NAME.app"
+
+# Remove quarantine so it opens without Gatekeeper warning
+xattr -rd com.apple.quarantine "/Applications/$APP_NAME.app" 2>/dev/null || true
+
+echo "  → Registering riskrunway:// handler..."
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f "/Applications/$APP_NAME.app"
+
+# Setup directory
+mkdir -p "$HOME/.riskrunway"
+
+# Cleanup
+rm -rf "$TMPDIR"
+
+echo ""
+echo "  ✓ Installation complete!"
+echo ""
+echo "  Return to your browser to finish setup."
+echo "  (You can close this window)"
+echo ""
+'''
+
+    from flask import Response
+    response = Response(script, mimetype='application/octet-stream')
+    response.headers['Content-Disposition'] = 'attachment; filename="Install-RiskRunway.command"'
+    return response
+
+
+@bp.route('/api/ams-agent/installer/windows', methods=['GET'])
+@login_required
+def get_windows_installer():
+    """
+    Serve a .bat file that the user double-clicks.
+    Downloads the setup zip from S3, extracts, installs Python deps,
+    registers the protocol handler, and cleans up.
+    """
+    import boto3
+
+    bucket = current_app.config.get('AMS_AGENT_S3_BUCKET')
+    prefix = current_app.config.get('AMS_AGENT_S3_PREFIX', 'agent-setup/')
+    region = current_app.config.get('S3_REGION', 'us-east-1')
+    endpoint_url = current_app.config.get('S3_ENDPOINT_URL') or None
+    filename = current_app.config.get('AMS_AGENT_WINDOWS_FILENAME', 'RiskRunway-Windows-Setup.zip')
+
+    client = boto3.client('s3', region_name=region, endpoint_url=endpoint_url)
+    download_url = client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': bucket, 'Key': f"{prefix}{filename}"},
+        ExpiresIn=600
+    )
+
+    # Note: In the batch script, percent signs that are NOT variable references
+    # must be doubled (%%) for literal use. But since this is a Python f-string
+    # served as a download, single % is correct for the .bat file content.
+    script = f'''@echo off
+REM RiskRunway AMS Agent - One-Click Installer for Windows
+REM Double-click to install. You can delete this file afterwards.
+
+setlocal EnableDelayedExpansion
+title RiskRunway Installer
+
+echo.
+echo  ============================================
+echo   Installing RiskRunway AMS Agent...
+echo  ============================================
+echo.
+
+set "INSTALL_DIR=%LOCALAPPDATA%\\RiskRunway"
+set "TMPDIR=%TEMP%\\riskrunway_install_%RANDOM%"
+set "ZIP_FILE=%TMPDIR%\\setup.zip"
+
+mkdir "%TMPDIR%" 2>nul
+mkdir "%INSTALL_DIR%" 2>nul
+
+echo  [1/4] Downloading...
+powershell -Command "Invoke-WebRequest -Uri '{download_url}' -OutFile '%ZIP_FILE%'" 2>nul
+if not exist "%ZIP_FILE%" (
+    echo        ERROR: Download failed. Check your internet connection.
+    pause
+    exit /b 1
+)
+
+echo  [2/4] Extracting...
+powershell -Command "Expand-Archive -Path '%ZIP_FILE%' -DestinationPath '%TMPDIR%\\extracted' -Force" 2>nul
+
+echo  [3/4] Installing files...
+xcopy /s /y /q "%TMPDIR%\\extracted\\RiskRunway-Windows-Setup\\*" "%INSTALL_DIR%\\" >nul 2>&1
+if not exist "%INSTALL_DIR%\\local_agent.py" (
+    xcopy /s /y /q "%TMPDIR%\\extracted\\*" "%INSTALL_DIR%\\" >nul 2>&1
+)
+
+echo  [4/4] Setting up...
+
+REM Check for Python
+where python >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo        Python not found. Installing Python...
+    set "PY_INST=%TMPDIR%\\python_installer.exe"
+    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '!PY_INST!'" 2>nul
+    "!PY_INST!" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1
+    set "PATH=%LOCALAPPDATA%\\Programs\\Python\\Python311;%LOCALAPPDATA%\\Programs\\Python\\Python311\\Scripts;%PATH%"
+)
+
+REM Install dependencies
+python -m pip install --quiet --upgrade pip 2>nul
+python -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 2>nul
+
+REM Register protocol handler
+reg add "HKCU\\Software\\Classes\\riskrunway" /f >nul 2>&1
+reg add "HKCU\\Software\\Classes\\riskrunway" /ve /t REG_SZ /d "URL:RiskRunway Protocol" /f >nul 2>&1
+reg add "HKCU\\Software\\Classes\\riskrunway" /v "URL Protocol" /t REG_SZ /d "" /f >nul 2>&1
+reg add "HKCU\\Software\\Classes\\riskrunway\\shell\\open\\command" /f >nul 2>&1
+reg add "HKCU\\Software\\Classes\\riskrunway\\shell\\open\\command" /ve /t REG_SZ /d "\\"%INSTALL_DIR%\\RiskRunwayLauncher.bat\\" \\"%%1\\"" /f >nul 2>&1
+
+REM Cleanup
+rmdir /s /q "%TMPDIR%" 2>nul
+
+echo.
+echo  ============================================
+echo   Installation Complete!
+echo  ============================================
+echo.
+echo  Return to your browser to continue.
+echo  (This window will close in 5 seconds)
+echo.
+timeout /t 5 >nul
+exit
+'''
+
+    from flask import Response
+    response = Response(script, mimetype='application/octet-stream')
+    response.headers['Content-Disposition'] = 'attachment; filename="Install-RiskRunway.bat"'
+    return response
+
+
+@bp.route('/api/ams-agent/open-settings', methods=['GET'])
+@login_required
+def open_settings_instructions():
+    """
+    Returns a small HTML page that attempts to open macOS System Settings
+    to the correct Privacy pane via a deep link URL scheme.
+    """
+    pane = request.args.get('pane', 'accessibility')
+
+    if pane == 'accessibility':
+        title = "Enable Accessibility for Terminal"
+        deep_link = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        step_text = "Accessibility"
+    else:
+        title = "Enable Screen Recording for Terminal"
+        deep_link = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        step_text = "Screen Recording"
+
+    html = f"""<!DOCTYPE html>
+<html><head><title>{title}</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 3rem auto; padding: 1.5rem; color: #1a1a1a; line-height: 1.6; }}
+h2 {{ margin-bottom: 1rem; }}
+ol {{ padding-left: 1.25rem; }}
+li {{ margin-bottom: 0.5rem; }}
+.note {{ margin-top: 1.5rem; padding: 1rem; background: #f0f9ff; border-radius: 0.5rem; font-size: 0.875rem; color: #1e40af; }}
+</style>
+</head><body>
+<h2>Enable {step_text}</h2>
+<p>System Settings should have opened automatically.</p>
+<ol>
+    <li>Find <strong>"Terminal"</strong> in the list</li>
+    <li>Toggle it <strong>ON</strong></li>
+    <li>Close this tab and return to RiskRunway</li>
+</ol>
+<div class="note">
+    <strong>If Settings didn't open:</strong><br>
+    Apple Menu → System Settings → Privacy & Security → {step_text}
+</div>
+<script>window.location.href = '{deep_link}';</script>
+</body></html>"""
+
+    return html
+
+
+@bp.route('/api/ams-agent/mark-installed', methods=['POST'])
+@login_required
+def mark_ams_agent_installed():
+    """
+    Mark that the current user has completed agent installation.
+    Persisted in the User table so it survives across sessions/devices.
+    """
+    db_session = get_session()
+    try:
+        user = db_session.query(User).filter_by(id=session['user_id']).first()
+        if user:
+            user.ams_agent_installed = True
+            db_session.commit()
+        return jsonify({'success': True})
+    finally:
+        db_session.close()
+
+
+@bp.route('/api/ams-agent/install-status', methods=['GET'])
+@login_required
+def get_ams_agent_install_status():
+    """
+    Check if the current user has previously completed agent installation.
+    """
+    db_session = get_session()
+    try:
+        user = db_session.query(User).filter_by(id=session['user_id']).first()
+        installed = user.ams_agent_installed if user else False
+        return jsonify({'success': True, 'installed': installed})
+    finally:
+        db_session.close()
+
+
+# ============================================================================
 # AMS EXPORT JOBS
 # ============================================================================
 
