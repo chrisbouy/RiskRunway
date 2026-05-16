@@ -163,91 +163,88 @@ def _ensure_schema_updates(engine):
     """
     Apply schema updates for PostgreSQL.
     Ensures ENUM types exist and adds any missing columns.
+    Each step runs in its own transaction so one failure doesn't block the rest.
     """
-    with engine.begin() as conn:
-        inspector = inspect(engine)
-        
-        # Ensure ENUM types exist in PostgreSQL
-        enum_types = {
-            'userrole': UserRole,
-            'submissionstatus': SubmissionStatus,
-            'quotestatus': QuoteStatus,
-            'emailprovider': EmailProvider,
-            'connectedaccountstatus': ConnectedAccountStatus,
-            'documenttype': DocumentType
-        }
-        
-        for enum_name, enum_class in enum_types.items():
-            # Check if enum type exists
-            result = conn.execute(
-                text("SELECT 1 FROM pg_type WHERE typname = :name"),
-                {"name": enum_name}
-            ).fetchone()
-            
-            if not result:
-                # Create enum type
-                values = [e.value for e in enum_class]
-                values_str = ', '.join(f"'{v}'" for v in values)
-                conn.execute(text(f"CREATE TYPE {enum_name} AS ENUM ({values_str})"))
-                print(f"Created ENUM type: {enum_name}")
-        
-        # Add any missing columns
-        _add_missing_columns(conn, inspector)
-        _ensure_audit_log_delete_constraints(conn, inspector)
+    inspector = inspect(engine)
+
+    # Step 1: Ensure ENUM types exist
+    enum_types = {
+        'userrole': UserRole,
+        'submissionstatus': SubmissionStatus,
+        'quotestatus': QuoteStatus,
+        'emailprovider': EmailProvider,
+        'connectedaccountstatus': ConnectedAccountStatus,
+        'documenttype': DocumentType
+    }
+
+    for enum_name, enum_class in enum_types.items():
+        try:
+            with engine.begin() as conn:
+                result = conn.execute(
+                    text("SELECT 1 FROM pg_type WHERE typname = :name"),
+                    {"name": enum_name}
+                ).fetchone()
+
+                if not result:
+                    values = [e.value for e in enum_class]
+                    values_str = ', '.join(f"'{v}'" for v in values)
+                    conn.execute(text(f"CREATE TYPE {enum_name} AS ENUM ({values_str})"))
+                    print(f"Created ENUM type: {enum_name}")
+        except Exception as e:
+            print(f"[schema] ENUM '{enum_name}' skipped: {e}")
+
+    # Step 2: Add missing columns (each ALTER in its own transaction)
+    _add_missing_columns(engine, inspector)
+
+    # Step 3: Ensure audit log constraints
+    try:
+        with engine.begin() as conn:
+            _ensure_audit_log_delete_constraints(conn, inspector)
+    except Exception as e:
+        print(f"[schema] audit_log constraints skipped: {e}")
 
 
-def _add_missing_columns(conn, inspector):
-    """Add columns that were added in later schema versions."""
-    
-    # quotes.quote_outcome
-    if 'quotes' in inspector.get_table_names():
-        quote_columns = [c['name'] for c in inspector.get_columns('quotes')]
-        if 'quote_outcome' not in quote_columns:
-            conn.execute(text("ALTER TABLE quotes ADD COLUMN quote_outcome VARCHAR(20)"))
-            print("Added column: quotes.quote_outcome")
-    
-    # submissions.status_label
-    if 'submissions' in inspector.get_table_names():
-        sub_columns = [c['name'] for c in inspector.get_columns('submissions')]
-        if 'status_label' not in sub_columns:
-            conn.execute(text("ALTER TABLE submissions ADD COLUMN status_label VARCHAR(255)"))
-            print("Added column: submissions.status_label")
-    
-    # users.signature
-    if 'users' in inspector.get_table_names():
-        user_columns = [c['name'] for c in inspector.get_columns('users')]
-        if 'signature' not in user_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN signature TEXT"))
-            print("Added column: users.signature")
-        if 'ams_agent_installed' not in user_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN ams_agent_installed BOOLEAN DEFAULT FALSE NOT NULL"))
-            print("Added column: users.ams_agent_installed")
+def _add_missing_columns(engine, inspector):
+    """Add columns that were added in later schema versions.
+    Each ALTER runs in its own transaction so failures are isolated."""
 
-    # brokers: letterhead, email_body, created_at, updated_at
-    if 'brokers' in inspector.get_table_names():
-        broker_columns = [c['name'] for c in inspector.get_columns('brokers')]
-        if 'letterhead' not in broker_columns:
-            conn.execute(text("ALTER TABLE brokers ADD COLUMN letterhead TEXT"))
-            print("Added column: brokers.letterhead")
-        if 'email_body' not in broker_columns:
-            conn.execute(text("ALTER TABLE brokers ADD COLUMN email_body TEXT"))
-            print("Added column: brokers.email_body")
-        if 'created_at' not in broker_columns:
-            conn.execute(text("ALTER TABLE brokers ADD COLUMN created_at TIMESTAMP DEFAULT NOW()"))
-            print("Added column: brokers.created_at")
-        if 'updated_at' not in broker_columns:
-            conn.execute(text("ALTER TABLE brokers ADD COLUMN updated_at TIMESTAMP DEFAULT NOW()"))
-            print("Added column: brokers.updated_at")
-    
-    # email_messages: is_deleted, connected_account_id
-    if 'email_messages' in inspector.get_table_names():
-        email_columns = [c['name'] for c in inspector.get_columns('email_messages')]
-        if 'is_deleted' not in email_columns:
-            conn.execute(text("ALTER TABLE email_messages ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"))
-            print("Added column: email_messages.is_deleted")
-        if 'connected_account_id' not in email_columns:
-            conn.execute(text("ALTER TABLE email_messages ADD COLUMN connected_account_id INTEGER"))
-            print("Added column: email_messages.connected_account_id")
+    def _safe_add_column(table, column, col_type):
+        """Add a column if it doesn't exist, swallowing errors."""
+        try:
+            columns = [c['name'] for c in inspector.get_columns(table)]
+            if column not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                print(f"Added column: {table}.{column}")
+        except Exception as e:
+            print(f"[schema] {table}.{column} skipped: {e}")
+
+    table_names = inspector.get_table_names()
+
+    # quotes
+    if 'quotes' in table_names:
+        _safe_add_column('quotes', 'quote_outcome', 'VARCHAR(20)')
+
+    # submissions
+    if 'submissions' in table_names:
+        _safe_add_column('submissions', 'status_label', 'VARCHAR(255)')
+
+    # users
+    if 'users' in table_names:
+        _safe_add_column('users', 'signature', 'TEXT')
+        _safe_add_column('users', 'ams_agent_installed', 'BOOLEAN DEFAULT FALSE NOT NULL')
+
+    # brokers
+    if 'brokers' in table_names:
+        _safe_add_column('brokers', 'letterhead', 'TEXT')
+        _safe_add_column('brokers', 'email_body', 'TEXT')
+        _safe_add_column('brokers', 'created_at', 'TIMESTAMP DEFAULT NOW()')
+        _safe_add_column('brokers', 'updated_at', 'TIMESTAMP DEFAULT NOW()')
+
+    # email_messages
+    if 'email_messages' in table_names:
+        _safe_add_column('email_messages', 'is_deleted', 'BOOLEAN DEFAULT FALSE')
+        _safe_add_column('email_messages', 'connected_account_id', 'INTEGER')
 
 
 def _ensure_audit_log_delete_constraints(conn, inspector):
