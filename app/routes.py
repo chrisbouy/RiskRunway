@@ -3784,13 +3784,14 @@ def get_windows_installer():
         ExpiresIn=600
     )
 
-    # Escape & for cmd.exe — without this, cmd treats & as a command separator
-    # and the presigned URL (which has &X-Amz-Date=...&X-Amz-Signature=...) breaks
-    download_url_escaped = download_url.replace('&', '^&')
+    # Batch files can't handle & in URLs (cmd.exe treats & as command separator).
+    # Solution: encode the PowerShell download command as Base64 so cmd.exe
+    # never sees the URL characters at all.
+    import base64
+    # PowerShell -EncodedCommand expects UTF-16LE Base64
+    ps_download_cmd = f"Invoke-WebRequest -Uri '{download_url}' -OutFile '$env:TEMP\\riskrunway_setup.zip'"
+    ps_encoded = base64.b64encode(ps_download_cmd.encode('utf-16-le')).decode('ascii')
 
-    # Note: In the batch script, percent signs that are NOT variable references
-    # must be doubled (%%) for literal use. But since this is a Python f-string
-    # served as a download, single % is correct for the .bat file content.
     script = f'''@echo off
 REM RiskRunway AMS Agent - One-Click Installer for Windows
 REM Double-click to install. You can delete this file afterwards.
@@ -3806,13 +3807,13 @@ echo.
 
 set "INSTALL_DIR=%LOCALAPPDATA%\\RiskRunway"
 set "TMPDIR=%TEMP%\\riskrunway_install_%RANDOM%"
-set "ZIP_FILE=%TMPDIR%\\setup.zip"
+set "ZIP_FILE=%TEMP%\\riskrunway_setup.zip"
 
 mkdir "%TMPDIR%" 2>nul
 mkdir "%INSTALL_DIR%" 2>nul
 
 echo  [1/4] Downloading...
-powershell -Command "Invoke-WebRequest -Uri '{download_url_escaped}' -OutFile '%ZIP_FILE%'" 2>nul
+powershell -EncodedCommand {ps_encoded}
 if not exist "%ZIP_FILE%" (
     echo        ERROR: Download failed. Check your internet connection.
     pause
@@ -3820,7 +3821,7 @@ if not exist "%ZIP_FILE%" (
 )
 
 echo  [2/4] Extracting...
-powershell -Command "Expand-Archive -Path '%ZIP_FILE%' -DestinationPath '%TMPDIR%\\extracted' -Force" 2>nul
+powershell -Command "Expand-Archive -Path '%ZIP_FILE%' -DestinationPath '%TMPDIR%\\extracted' -Force"
 
 echo  [3/4] Installing files...
 xcopy /s /y /q "%TMPDIR%\\extracted\\RiskRunway-Windows-Setup\\*" "%INSTALL_DIR%\\" >nul 2>&1
