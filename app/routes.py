@@ -3882,6 +3882,7 @@ echo        Dependencies installed.
 REM Register protocol handler — launcher just passes the URL to Python which handles parsing
 echo @echo off> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
 echo "!PYTHON!" "%%~dp0local_agent.py" "%%~1">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo pause>> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
 
 reg add "HKCU\\Software\\Classes\\riskrunway" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway" /ve /t REG_SZ /d "URL:RiskRunway Protocol" /f >nul 2>&1
