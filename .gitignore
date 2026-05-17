@@ -37,6 +37,7 @@ Thumbs.db
 
 # Exclude virtual environments
 venv/
+.venv/
 .env/
 __pycache__/
 

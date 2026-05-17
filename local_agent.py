@@ -23,6 +23,20 @@ import json
 import logging
 import platform
 import queue
+
+# Windows DPI awareness — must be set before any GUI/window operations
+# Without this, WindowFromPoint and screenshot coordinates are wrong on
+# multi-monitor setups with display scaling above 100%.
+if platform.system() == "Windows":
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
 import re
 import sys
 import tempfile
@@ -667,12 +681,29 @@ def _get_window_region_at(x: int, y: int) -> dict:
     # Windows via pywin32
     try:
         import win32gui
+        import win32process
+        import os
+        current_pid = os.getpid()
         hwnd = win32gui.WindowFromPoint((x, y))
         if hwnd:
             # Walk up to the top-level window (not a child control)
             ancestor = win32gui.GetAncestor(hwnd, 2)  # GA_ROOT = 2
             if ancestor:
                 hwnd = ancestor
+            # If we found our own overlay, look for the window behind it
+            _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
+            if found_pid == current_pid:
+                logger.debug("WindowFromPoint hit our own overlay, looking behind it")
+                # Temporarily hide our overlay to find what's underneath
+                overlay_hwnd = hwnd
+                win32gui.ShowWindow(overlay_hwnd, 0)  # SW_HIDE
+                time.sleep(0.05)
+                hwnd = win32gui.WindowFromPoint((x, y))
+                if hwnd:
+                    ancestor = win32gui.GetAncestor(hwnd, 2)
+                    if ancestor:
+                        hwnd = ancestor
+                win32gui.ShowWindow(overlay_hwnd, 5)  # SW_SHOW
             wx, wy, wx2, wy2 = win32gui.GetWindowRect(hwnd)
             ww, wh = wx2 - wx, wy2 - wy
             if ww > 50 and wh > 50:
