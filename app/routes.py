@@ -3846,18 +3846,38 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 if "!PYTHON!"=="" (
-    echo        Python not found. Installing Python...
+    echo.
+    echo        Python not found. Downloading Python installer...
+    echo        (This is ~25MB, may take a minute)
+    echo.
     set "PY_INST=%TMPDIR%\\python_installer.exe"
     powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '!PY_INST!'"
-    "!PY_INST!" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1
+    if not exist "!PY_INST!" (
+        echo        ERROR: Could not download Python installer.
+        echo        Please install Python manually from https://python.org
+        echo        Make sure to check "Add Python to PATH"
+        pause
+        exit /b 1
+    )
+    echo        Installing Python (you may see a progress bar)...
+    "!PY_INST!" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_tcltk=1
     set "PATH=%LOCALAPPDATA%\\Programs\\Python\\Python311;%LOCALAPPDATA%\\Programs\\Python\\Python311\\Scripts;!PATH!"
     set "PYTHON=%LOCALAPPDATA%\\Programs\\Python\\Python311\\python.exe"
-    echo        Python installed.
+    if not exist "!PYTHON!" (
+        echo        ERROR: Python installation failed.
+        echo        Please install Python manually from https://python.org
+        pause
+        exit /b 1
+    )
+    echo        Python installed successfully.
+    echo.
 )
 
 REM Install dependencies
+echo        Installing dependencies...
 "!PYTHON!" -m pip install --quiet --upgrade pip 2>nul
 "!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 2>nul
+echo        Dependencies installed.
 
 REM Register protocol handler — use the full python path in the launcher
 echo @echo off> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
