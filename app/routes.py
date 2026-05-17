@@ -3832,21 +3832,41 @@ if not exist "%INSTALL_DIR%\\local_agent.py" (
 
 echo  [4/4] Setting up...
 
-REM Check for Python
-where python >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
+REM Check for Python — the Windows 11 stub fakes 'where python' success
+REM so we actually try running it to see if it's real
+set "PYTHON="
+python --version >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    set "PYTHON=python"
+) else (
+    py --version >nul 2>&1
+    if !ERRORLEVEL! EQU 0 (
+        set "PYTHON=py"
+    )
+)
+
+if "!PYTHON!"=="" (
     echo        Python not found. Installing Python...
     set "PY_INST=%TMPDIR%\\python_installer.exe"
-    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '!PY_INST!'" 2>nul
+    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '!PY_INST!'"
     "!PY_INST!" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1
-    set "PATH=%LOCALAPPDATA%\\Programs\\Python\\Python311;%LOCALAPPDATA%\\Programs\\Python\\Python311\\Scripts;%PATH%"
+    set "PATH=%LOCALAPPDATA%\\Programs\\Python\\Python311;%LOCALAPPDATA%\\Programs\\Python\\Python311\\Scripts;!PATH!"
+    set "PYTHON=%LOCALAPPDATA%\\Programs\\Python\\Python311\\python.exe"
+    echo        Python installed.
 )
 
 REM Install dependencies
-python -m pip install --quiet --upgrade pip 2>nul
-python -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 2>nul
+"!PYTHON!" -m pip install --quiet --upgrade pip 2>nul
+"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 2>nul
 
-REM Register protocol handler
+REM Register protocol handler — use the full python path in the launcher
+echo @echo off> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo setlocal EnableDelayedExpansion>> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo set "URL=%%~1">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo set "SCRIPT_DIR=%%~dp0">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo set "AGENT=%%SCRIPT_DIR%%local_agent.py">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo "!PYTHON!" "%%AGENT%%" %%URL%%>> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+
 reg add "HKCU\\Software\\Classes\\riskrunway" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway" /ve /t REG_SZ /d "URL:RiskRunway Protocol" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway" /v "URL Protocol" /t REG_SZ /d "" /f >nul 2>&1
