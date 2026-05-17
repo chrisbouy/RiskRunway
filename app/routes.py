@@ -3876,7 +3876,7 @@ if "!PYTHON!"=="" (
 REM Install dependencies
 echo        Installing dependencies...
 "!PYTHON!" -m pip install --quiet --upgrade pip 2>nul
-"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests 2>nul
+"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 2>nul
 echo        Dependencies installed.
 
 REM Register protocol handler — launcher just passes the URL to Python which handles parsing

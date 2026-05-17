@@ -641,6 +641,7 @@ def prompt_user_to_select_window() -> Optional[dict]:
 #     return {"x": 0, "y": 0, "width": w, "height": h}
 
 def _get_window_region_at(x: int, y: int) -> dict:
+    # macOS via Quartz
     try:
         from Quartz import (CGWindowListCopyWindowInfo,
                             kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
@@ -663,6 +664,27 @@ def _get_window_region_at(x: int, y: int) -> dict:
     except ImportError:
         pass
 
+    # Windows via pywin32
+    try:
+        import win32gui
+        hwnd = win32gui.WindowFromPoint((x, y))
+        if hwnd:
+            # Walk up to the top-level window (not a child control)
+            ancestor = win32gui.GetAncestor(hwnd, 2)  # GA_ROOT = 2
+            if ancestor:
+                hwnd = ancestor
+            wx, wy, wx2, wy2 = win32gui.GetWindowRect(hwnd)
+            ww, wh = wx2 - wx, wy2 - wy
+            if ww > 50 and wh > 50:
+                title = win32gui.GetWindowText(hwnd)
+                region = {"x": wx, "y": wy, "width": ww, "height": wh}
+                logger.info(f"Window (Windows): '{title}' {ww}x{wh} at ({wx},{wy})")
+                return region
+    except ImportError:
+        pass
+
+    # Fallback: full screen
+    logger.warning("Could not detect window bounds — using full screen")
     w, h = pyautogui.size()
     return {"x": 0, "y": 0, "width": w, "height": h}
 
