@@ -872,7 +872,20 @@ def main():
                         help="Run in single-shot mode: fetch specific job ID, execute, then exit")
     parser.add_argument("--daemon", action="store_true",
                         help="Run in daemon mode: continuously poll for jobs (default behavior)")
+    parser.add_argument("url", nargs="?", default=None,
+                        help="Optional riskrunway:// protocol URL (parsed for job_id and server)")
     args       = parser.parse_args()
+
+    # If a riskrunway:// URL was passed (from protocol handler), parse it
+    if args.url and args.url.startswith("riskrunway://"):
+        import urllib.parse
+        parsed = urllib.parse.urlparse(args.url)
+        params = urllib.parse.parse_qs(parsed.query)
+        if 'job_id' in params and args.job_id is None:
+            args.job_id = int(params['job_id'][0])
+        if 'server' in params and args.server == DEFAULT_SERVER_URL:
+            args.server = urllib.parse.unquote(params['server'][0])
+
     server_url = args.server.rstrip("/")
 
     # Determine mode: single-shot if job_id provided, otherwise daemon (or explicit --daemon)
