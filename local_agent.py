@@ -184,7 +184,7 @@ def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
         draw.line([(mx-20, my), (mx+20, my)], fill="red", width=2)
         draw.line([(mx, my-20), (mx, my+20)], fill="red", width=2)
 
-    timestamp = time.strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
     debug_path = Path(tempfile.gettempdir()) / f"ams_debug_{timestamp}.png"
     img.save(str(debug_path))
     logger.info(f"Screenshot: {debug_path} ({img.width}x{img.height})")
