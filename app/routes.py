@@ -3876,16 +3876,12 @@ if "!PYTHON!"=="" (
 REM Install dependencies
 echo        Installing dependencies...
 "!PYTHON!" -m pip install --quiet --upgrade pip 2>nul
-"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 2>nul
+"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 msal 2>nul
 echo        Dependencies installed.
 
-REM Register protocol handler — use the full python path in the launcher
+REM Register protocol handler — use PowerShell to parse the URL (avoids & issues in batch)
 echo @echo off> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo setlocal EnableDelayedExpansion>> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo set "URL=%%~1">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo set "SCRIPT_DIR=%%~dp0">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo set "AGENT=%%SCRIPT_DIR%%local_agent.py">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo "!PYTHON!" "%%AGENT%%" %%URL%%>> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+echo powershell -NoProfile -Command "$u='%%~1'; $u -match 'job_id=(\\d+)' ^| Out-Null; $j=$matches[1]; $u -match 'server=([^^\"^^&]+)' ^| Out-Null; $s=[uri]::UnescapeDataString($matches[1]); Start-Process -NoNewWindow -Wait '!PYTHON!' -ArgumentList ('\"%%~dp0local_agent.py\"','--job-id',$j,'--server',$s)">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
 
 reg add "HKCU\\Software\\Classes\\riskrunway" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway" /ve /t REG_SZ /d "URL:RiskRunway Protocol" /f >nul 2>&1
