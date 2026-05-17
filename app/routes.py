@@ -3876,7 +3876,7 @@ if "!PYTHON!"=="" (
 REM Install dependencies
 echo        Installing dependencies...
 "!PYTHON!" -m pip install --quiet --upgrade pip 2>nul
-"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 boto3 msal 2>nul
+"!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests 2>nul
 echo        Dependencies installed.
 
 REM Register protocol handler — launcher just passes the URL to Python which handles parsing
@@ -3987,6 +3987,145 @@ def get_ams_agent_install_status():
         return jsonify({'success': True, 'installed': installed})
     finally:
         db_session.close()
+
+
+# ============================================================================
+# AMS VISION - Server-side Bedrock/Claude call for the local agent
+# ============================================================================
+
+@bp.route('/api/ams/vision', methods=['POST'])
+def ams_vision():
+    """
+    Receives a screenshot + form data from the local agent, calls Claude via
+    Bedrock to identify form fields, and returns the field coordinate map.
+    No auth required — called by the local agent on the user's machine.
+    """
+    try:
+        import boto3
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON payload'}), 400
+
+        screenshot_b64 = data.get('screenshot')
+        json_data = data.get('json_data', {})
+        already_filled = data.get('already_filled', [])
+
+        if not screenshot_b64:
+            return jsonify({'success': False, 'error': 'screenshot is required'}), 400
+
+        # Decode the screenshot
+        screenshot_bytes = base64.b64decode(screenshot_b64)
+
+        # Build the prompt (same logic that was in local_agent.py)
+        skip_note = ""
+        if already_filled:
+            skip_note = (
+                f"\nFields already filled in a previous pass (skip these): "
+                f"{sorted(already_filled)}\n"
+            )
+
+        prompt = (
+            "You are looking at a screenshot of an insurance AMS "
+            "(Agency Management System) form.\n\n"
+
+            "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
+            f"{json.dumps(json_data, indent=2)}\n\n"
+
+            "Your job:\n"
+            "1. Look at every visible, editable field on the form.\n"
+            "2. Match available data to fields using common sense.\n"
+            "3. Return a JSON object for ONLY fields you have a value for.\n"
+
+            "STRICT RULES:\n"
+            "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
+            "- DO NOT guess values.\n"
+            "- DO NOT include fields unless you are confident.\n"
+            "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
+            "- Producer field on the form is referring to the retail agent listed in the data.\n"
+            "- For fields that are not textboxes, omit coordinates.\n"
+            "- Skip fields already filled.\n\n"
+
+            "Formatting rules:\n"
+            "- Dates → MM/DD/YYYY\n"
+            "- Currency → digits only (no $)\n"
+            "- State → 2-letter abbreviation\n"
+            "- Phone → (555) 000-0000 if possible\n\n"
+
+            f"{skip_note}"
+
+            "Return ONLY valid JSON. No explanation.\n"
+            "Format:\n"
+            '{\n'
+            '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name", "field_type": "text_field"},\n'
+            '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date", "field_type": "text_field"},\n'
+            '  "State":            {"value": "LA", "key_path": "insured state", "field_type": "dropdown_field"},\n'
+            '  "Line of Business": {"value": "Commercial Property", "key_path": "type of coverage", "field_type": "dropdown_field"}\n'
+            '}'
+        )
+
+        # Call Bedrock
+        aws_region = current_app.config.get('S3_REGION', 'us-east-1')
+        model_id = os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-6')
+
+        bedrock = boto3.client("bedrock-runtime", region_name=aws_region)
+
+        content = [
+            {"image": {"format": "jpeg", "source": {"bytes": screenshot_bytes}}},
+            {"text": prompt},
+        ]
+
+        response = bedrock.converse_stream(
+            modelId=model_id,
+            messages=[{"role": "user", "content": content}],
+        )
+
+        full_text = []
+        for event in response["stream"]:
+            if "contentBlockDelta" in event:
+                delta = event["contentBlockDelta"].get("delta", {})
+                if "text" in delta:
+                    full_text.append(delta["text"])
+
+        raw = "".join(full_text)
+        logger.info(f"[AMS Vision] Claude response ({len(raw)} chars)")
+
+        # Parse the JSON from Claude's response
+        import re as re_module
+        field_map = None
+
+        # Try plain JSON
+        try:
+            field_map = json.loads(raw.strip())
+        except json.JSONDecodeError:
+            pass
+
+        # Try fenced block
+        if field_map is None:
+            fence = re_module.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re_module.DOTALL)
+            if fence:
+                try:
+                    field_map = json.loads(fence.group(1))
+                except json.JSONDecodeError:
+                    pass
+
+        # Try first { ... } block
+        if field_map is None:
+            brace = re_module.search(r"\{.*\}", raw, re_module.DOTALL)
+            if brace:
+                try:
+                    field_map = json.loads(brace.group(0))
+                except json.JSONDecodeError:
+                    pass
+
+        if field_map is None:
+            return jsonify({'success': False, 'error': f'Could not parse Claude response: {raw[:200]}'}), 500
+
+        return jsonify({'success': True, 'field_map': field_map})
+
+    except Exception as e:
+        logger.error(f"[AMS Vision] Error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================================================

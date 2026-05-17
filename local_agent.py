@@ -4,7 +4,7 @@ AMS Export Agent — Vision-map, Claude does all field matching.
 
 How it works:
   1. Take ONE screenshot of the AMS window.
-  2. Send the screenshot AND the job's JSON data to Claude together.
+  2. Send the screenshot to the server, which forwards it to Claude.
   3. Claude figures out which data belongs in which visible field,
      returns coordinates + formatted values ready to paste.
   4. pyautogui bulk-fills everything — no more API calls.
@@ -30,11 +30,10 @@ import threading
 import time
 import uuid
 import argparse
+import base64
 from pathlib import Path
 from typing import Optional
 from PIL.ImageOps import scale
-import boto3
-from msal import region
 import pyautogui
 import pyperclip
 import requests
@@ -65,9 +64,6 @@ FORM_REGION_INSET_LEFT   = 18
 FORM_REGION_INSET_RIGHT  = 18
 FORM_REGION_INSET_BOTTOM = 18
 
-AWS_REGION = "us-east-1"
-MODEL_ID   = "us.anthropic.claude-sonnet-4-6"
-
 IS_MAC        = platform.system() == "Darwin"
 PASTE_HOTKEY  = ("command", "v") if IS_MAC else ("ctrl", "v")
 SELECT_HOTKEY = ("command", "a") if IS_MAC else ("ctrl", "a")
@@ -85,31 +81,6 @@ logger.info(
 
 job_queue: queue.Queue = queue.Queue()
 persistent_overlay = None  # Global persistent overlay widget
-
-def bedrock_invoke(bedrock_client, messages: list, image_bytes: bytes = None) -> str:
-    """
-    Invoke Bedrock using the streaming API for faster time-to-first-token.
-    Collects all chunks and returns the complete response text.
-    """
-    content = []
-    if image_bytes:
-        # Use JPEG format for faster upload (Bedrock supports jpeg, png, gif, webp)
-        content.append({"image": {"format": "jpeg", "source": {"bytes": image_bytes}}})
-    content.append({"text": messages[-1]["text"]})
-
-    response = bedrock_client.converse_stream(
-        modelId=MODEL_ID,
-        messages=[{"role": "user", "content": content}],
-    )
-
-    full_text = []
-    for event in response["stream"]:
-        if "contentBlockDelta" in event:
-            delta = event["contentBlockDelta"].get("delta", {})
-            if "text" in delta:
-                full_text.append(delta["text"])
-
-    return "".join(full_text)
 
 def extract_json(text: str) -> dict:
     """
@@ -290,7 +261,7 @@ def screenshots_almost_equal(first: bytes, second: bytes, threshold: float = 2.0
     logger.info(f"Screenshot diff score: {mean_diff:.2f}")
     return mean_diff <= threshold
 
-def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
+def  run_vision_job(server_url: str, json_data: dict, region: dict) -> bool:
     all_filled: set = set()
     remaining_data  = flatten_job_data(json_data)   # starts full, shrinks each pass
     previous_pass_screenshot: Optional[bytes] = None
@@ -298,10 +269,6 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
     for pass_num in range(MAX_SCROLL_PASSES):
         logger.info(f"--- Pass {pass_num + 1}/{MAX_SCROLL_PASSES} ---")
         logger.info(f"Remaining data keys: {list(remaining_data.keys())}")
-        # Comment out early exit - keep data persistent across jobs
-        # if not remaining_data:
-        #     logger.info("All data placed — done")
-        #     break
 
         print(f"\n  Taking screenshot for claude's  pass {pass_num + 1} over form...")
         current_ss, scale = take_screenshot(region)
@@ -312,7 +279,7 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
             logger.info("Screen is unchanged from the prior pass — stopping.")
             break
 
-        tb_data_map = get_tb_coords(bedrock_client,current_ss,remaining_data,all_filled)
+        tb_data_map = get_tb_coords(server_url, current_ss, remaining_data, all_filled)
         safe_click  = tb_data_map.pop("__safe_click__", None)
         logger.info(f"filling")
         newly_filled = tb_fill(tb_data_map, region, scale)
@@ -358,73 +325,42 @@ def  run_vision_job(bedrock_client, json_data: dict, region: dict) -> bool:
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
 
-def get_tb_coords(bedrock_client, screenshot_bytes: bytes,
+def get_tb_coords(server_url: str, screenshot_bytes: bytes,
                           json_data: dict, already_filled: set) -> dict:
-    skip_note = ""
-    if already_filled:
-        skip_note = (
-            f"\nFields already filled in a previous pass (skip these): "
-            f"{sorted(already_filled)}\n"
+    """
+    Send screenshot + data to the server, which calls Claude via Bedrock
+    and returns the field coordinate map.
+    """
+    skip_list = sorted(already_filled) if already_filled else []
+
+    payload = {
+        'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'),
+        'json_data': json_data,
+        'already_filled': skip_list,
+    }
+
+    try:
+        response = requests.post(
+            f"{server_url}/api/ams/vision",
+            json=payload,
+            timeout=60
         )
-    prompt = (
-        "You are looking at a screenshot of an insurance AMS "
-        "(Agency Management System) form.\n\n"
+        response.raise_for_status()
+        data = response.json()
 
-        "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
-        f"{json.dumps(json_data, indent=2)}\n\n"
+        if not data.get('success'):
+            raise ValueError(data.get('error', 'Unknown server error'))
 
-        "Your job:\n"
-        "1. Look at every visible, editable field on the form.\n"
-        "2. Match available data to fields using common sense.\n"
-        "3. Return a JSON object for ONLY fields you have a value for.\n"
-        # "4. Also include one entry '__safe_click__' with the coordinates of any "
-        # "empty space on the form that is NOT a text input, dropdown, or button — "
-        # "somewhere safe to click that won't trigger any field focus. "
-        # "A section header, a card background, or whitespace between fields is ideal.\n"
-        # '  "__safe_click__": {"x": 400, "y": 200}\n'
+        field_map = data.get('field_map', {})
+        logger.info(f"Server returned {len(field_map)} field matches")
+        return field_map
 
-        "STRICT RULES:\n"
-        "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
-        # "- ONLY include text inputs and date fields.\n"
-        # "- DO NOT include dropdowns or select fields.  If a dropdown matches a key, remove it from\n"
-        "- DO NOT guess values.\n"
-        "- DO NOT include fields unless you are confident.\n"
-        "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
-        "- Producer field on the form is referring to the retail agent listed in the data.\n"
-        "- For fields that are not textboxes, omit coordinates.\n"
-        "- Skip fields already filled.\n\n"
-
-        "Formatting rules:\n"
-        "- Dates → MM/DD/YYYY\n"
-        "- Currency → digits only (no $)\n"
-        "- State → 2-letter abbreviation\n"
-        "- Phone → (555) 000-0000 if possible\n\n"
-
-        f"{skip_note}"
-
-        "Return ONLY valid JSON. No explanation.\n"
-        "Format:\n"
-        '{\n'
-        '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name", "field_type": "text_field"},\n'
-        '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date", "field_type": "text_field"}\n'
-        '  "State":            {"value": "LA", "key_path": "insured state", "field_type": "dropdown_field"}\n'
-        '  "Line of Business": {"value": "Commercial Property", "key_path": "type of coverage", "field_type": "dropdown_field"}\n'
-'}'
-    )
-    # response = bedrock_client.converse(
-    #     modelId=MODEL_ID,
-    #     messages=[{
-    #         "role": "user",
-    #         "content": [
-    #             {"image": {"format": "png", "source": {"bytes": screenshot_bytes}}},
-    #             {"text": prompt},
-    #         ],
-    #     }],
-    # )
-    raw = bedrock_invoke(bedrock_client, [{"text": prompt}], image_bytes=screenshot_bytes)
-    # raw = response["output"]["message"]["content"][0]["text"]
-    logger.info(f"Claude response ({len(raw)} chars): {raw}")
-    return extract_json(raw)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Vision API request failed: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Vision API error: {e}")
+        return {}
 
 def tb_fill(tb_dict: dict, region: dict, scale: float) -> set:
     filled = set()
@@ -772,7 +708,7 @@ def update_job_status(server_url: str, job_id: int, status: str, message: str = 
     except Exception as e:
         logger.error(f"Status update failed for job {job_id}: {e}")
 
-def run_job(job: dict, server_url: str, bedrock_client):
+def run_job(job: dict, server_url: str):
     global persistent_overlay
 
     job_id    = job["id"]
@@ -810,7 +746,7 @@ def run_job(job: dict, server_url: str, bedrock_client):
     # Define the work function to run in a thread
     def do_work():
         try:
-            success = run_vision_job(bedrock_client, json_data, region)
+            success = run_vision_job(server_url, json_data, region)
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")
@@ -866,8 +802,6 @@ def main():
     parser = argparse.ArgumentParser(description="AMS Export Agent — vision-map")
     parser.add_argument("--server",     default=DEFAULT_SERVER_URL,
                         help=f"Flask server URL (default: {DEFAULT_SERVER_URL})")
-    parser.add_argument("--aws-region", default=AWS_REGION,
-                        help=f"AWS region (default: {AWS_REGION})")
     parser.add_argument("--job-id", type=int, default=None,
                         help="Run in single-shot mode: fetch specific job ID, execute, then exit")
     parser.add_argument("--daemon", action="store_true",
@@ -901,13 +835,6 @@ def main():
   Paste    : {'+'.join(PASTE_HOTKEY)}
     """)
 
-    try:
-        bedrock_client = boto3.client("bedrock-runtime", region_name=args.aws_region)
-        logger.info(f"Bedrock ready (region={args.aws_region})")
-    except Exception as e:
-        logger.error(f"Bedrock init failed: {e}")
-        sys.exit(1)
-
     if is_single_shot:
         # SINGLE-SHOT MODE: Fetch specific job, execute, exit
         logger.info(f"Single-shot mode: fetching job {args.job_id}")
@@ -923,7 +850,7 @@ def main():
         
         # Execute the job
         try:
-            run_job(job, server_url, bedrock_client)
+            run_job(job, server_url)
         except Exception as e:
             logger.error(f"Job execution failed: {e}", exc_info=True)
             print(f"\n❌ Job {args.job_id} failed: {e}")
@@ -961,7 +888,7 @@ def main():
                 # Check for jobs (non-blocking with short timeout)
                 try:
                     job = job_queue.get(timeout=0.01)
-                    run_job(job, server_url, bedrock_client)
+                    run_job(job, server_url)
                     job_queue.task_done()
                 except queue.Empty:
                     pass
