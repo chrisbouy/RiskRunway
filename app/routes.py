@@ -1138,7 +1138,12 @@ def trigger_email_scrape():
                     return jsonify(results)
             
             # Fall back to IMAP if no OAuth accounts or OAuth failed
-            if current_app.config.get('IMAP_PASSWORD'):
+            # If no OAuth accounts at all, prompt user to connect rather than trying IMAP
+            if not oauth_accounts:
+                results['success'] = False
+                results['error'] = 'No email account connected. Please connect your email account first.'
+                results['needs_connect'] = True
+            elif current_app.config.get('IMAP_PASSWORD'):
                 scraper = EmailScraper(
                     imap_server=current_app.config['IMAP_SERVER'],
                     email_address=current_app.config['IMAP_EMAIL'],
@@ -1154,10 +1159,9 @@ def trigger_email_scrape():
                 results.update(imap_result)
                 results['source'] = 'IMAP'
             else:
-                if not oauth_accounts:
-                    results['success'] = False
-                    results['error'] = 'No email account connected. Please connect your email account first.'
-                    results['needs_connect'] = True
+                results['success'] = False
+                results['error'] = 'No email account connected. Please connect your email account first.'
+                results['needs_connect'] = True
             
             db_session.close()
             
@@ -1961,13 +1965,22 @@ def oauth_connect(provider):
         # Get OAuth service
         oauth_service = get_oauth_service(provider, config)
         
+        # Pass login_hint if provided (pre-populates email in consent screen)
+        login_hint = request.args.get('login_hint')
+        
         if provider == 'outlook':
+            if login_hint:
+                oauth_service._login_hint = login_hint
             auth_url, flow = oauth_service.get_authorization_url()
             flow_state = flow.get('state', '')
             _store_flow(flow_state, flow, user_id=user_id)  # Store user_id server-side with flow
             state = flow_state
         else:
             auth_url, state = oauth_service.get_authorization_url()
+            # For Gmail, append login_hint to the URL
+            if login_hint:
+                separator = '&' if '?' in auth_url else '?'
+                auth_url = f"{auth_url}{separator}login_hint={login_hint}"
             session[f'oauth_state_{provider}'] = state
             session[f'oauth_user_id_{provider}'] = user_id  # Store user_id in session too
         

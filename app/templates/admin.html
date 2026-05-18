@@ -478,8 +478,8 @@
             try {
                 const response = await fetch('/api/oauth/accounts');
                 if (response.ok) {
-                    const accounts = await response.json();
-                    renderConnectedAccounts(accounts);
+                    const data = await response.json();
+                    renderConnectedAccounts(data.accounts || []);
                 } else {
                     document.getElementById('connected-accounts-list').innerHTML = '<p class="text-red-400 text-sm">Failed to load accounts</p>';
                 }
@@ -494,11 +494,14 @@
                 container.innerHTML = '<p class="text-gray-400 text-sm">No connected accounts. Click a button above to connect.</p>';
                 return;
             }
-            let html = '<table class="w-full text-sm text-left text-gray-300"><thead><tr class="border-b border-gray-700"><th class="py-2">Provider</th><th class="py-2">Email</th><th class="py-2">Connected</th><th class="py-2">Actions</th></tr></thead><tbody>';
+            let html = '<table class="w-full text-sm text-left text-gray-300"><thead><tr class="border-b border-gray-700"><th class="py-2">Provider</th><th class="py-2">Email</th><th class="py-2">Status</th><th class="py-2">Connected</th><th class="py-2">Actions</th></tr></thead><tbody>';
             accounts.forEach(acc => {
                 const provider = acc.provider === 'gmail' ? 'Gmail' : 'Outlook';
-                const connected = acc.created_at ? new Date(acc.created_at).toLocaleDateString() : 'Unknown';
-                html += `<tr class="border-b border-gray-700"><td class="py-2">${provider}</td><td class="py-2">${acc.email || 'N/A'}</td><td class="py-2">${connected}</td><td class="py-2"><button onclick="disconnectOAuth('${acc.id}')" class="text-red-400 hover:text-red-300">Disconnect</button></td></tr>`;
+                const connected = acc.connected_at ? new Date(acc.connected_at).toLocaleDateString() : 'Unknown';
+                const statusBadge = acc.status === 'active'
+                    ? '<span class="px-2 py-1 text-xs rounded bg-green-900 text-green-200">Active</span>'
+                    : '<span class="px-2 py-1 text-xs rounded bg-red-900 text-red-200">' + (acc.status || 'unknown') + '</span>';
+                html += `<tr class="border-b border-gray-700"><td class="py-2">${provider}</td><td class="py-2">${acc.email_address || 'N/A'}</td><td class="py-2">${statusBadge}</td><td class="py-2">${connected}</td><td class="py-2"><button onclick="disconnectOAuth('${acc.id}')" class="text-red-400 hover:text-red-300">Disconnect</button></td></tr>`;
             });
             html += '</tbody></table>';
             container.innerHTML = html;

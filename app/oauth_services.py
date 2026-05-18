@@ -547,6 +547,12 @@ class OutlookOAuthService:
         )
         
         authorization_url = flow.get('auth_uri', '')
+        
+        # Add login_hint if provided (pre-populates email in MS login)
+        if hasattr(self, '_login_hint') and self._login_hint:
+            separator = '&' if '?' in authorization_url else '?'
+            authorization_url = f"{authorization_url}{separator}login_hint={self._login_hint}"
+        
         return authorization_url, flow  # return full flow, not just state
 
     # def exchange_code_for_tokens(self, code: str, state: str = None) -> Dict:

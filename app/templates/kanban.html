@@ -50,7 +50,7 @@
         .page-layout {
             height: 100vh;
             display: grid;
-            grid-template-columns: 168px 1fr;
+            grid-template-columns: 206px 1fr;
         }
 
         /* ── LEFT RAIL ── */
@@ -58,6 +58,7 @@
             background: var(--rail-bg);
             border-right: 1px solid var(--rail-border);
             padding: 14px 10px 10px;
+            padding-top: 14px;
             display: flex;
             flex-direction: column;
             gap: 5px;
@@ -69,14 +70,15 @@
             letter-spacing: 0.02em;
             color: var(--rail-text);
             padding: 0;
-            margin: -10px -8px -9px;
+            margin: 0 0 -9px 0;
             line-height: 1.2;
         }
         .left-title img {
-            max-width: none;
-            width: calc(100% + 20px);
+            max-width: 100%;
+            width: 168px;
             height: auto;
             display: block;
+            margin: 0 auto;
         }
         .left-title .title-risk {
             font-weight: 600;
@@ -703,7 +705,7 @@
     <div id="connectEmailAccountModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
         <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
             <h2 class="text-xl font-bold mb-4 text-white">Connect Email Account</h2>
-            <p class="text-gray-400 mb-4 text-sm">Enter an email address to check. If it's an Outlook account, you'll be redirected to sign in. Otherwise, IMAP configuration will be used.</p>
+            <p class="text-gray-400 mb-4 text-sm">Enter your email address. Gmail and Microsoft/Outlook accounts (including business email) will use secure sign-in. Your email will be pre-filled on the login page.</p>
             
             <div class="mb-4">
                 <label for="emailAccountInput" class="block text-sm font-semibold text-gray-300 mb-1">Email Address</label>
@@ -1590,35 +1592,25 @@
 
             const emailDomain = email.split('@')[1].toLowerCase();
             
-            // Check if it's an Outlook-related domain
-            const outlookDomains = ['outlook.com', 'hotmail.com', 'live.com', 'msn.com'];
-            const isOutlook = outlookDomains.some(domain => emailDomain === domain || emailDomain.endsWith('.' + domain));
+            // Gmail domains
+            const gmailDomains = ['gmail.com', 'googlemail.com'];
+            const isGmail = gmailDomains.some(domain => emailDomain === domain);
+            
+            // Known consumer Outlook domains
+            const outlookConsumerDomains = ['outlook.com', 'hotmail.com', 'live.com', 'msn.com'];
+            const isOutlookConsumer = outlookConsumerDomains.some(domain => emailDomain === domain || emailDomain.endsWith('.' + domain));
+            
+            // Known non-OAuth providers (IMAP only)
+            const imapOnlyDomains = ['yahoo.com', 'aol.com', 'icloud.com', 'protonmail.com', 'zoho.com'];
+            const isImapOnly = imapOnlyDomains.some(domain => emailDomain === domain || emailDomain.endsWith('.' + domain));
 
-            if (isOutlook) {
-                // For Outlook, trigger OAuth flow
-                document.getElementById('connectEmailAccountModal').classList.add('hidden');
-                
+            document.getElementById('connectEmailAccountModal').classList.add('hidden');
+            const encodedEmail = encodeURIComponent(email);
+
+            if (isGmail) {
+                // Gmail OAuth flow
                 try {
-                    // Call the API to get OAuth URL for outlook
-                    const response = await fetch('/api/oauth/connect/outlook');
-                    const data = await response.json();
-                    
-                    if (data.success && data.authorization_url) {
-                        // Redirect to OAuth consent screen
-                        window.location.href = data.authorization_url;
-                    } else {
-                        alert('Failed to start Outlook sign-in: ' + (data.error || 'Unknown error'));
-                    }
-                } catch (error) {
-                    console.error('Error connecting to Outlook:', error);
-                    alert('Error connecting to Outlook: ' + error.message);
-                }
-            } else {
-                // For non-Outlook (Gmail), trigger OAuth flow
-                document.getElementById('connectEmailAccountModal').classList.add('hidden');
-                
-                try {
-                    const response = await fetch('/api/oauth/connect/gmail');
+                    const response = await fetch(`/api/oauth/connect/gmail?login_hint=${encodedEmail}`);
                     const data = await response.json();
                     
                     if (data.success && data.authorization_url) {
@@ -1629,6 +1621,25 @@
                 } catch (error) {
                     console.error('Error connecting to Gmail:', error);
                     alert('Error connecting to Gmail: ' + error.message);
+                }
+            } else if (isImapOnly) {
+                // IMAP-only providers - show message for now
+                alert('IMAP connection for ' + emailDomain + ' is not yet supported. Please use a Gmail or Outlook/Microsoft 365 account.');
+            } else {
+                // Outlook consumer OR any business/custom domain → Microsoft OAuth
+                // (Microsoft 365 business accounts use custom domains)
+                try {
+                    const response = await fetch(`/api/oauth/connect/outlook?login_hint=${encodedEmail}`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.authorization_url) {
+                        window.location.href = data.authorization_url;
+                    } else {
+                        alert('Failed to start Microsoft sign-in: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error connecting to Microsoft:', error);
+                    alert('Error connecting to Microsoft: ' + error.message);
                 }
             }
         });
