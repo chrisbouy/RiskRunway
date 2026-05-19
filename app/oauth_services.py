@@ -143,8 +143,7 @@ class GmailOAuthService:
     """
     
     SCOPES = [
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.labels'
+        'https://www.googleapis.com/auth/gmail.modify',
     ]
     
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
@@ -223,6 +222,7 @@ class GmailOAuthService:
         Refresh expired access token.
         """
         import google.oauth2.credentials
+        from google.auth.transport.requests import Request
         
         credentials = google.oauth2.credentials.Credentials(
             token=None,
@@ -233,11 +233,11 @@ class GmailOAuthService:
             scopes=self.SCOPES
         )
         
-        credentials.refresh(None)
+        credentials.refresh(Request())
         
         return {
             'access_token': credentials.token,
-            'refresh_token': credentials.refresh_token,
+            'refresh_token': credentials.refresh_token or refresh_token,
             'token_type': 'Bearer',
             'expires_in': 3600
         }
@@ -296,6 +296,9 @@ class GmailOAuthService:
         if not query_parts:
             query_parts.append('has:attachment')
 
+        # Only fetch unread emails (replaces DB-based deduplication)
+        query_parts.append('is:unread')
+
         # Add custom query if provided
         if query:
             query_parts.append(query)
@@ -351,6 +354,22 @@ class GmailOAuthService:
         ).execute()
         
         return base64.urlsafe_b64decode(attachment.get('data', ''))
+    
+    def mark_as_read(self, access_token: str, message_id: str):
+        """
+        Mark a Gmail message as read by removing the UNREAD label.
+        """
+        import google.oauth2.credentials
+        from googleapiclient.discovery import build
+        
+        credentials = google.oauth2.credentials.Credentials(token=access_token)
+        service = build('gmail', 'v1', credentials=credentials)
+        
+        service.users().messages().modify(
+            userId='me',
+            id=message_id,
+            body={'removeLabelIds': ['UNREAD']}
+        ).execute()
     
     def _parse_gmail_message(self, message: Dict) -> Optional[UnifiedEmail]:
         """
@@ -501,7 +520,7 @@ class OutlookOAuthService:
     """
     
     SCOPES = [
-        'Mail.Read',
+        'Mail.ReadWrite',
         'Mail.Send',
         'User.Read'
     ]
@@ -691,6 +710,9 @@ class OutlookOAuthService:
         if not filters:
             filters.append('hasAttachments eq true')
 
+        # Only fetch unread emails (replaces DB-based deduplication)
+        filters.append('isRead eq false')
+
         if query:
             filters.append(f"contains(subject,'{_escape_odata_string(query)}')")
         
@@ -840,6 +862,24 @@ class OutlookOAuthService:
         except Exception as e:
             logger.error(f"Failed to parse Outlook message: {e}")
             return None
+
+    def mark_as_read(self, access_token: str, message_id: str):
+        """
+        Mark an Outlook message as read via Graph API.
+        """
+        url = f'https://graph.microsoft.com/v1.0/me/messages/{message_id}'
+        print(f"Marking Outlook message as read: PATCH {url}")
+        response = requests.patch(
+            url,
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            },
+            json={'isRead': True}
+        )
+        print(f"Mark as read response: {response.status_code} {response.text[:200] if response.text else ''}")
+        if response.status_code not in (200, 204):
+            logger.warning(f"Failed to mark Outlook message as read: {response.text}")
 
     
     def send_email(

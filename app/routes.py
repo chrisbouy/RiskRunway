@@ -1083,7 +1083,8 @@ def trigger_email_scrape():
                 'processed': 0,
                 'matched': 0,
                 'new_emails': 0,
-                'accounts_checked': []
+                'accounts_checked': [],
+                'emails': []
             }
             
             # Try OAuth accounts first
@@ -1097,14 +1098,11 @@ def trigger_email_scrape():
                         print(f"OAuth result: {result}")
                         if result.get('success'):
                             results['processed'] += result.get('processed', 0)
-                            results['matched'] += result.get('matched', 0)
                             results['new_emails'] += result.get('new_emails', 0)
                             results['accounts_checked'].append(f"{account.provider.value}: {account.email_address}")
                             results['source'] = 'OAuth'
-                            # Collect email details for frontend display
-                            if 'email_details' not in results:
-                                results['email_details'] = []
-                            results['email_details'].extend(result.get('email_details', []))
+                            # Collect emails for frontend display (stateless — no DB)
+                            results['emails'].extend(result.get('emails', []))
                         elif result.get('needs_reauth'):
                             needs_reauth = True
                             reauth_provider = result.get('provider', account.provider.value.lower())
@@ -1224,12 +1222,12 @@ def _get_user_quote_subjects(db_session: Session, user_id: int) -> List[str]:
 
 def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, user_id: int) -> Dict:
     """
-    Scrape emails using OAuth credentials from a connected account.
-    Automatically refreshes expired tokens before fetching.
-    Filters emails by broker senders and quote subjects.
+    Fetch emails using OAuth credentials from a connected account.
+    Returns email metadata directly — does NOT store anything in the database.
+    Deduplication is handled by only fetching unread emails from the provider.
     """
     from datetime import timedelta
-    from app.oauth_services import get_oauth_service, get_unified_email_data
+    from app.oauth_services import get_oauth_service
     
     try:
         # Get the provider config
@@ -1268,7 +1266,6 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
             try:
                 new_tokens = oauth_service.refresh_access_token(refresh_token)
                 account.set_encrypted_tokens(new_tokens)
-                # Update expires_at
                 expires_in = new_tokens.get('expires_in', 3600)
                 account.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
                 account.status = ConnectedAccountStatus.ACTIVE
@@ -1288,16 +1285,13 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
                     'provider': provider_str
                 }
         
-        
-        
         # Get broker emails and quote subjects for filtering
         broker_emails = _get_user_broker_emails(db_session, user_id)
         print(f"Broker emails for user {user_id}: {broker_emails}")
         quote_subjects = _get_user_quote_subjects(db_session, user_id)
         print(f"Quote subjects for user {user_id}: {quote_subjects}")
 
-        
-        # Fetch emails from last 24 hours
+        # Fetch unread emails from last 24 days
         since_date = datetime.now() - timedelta(days=24)
         unified_emails = oauth_service.fetch_emails(
             access_token=access_token,
@@ -1312,73 +1306,39 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
                 'success': True,
                 'processed': 0,
                 'new_emails': 0,
-                'email_details': []
+                'emails': []
             }
         
-        # Get already-processed message IDs
-        existing_message_ids = set(
-            row[0] for row in db_session.query(EmailMessage.message_id).all()
-        )
-        
-        processed = 0
-        new_emails = 0
-        email_details = []
-        
-        # Process each email
+        # Build email list for frontend (no DB writes)
+        email_list = []
         for unified_email in unified_emails:
-            processed += 1
-            print(f"Processing email {unified_email.message_id}")
-            print(f"Email details: From: {unified_email.from_email}, Subject: {unified_email.subject}, Date: {unified_email.date}")
-            # Skip if already processed
-            if unified_email.message_id in existing_message_ids:
-                continue
-            
-            new_emails += 1
-            email_details.append({
-                'from': unified_email.from_email or unified_email.from_name or 'Unknown',
+            email_data = {
+                'message_id': unified_email.message_id,
+                'from_email': unified_email.from_email,
+                'from_name': unified_email.from_name,
                 'subject': unified_email.subject or '(No subject)',
-                'date': unified_email.date.isoformat() if unified_email.date else 'Unknown'
-            })
-            
-            # Save email to database (not matched to submission yet - manual matching needed)
-            email_msg = EmailMessage(
-                message_id=unified_email.message_id,
-                subject=unified_email.subject,
-                connected_account_id=account.id,
-                from_email=unified_email.from_email,
-                from_name=unified_email.from_name,
-                to_email=unified_email.to_email,
-                received_date=unified_email.date,
-                body_text=unified_email.body_text,
-                body_html=unified_email.body_html,
-                has_attachments=len(unified_email.attachments) > 0,
-                attachment_count=len(unified_email.attachments),
-                is_read=False
-            )
-            
-            db_session.add(email_msg)
-            db_session.flush()  # Get email_msg.id before creating attachments
-            
-            
-            # Save attachments
-            for att in unified_email.attachments:
-                attachment = EmailAttachment(
-                    email_id=email_msg.id,
-                    message_id=unified_email.message_id,
-                    attachment_id=att.get('attachment_id'),
-                    filename=att.get('filename', ''),
-                    content_type=att.get('content_type', ''),
-                    size_bytes=att.get('size', 0)
-                )
-                db_session.add(attachment)
-        
-        db_session.commit()
+                'received_date': unified_email.date.isoformat() if unified_email.date else None,
+                'has_attachments': len(unified_email.attachments) > 0,
+                'attachment_count': len(unified_email.attachments),
+                'provider': provider_str,
+                'account_id': account.id,
+                'attachments': [
+                    {
+                        'attachment_id': att.get('attachment_id', ''),
+                        'filename': att.get('filename', ''),
+                        'content_type': att.get('content_type', ''),
+                        'size': att.get('size', 0)
+                    }
+                    for att in unified_email.attachments
+                ]
+            }
+            email_list.append(email_data)
         
         return {
             'success': True,
-            'processed': processed,
-            'new_emails': new_emails,
-            'email_details': email_details,
+            'processed': len(email_list),
+            'new_emails': len(email_list),
+            'emails': email_list,
             'provider': provider_str
         }
         
@@ -1494,35 +1454,67 @@ def mark_email_read(email_id):
 @bp.route('/api/email/<int:email_id>', methods=['DELETE'])
 @login_required
 def delete_email(email_id):
-    """Delete an email message (marks as deleted so it won't reappear on scrape)"""
+    """Legacy endpoint — kept for backwards compatibility"""
+    return jsonify({'success': True})
+
+
+@bp.route('/api/email/dismiss', methods=['POST'])
+@login_required
+def dismiss_email():
+    """
+    Dismiss an email by marking it as read in the provider.
+    Stateless — no database interaction for email storage.
+    
+    Request body:
+    {
+        "message_id": str,
+        "account_id": int,
+        "provider": str
+    }
+    """
     try:
+        data = request.get_json()
+        message_id = data.get('message_id')
+        account_id = data.get('account_id')
+        provider = data.get('provider')
+        
+        if not all([message_id, account_id, provider]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        
+        print(f"Dismissing email: message_id={message_id}, account_id={account_id}, provider={provider}")
+        
         db_session = get_session()
         try:
-            email = db_session.query(EmailMessage).filter_by(id=email_id).first()
-            if not email:
-                return jsonify({'success': False, 'error': 'Email not found'}), 404
+            account = db_session.query(ConnectedAccount).filter_by(id=account_id).first()
+            if not account:
+                return jsonify({'success': False, 'error': 'Connected account not found'}), 404
             
-            # Try to mark as deleted, but if column doesn't exist, just delete the record
-            try:
-                email.is_deleted = True
+            from app.oauth_services import get_oauth_service
+            oauth_service = get_oauth_service(provider, current_app.config)
+            
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+            
+            # Auto-refresh if expired
+            if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                from datetime import timedelta
+                refresh_token = tokens.get('refresh_token')
+                if not refresh_token:
+                    return jsonify({'success': False, 'error': 'Token expired'}), 401
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
                 db_session.commit()
-            except Exception:
-                # is_deleted column might not exist, delete the record instead
-                # Delete attachments files
-                attachments = db_session.query(EmailAttachment).filter_by(email_id=email_id).all()
-                for att in attachments:
-                    if att.file_path and os.path.exists(att.file_path):
-                        try:
-                            os.remove(att.file_path)
-                        except Exception:
-                            pass
-                db_session.delete(email)
-                db_session.commit()
+                access_token = new_tokens.get('access_token')
+            
+            # Mark as read in provider
+            oauth_service.mark_as_read(access_token, message_id)
             
             return jsonify({'success': True})
         finally:
             db_session.close()
     except Exception as e:
+        logger.error(f"Email dismiss error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1679,49 +1671,105 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
 @bp.route('/api/email/<int:email_id>/ingest_quote/<int:submission_id>', methods=['POST'])
 @login_required
 def ingest_quote_to_submission(email_id, submission_id):
-    """Ingest a quote from an email attachment to a submission"""
+    """Legacy endpoint — redirects to stateless ingest"""
+    return jsonify({'success': False, 'error': 'Use /api/email/ingest_quote instead'}), 410
+
+
+@bp.route('/api/email/ingest_quote', methods=['POST'])
+@login_required
+def ingest_quote_stateless():
+    """
+    Ingest a quote from an email attachment directly via OAuth API.
+    No email data is stored in the database — attachment is fetched on-demand
+    from the provider and processed immediately.
+    
+    Request body:
+    {
+        "submission_id": int,
+        "message_id": str,        # Gmail/Outlook message ID
+        "account_id": int,        # ConnectedAccount ID
+        "provider": str,          # "gmail" or "outlook"
+        "attachments": [          # List of attachments to ingest
+            {"attachment_id": str, "filename": str, "content_type": str, "size": int}
+        ]
+    }
+    """
     try:
-        print(f"Starting quote ingestion for email_id {email_id}, submission_id {submission_id}")
+        data = request.get_json()
+        submission_id = data.get('submission_id')
+        message_id = data.get('message_id')
+        account_id = data.get('account_id')
+        provider = data.get('provider')
+        attachments_to_ingest = data.get('attachments', [])
+        
+        if not all([submission_id, message_id, account_id, provider]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        
+        # Filter to PDF attachments only
+        pdf_attachments = [a for a in attachments_to_ingest if a.get('filename', '').lower().endswith('.pdf')]
+        if not pdf_attachments:
+            return jsonify({'success': False, 'error': 'No PDF attachments found in this email'}), 400
+        
         db_session = get_session()
-        logger.info(f"Processing quote ingestion for email_id {email_id}, submission_id {submission_id}")
         try:
-            # Get the email with attachments eagerly loaded
-            email = db_session.query(EmailMessage).filter_by(id=email_id).first()
-            if not email:
-                return jsonify({'success': False, 'error': 'Email not found'}), 404
-            
-            # Get the submission
+            # Verify submission exists
             submission = db_session.query(Submission).filter_by(id=submission_id).first()
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
             
-            # Get PDF attachments - query separately to avoid session issues
-            attachments = db_session.query(EmailAttachment).filter(
-                EmailAttachment.email_id == email_id,
-                EmailAttachment.filename.ilike('%.pdf')
-            ).all()
-            logger.info(f"Found {len(attachments)} PDF attachments for email_id {email_id}")
-            if not attachments:
-                return jsonify({'success': False, 'error': 'No PDF attachments found in this email'}), 400
-
+            # Get connected account for OAuth credentials
+            account = db_session.query(ConnectedAccount).filter_by(id=account_id).first()
+            if not account:
+                return jsonify({'success': False, 'error': 'Connected account not found'}), 404
+            
+            # Get OAuth service and access token
+            from app.oauth_services import get_oauth_service
+            oauth_service = get_oauth_service(provider, current_app.config)
+            
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+            
+            # Auto-refresh if expired
+            if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                from datetime import timedelta
+                refresh_token = tokens.get('refresh_token')
+                if not refresh_token:
+                    return jsonify({'success': False, 'error': 'Token expired, please reconnect email'}), 401
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
+                db_session.commit()
+                access_token = new_tokens.get('access_token')
+            
             created_quotes = []
-
-            # Process each attachment - download on-demand if needed
-            for att in attachments:                # Download attachment on-demand if not already downloaded
-                file_path = _download_attachment_on_demand(att, email, db_session)
-                print(f"Downloaded attachment {att.filename} to {file_path}")
-                if not file_path:
-                    logger.warning(f"Failed to download attachment {att.filename}, skipping")
+            
+            for att in pdf_attachments:
+                attachment_id = att.get('attachment_id')
+                filename = att.get('filename', 'attachment.pdf')
+                content_type = att.get('content_type', 'application/pdf')
+                size_bytes = att.get('size', 0)
+                
+                # Download attachment directly from provider API
+                attachment_data = oauth_service.fetch_attachments(
+                    access_token=access_token,
+                    message_id=message_id,
+                    attachment_id=attachment_id
+                )
+                
+                if not attachment_data:
+                    logger.warning(f"Failed to download attachment {filename}, skipping")
                     continue
                 
-                # Copy file to uploads folder
-                filename = secure_filename(att.filename)
+                # Write to temp file for processing
+                safe_filename = secure_filename(filename)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                unique_filename = f"{timestamp}_{filename}"
+                unique_filename = f"{timestamp}_{safe_filename}"
                 filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                shutil.copy2(file_path, filepath)
-                logger.info(f"Copied attachment {file_path} to {filepath} for processing quote from email_id {email_id}")
-                # Process the quote
+                
+                with open(filepath, 'wb') as f:
+                    f.write(attachment_data)
+                
+                # Process the quote (OCR)
                 try:
                     three_pass_result = process_quote_two_pass(filepath, [])
                     layout_data = three_pass_result['pass1_layout']
@@ -1737,10 +1785,8 @@ def ingest_quote_to_submission(email_id, submission_id):
                     
                     if not effective_date:
                         effective_date = submission.effective_date
-                    logger.info(f"Parsed quote data for email_id {email_id}: carrier={carrier_name}, effective_date={effective_date}")
-                    # Create quote/document records in this same session. get_session()
-                    # is scoped, so calling helpers that close their own session here
-                    # can detach the EmailAttachment objects still being processed.
+                    
+                    # Create quote record
                     quote = Quote(
                         submission_id=submission_id,
                         carrier_name=carrier_name,
@@ -1752,7 +1798,7 @@ def ingest_quote_to_submission(email_id, submission_id):
                     db_session.add(quote)
                     db_session.flush()
                     quote_id = quote.id
-
+                    
                     db_session.add(AuditLog(
                         entity_type='quote',
                         entity_id=quote_id,
@@ -1762,16 +1808,16 @@ def ingest_quote_to_submission(email_id, submission_id):
                         user=session.get('username'),
                         details=f"Uploaded quote from {carrier_name or 'unknown carrier'}"
                     ))
-                    logger.info(f"Created quote record with id {quote_id} for email_id {email_id}")
-                    logger.info(f"Uploading quote document for quote_id {quote_id}, submission_id {submission_id}")
+                    
+                    # Upload to storage
                     quote_doc_key = _build_storage_key(
                         submission_id,
                         DocumentType.QUOTE.name,
-                        filename,
+                        safe_filename,
                         session.get('user_id'),
                         submission.insured_name
                     )
-                    storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, att.content_type)
+                    storage_provider, storage_key = _storage_upload(filepath, quote_doc_key, content_type)
                     doc = Document(
                         submission_id=submission_id,
                         quote_id=quote_id,
@@ -1782,45 +1828,49 @@ def ingest_quote_to_submission(email_id, submission_id):
                         is_active=True,
                         storage_provider=storage_provider,
                         storage_key=storage_key,
-                        original_filename=filename,
-                        content_type=att.content_type,
-                        size_bytes=att.size_bytes,
+                        original_filename=safe_filename,
+                        content_type=content_type,
+                        size_bytes=size_bytes,
                         uploaded_by=session.get('username')
                     )
-                    logger.info(f"Creating document record for quote_id {quote_id}, submission_id {submission_id}")
                     db_session.add(doc)
                     
                     created_quotes.append({
                         'quote_id': quote_id,
-                        'filename': filename,
+                        'filename': safe_filename,
                         'carrier': carrier_name
                     })
-                    # Clean up temp file after processing
-                    try:
-                        if os.path.exists(filepath):
-                            os.remove(filepath)
-                    except Exception as e:
-                        print(f"Warning: Could not delete temp file {filepath}: {e}")
-                        
+                    
                     db_session.add(AuditLog(
                         entity_type='quote',
                         entity_id=quote_id,
                         action='email_quote_ingested',
                         submission_id=submission_id,
                         quote_id=quote_id,
-                        details=json.dumps({'email_id': email_id, 'filename': filename})
+                        details=json.dumps({'message_id': message_id, 'filename': safe_filename})
                     ))
                     
                 except Exception as e:
-                    print(f"Error processing quote {att.filename}: {e}")
+                    logger.error(f"Error processing quote {filename}: {e}")
                     continue
+                finally:
+                    # Clean up temp file
+                    try:
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                    except Exception:
+                        pass
             
             if not created_quotes:
                 return jsonify({'success': False, 'error': 'Failed to process any quotes'}), 500
             
-            # Mark email as read
-            email.is_read = True
             db_session.commit()
+            
+            # Mark email as read in the provider (so it won't show up next time)
+            try:
+                oauth_service.mark_as_read(access_token, message_id)
+            except Exception as e:
+                logger.warning(f"Failed to mark email as read in provider: {e}")
             
             return jsonify({
                 'success': True,
@@ -1830,6 +1880,7 @@ def ingest_quote_to_submission(email_id, submission_id):
         finally:
             db_session.close()
     except Exception as e:
+        logger.error(f"Stateless quote ingestion error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

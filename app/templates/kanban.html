@@ -1697,7 +1697,9 @@
             }
         }
 
-        // Check emails button handler - consolidated: handles token refresh and email check in one action
+        // Check emails button handler - stateless: fetches from provider API, holds in memory
+        let cachedEmails = []; // In-memory store for fetched emails (no DB)
+
         document.getElementById('checkEmailsBtn').addEventListener('click', async function() {
             const btn = this;
             const originalHTML = btn.innerHTML;
@@ -1709,7 +1711,6 @@
                 const response = await fetch('/api/email/scrape', { method: 'POST' });
                 const data = await response.json();
 
-                // If no account connected, prompt user to connect
                 if (!data.success && data.needs_connect) {
                     btn.innerHTML = originalHTML;
                     btn.disabled = false;
@@ -1717,7 +1718,6 @@
                     return;
                 }
 
-                // If re-auth is needed, trigger OAuth flow automatically
                 if (!data.success && data.needs_reauth) {
                     btn.innerHTML = '🔑 Re-authenticating...';
                     const provider = data.provider || 'gmail';
@@ -1743,45 +1743,34 @@
                     throw new Error(data.error || 'Email sync failed');
                 }
 
-                const processed = data.processed  || 0;
-                const matched   = data.matched     || 0;
-                const newEmails = data.new_emails  || 0;
+                // Store emails in memory (stateless — no DB)
+                cachedEmails = data.emails || [];
+                const newEmails = cachedEmails.length;
 
                 btn.innerHTML = '✅ Done!';
-                setTimeout(() => {
-                    btn.innerHTML = originalHTML;
-                    btn.disabled = false;
-                }, 2000);
+                setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
 
-                setTimeout(() => {
-                    loadSubmissions();
-                    loadEmailStatus();
-                    loadUnreadEmailCount();
-                }, 1000);
+                document.getElementById('newMessageCount').textContent = newEmails;
 
                 if (newEmails > 0) {
                     document.getElementById('newMessagesModal').classList.remove('hidden');
-                    await loadUnreadEmails();
+                    renderEmailList();
                 } else {
-                    const source = data.source === 'IMAP' ? ' (IMAP)' : ' (OAuth)';
-                    alert(`Email sync completed${source}:\n• ${processed} emails processed\n• ${matched} matched to submissions\n• ${newEmails} new emails saved`);
+                    alert(`Email check completed (${data.source || 'OAuth'}):\n• 0 new emails found`);
                 }
 
             } catch (error) {
                 console.error('Email check failed:', error);
                 btn.innerHTML = '❌ Failed';
-                setTimeout(() => {
-                    btn.innerHTML = originalHTML;
-                    btn.disabled = false;
-                }, 2000);
+                setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
                 alert('Error: ' + error.message);
             }
         });
 
         // Load email status on page load
         loadEmailStatus();
-        loadUnreadEmailCount();
         loadConnectedAccounts();
+        document.getElementById('newMessageCount').textContent = '0';
 
         // Auto-trigger email check if returning from OAuth re-auth
         (function() {
@@ -1797,30 +1786,16 @@
         })();
 
         // ============================================================================
-        // NEW MESSAGES FUNCTIONALITY
+        // NEW MESSAGES FUNCTIONALITY (STATELESS — in-memory only)
         // ============================================================================
 
-        let currentEmailId = null;
+        let currentEmailData = null;
         let currentEmailAction = null;
 
-        // Load unread email count and show button if there are unread emails
-        async function loadUnreadEmailCount() {
-            try {
-                const response = await fetch('/api/email/unread');
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('newMessageCount').textContent = data.count || 0;
-                }
-            } catch (error) {
-                console.error('Failed to load unread email count:', error);
-            }
-        }
-
         // Open new messages modal
-        document.getElementById('newMessagesBtn').addEventListener('click', async function() {
+        document.getElementById('newMessagesBtn').addEventListener('click', function() {
             document.getElementById('newMessagesModal').classList.remove('hidden');
-            await loadUnreadEmails();
+            renderEmailList();
         });
 
         // Close new messages modal
@@ -1832,86 +1807,70 @@
             document.getElementById('newMessagesModal').classList.add('hidden');
         });
 
-        // Load unread emails into the modal
-        async function loadUnreadEmails() {
+        // Render emails from in-memory cache
+        function renderEmailList() {
             const container = document.getElementById('emailListContainer');
             const noEmailsMsg = document.getElementById('noEmailsMessage');
             
-            try {
-                const response = await fetch('/api/email/unread');
-                const data = await response.json();
+            if (cachedEmails.length > 0) {
+                container.innerHTML = '';
+                noEmailsMsg.classList.add('hidden');
                 
-                if (data.success && data.emails && data.emails.length > 0) {
-                    container.innerHTML = '';
-                    noEmailsMsg.classList.add('hidden');
+                for (const email of cachedEmails) {
+                    const emailDiv = document.createElement('div');
+                    emailDiv.className = 'border border-gray-600 rounded-lg p-4 bg-gray-700';
                     
-                    for (const email of data.emails) {
-                        const emailDiv = document.createElement('div');
-                        emailDiv.className = 'border border-gray-600 rounded-lg p-4 bg-gray-700';
-                        
-                        const hasQuote = email.matched_quote_attachment || (email.attachments && email.attachments.some(a => a.filename.toLowerCase().endsWith('.pdf')));
-                        const attachmentsList = email.attachments ? email.attachments.map(a => 
-                            `<span class="inline-block bg-gray-600 text-gray-200 text-xs px-2 py-1 rounded mr-1 mb-1">${escapeHtml(a.filename)}</span>`
-                        ).join('') : '';
-                        
-                        const receivedDate = email.received_date ? new Date(email.received_date).toLocaleString() : 'Unknown';
-                        
-                        emailDiv.innerHTML = `
-                            <div class="flex justify-between items-start mb-2">
-                                <div>
-                                    <div class="font-semibold text-white">${escapeHtml(email.subject || '(No Subject)')}</div>
-                                    <div class="text-sm text-gray-400">From: ${escapeHtml(email.from_name || email.from_email)} &bull; ${receivedDate}</div>
-                                    <div class="text-sm text-gray-500">Matched to: ${escapeHtml(email.submission_name || 'Unknown')}</div>
-                                </div>
+                    const hasQuote = email.attachments && email.attachments.some(a => a.filename.toLowerCase().endsWith('.pdf'));
+                    const attachmentsList = email.attachments ? email.attachments.map(a => 
+                        `<span class="inline-block bg-gray-600 text-gray-200 text-xs px-2 py-1 rounded mr-1 mb-1">${escapeHtml(a.filename)}</span>`
+                    ).join('') : '';
+                    
+                    const receivedDate = email.received_date ? new Date(email.received_date).toLocaleString() : 'Unknown';
+                    
+                    emailDiv.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="font-semibold text-white">${escapeHtml(email.subject || '(No Subject)')}</div>
+                                <div class="text-sm text-gray-400">From: ${escapeHtml(email.from_name || email.from_email)} &bull; ${receivedDate}</div>
                             </div>
-                            ${attachmentsList ? `<div class="mb-2">${attachmentsList}</div>` : ''}
-                            <div class="flex gap-2 mt-2">
-                                ${hasQuote ? `<button class="ingest-quote-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-email-id="${email.id}">📄 Ingest Quote</button>` : ''}
-                                <button class="add-correspondence-btn px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700" data-email-id="${email.id}">💬 Add as Correspondence</button>
-                                <button class="delete-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-email-id="${email.id}">🗑️ Delete</button>
-                            </div>
-                        `;
-                        
-                        container.appendChild(emailDiv);
-                    }
+                        </div>
+                        ${attachmentsList ? `<div class="mb-2">${attachmentsList}</div>` : ''}
+                        <div class="flex gap-2 mt-2">
+                            ${hasQuote ? `<button class="ingest-quote-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-message-id="${email.message_id}">📄 Ingest Quote</button>` : ''}
+                            <button class="dismiss-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-message-id="${email.message_id}">🗑️ Dismiss</button>
+                        </div>
+                    `;
                     
-                    // Add event listeners to buttons
-                    document.querySelectorAll('.ingest-quote-btn').forEach(btn => {
-                        btn.addEventListener('click', async function() {
-                            const emailId = parseInt(this.dataset.emailId);
-                            await openSubmissionSelector(emailId, 'quote');
-                        });
-                    });
-                    
-                    document.querySelectorAll('.add-correspondence-btn').forEach(btn => {
-                        btn.addEventListener('click', async function() {
-                            const emailId = parseInt(this.dataset.emailId);
-                            await openSubmissionSelector(emailId, 'correspondence');
-                        });
-                    });
-                    
-                    document.querySelectorAll('.delete-email-btn').forEach(btn => {
-                        btn.addEventListener('click', async function() {
-                            const emailId = parseInt(this.dataset.emailId);
-                            if (confirm('Are you sure you want to delete this email?')) {
-                                await deleteEmail(emailId);
-                            }
-                        });
-                    });
-                    
-                } else {
-                    container.innerHTML = '';
-                    noEmailsMsg.classList.remove('hidden');
+                    container.appendChild(emailDiv);
                 }
-            } catch (error) {
-                console.error('Failed to load unread emails:', error);
-                container.innerHTML = '<div class="text-red-500">Failed to load emails</div>';
+                
+                document.querySelectorAll('.ingest-quote-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const msgId = this.dataset.messageId;
+                        const emailData = cachedEmails.find(e => e.message_id === msgId);
+                        if (emailData) openSubmissionSelector(emailData, 'quote');
+                    });
+                });
+                
+                document.querySelectorAll('.dismiss-email-btn').forEach(btn => {
+                    btn.addEventListener('click', async function() {
+                        const msgId = this.dataset.messageId;
+                        const emailData = cachedEmails.find(e => e.message_id === msgId);
+                        if (emailData && confirm('Dismiss this email? It will be marked as read.')) {
+                            await dismissEmail(emailData);
+                        }
+                    });
+                });
+                
+            } else {
+                container.innerHTML = '';
+                noEmailsMsg.classList.remove('hidden');
             }
         }
 
         // Open submission selector modal
-        async function openSubmissionSelector(emailId, action) {
-            currentEmailId = emailId;
+        async function openSubmissionSelector(emailData, action) {
+            currentEmailData = emailData;
             currentEmailAction = action;
             
             const title = document.getElementById('selectSubmissionTitle');
@@ -1919,7 +1878,7 @@
             
             if (action === 'quote') {
                 title.textContent = 'Select Submission for Quote';
-                description.textContent = 'Select a submission in Quoting stage to attach this quote to:';
+                description.textContent = 'Select a submission to attach this quote to:';
             } else {
                 title.textContent = 'Select Submission for Correspondence';
                 description.textContent = 'Select a submission to add this email as correspondence:';
@@ -1947,12 +1906,11 @@
                 const data = await response.json();
                 
                 if (data.success && data.submissions) {
-                    // Filter to show submissions in Quoting stage (or all if adding correspondence)
                     const quotingSubmissions = data.submissions.filter(sub => {
                         if (currentEmailAction === 'quote') {
                             return sub.status === 'In Progress' || sub.status === 'in_progress' || sub.api_status === 'in_progress';
                         }
-                        return true; // Show all for correspondence
+                        return true;
                     });
                     
                     if (quotingSubmissions.length === 0) {
@@ -1972,7 +1930,6 @@
                         </div>
                     `).join('');
                     
-                    // Add click handlers
                     document.querySelectorAll('.select-submission-btn').forEach(btn => {
                         btn.addEventListener('click', async function() {
                             const submissionId = parseInt(this.dataset.submissionId);
@@ -1986,7 +1943,7 @@
             }
         }
 
-        // Handle email action (ingest quote or add correspondence)
+        // Handle email action — stateless, sends provider info directly
         async function handleEmailAction(submissionId) {
             const loadingOverlay = document.getElementById('ocrLoadingOverlay');
             const selectSubmissionBtns = document.querySelectorAll('.select-submission-btn');
@@ -1994,42 +1951,38 @@
             const closeBtn = document.getElementById('closeSelectSubmissionModal');
             
             try {
-                // Show loading spinner for quote ingestion
                 if (currentEmailAction === 'quote') {
                     loadingOverlay.classList.remove('hidden');
-                    // Disable interaction buttons
                     selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
                     cancelBtn.disabled = true;
                     closeBtn.disabled = true;
                 }
                 
-                let response;
-                
-                if (currentEmailAction === 'quote') {
-                    response = await fetch(`/api/email/${currentEmailId}/ingest_quote/${submissionId}`, {
-                        method: 'POST'
-                    });
-                } else {
-                    response = await fetch(`/api/email/${currentEmailId}/add_correspondence/${submissionId}`, {
-                        method: 'POST'
-                    });
-                }
+                const response = await fetch('/api/email/ingest_quote', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        submission_id: submissionId,
+                        message_id: currentEmailData.message_id,
+                        account_id: currentEmailData.account_id,
+                        provider: currentEmailData.provider,
+                        attachments: currentEmailData.attachments
+                    })
+                });
                 
                 const data = await response.json();
                 
                 if (data.success) {
-                    if (currentEmailAction === 'quote') {
-                        alert('Quote ingested successfully!');
-                    } else {
-                        alert('Correspondence added successfully!');
-                    }
+                    alert('Quote ingested successfully!');
+                    
+                    // Remove from in-memory cache
+                    cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
+                    document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                    
                     document.getElementById('selectSubmissionModal').classList.add('hidden');
                     document.getElementById('newMessagesModal').classList.add('hidden');
                     
-                    // Refresh submissions and unread count
                     await loadSubmissions();
-                    await loadUnreadEmailCount();
-                    await loadEmailStatus();
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
@@ -2037,34 +1990,38 @@
                 console.error('Failed to process email action:', error);
                 alert('Failed to process email. Check console for details.');
             } finally {
-                // Hide loading spinner
                 loadingOverlay.classList.add('hidden');
-                // Re-enable buttons
                 selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'auto');
                 cancelBtn.disabled = false;
                 closeBtn.disabled = false;
             }
         }
 
-        // Delete email
-        async function deleteEmail(emailId) {
+        // Dismiss email — marks as read in provider, removes from memory
+        async function dismissEmail(emailData) {
             try {
-                const response = await fetch(`/api/email/${emailId}`, {
-                    method: 'DELETE'
+                const response = await fetch('/api/email/dismiss', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message_id: emailData.message_id,
+                        account_id: emailData.account_id,
+                        provider: emailData.provider
+                    })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
-                    await loadUnreadEmails();
-                    await loadUnreadEmailCount();
-                    await loadEmailStatus();
+                    cachedEmails = cachedEmails.filter(e => e.message_id !== emailData.message_id);
+                    document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                    renderEmailList();
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                console.error('Failed to delete email:', error);
-                alert('Failed to delete email. Check console for details.');
+                console.error('Failed to dismiss email:', error);
+                alert('Failed to dismiss email.');
             }
         }
 
