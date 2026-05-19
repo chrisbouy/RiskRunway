@@ -1983,6 +1983,8 @@ def oauth_connect(provider):
                 auth_url = f"{auth_url}{separator}login_hint={login_hint}"
             session[f'oauth_state_{provider}'] = state
             session[f'oauth_user_id_{provider}'] = user_id  # Store user_id in session too
+            # Store code_verifier for PKCE (needed during token exchange)
+            session[f'oauth_code_verifier_{provider}'] = oauth_service._code_verifier
         
         return jsonify({
             'success': True,
@@ -2046,9 +2048,12 @@ def oauth_callback(provider):
             if state != expected_state:
                 return redirect(url_for('main.kanban', oauth_error='Invalid state parameter'))
             
-            tokens = oauth_service.exchange_code_for_tokens(code, state)
+            # Retrieve code_verifier for PKCE
+            code_verifier = session.get(f'oauth_code_verifier_{provider}')
+            tokens = oauth_service.exchange_code_for_tokens(code, state, code_verifier=code_verifier)
             session.pop(f'oauth_state_{provider}', None)
             session.pop(f'oauth_user_id_{provider}', None)
+            session.pop(f'oauth_code_verifier_{provider}', None)
 
         # Verify we have a valid user_id
         if not user_id:

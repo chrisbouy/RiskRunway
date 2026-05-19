@@ -157,6 +157,7 @@ class GmailOAuthService:
         """
         Generate OAuth authorization URL.
         Returns (url, state) tuple.
+        Also stores the code_verifier for PKCE on the instance.
         """
         # Use google-auth library for OAuth flow
         from google_auth_oauthlib.flow import Flow
@@ -166,12 +167,12 @@ class GmailOAuthService:
                 'web': {
                     'client_id': self.client_id,
                     'client_secret': self.client_secret,
-                    'redirect_uri': self.redirect_uri,
                     'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
                     'token_uri': 'https://oauth2.googleapis.com/token',
                 }
             },
-            scopes=self.SCOPES
+            scopes=self.SCOPES,
+            redirect_uri=self.redirect_uri
         )
         
         authorization_url, state = flow.authorization_url(
@@ -180,11 +181,15 @@ class GmailOAuthService:
             prompt='consent'
         )
         
+        # Store the code_verifier so it can be passed to the token exchange
+        self._code_verifier = flow.code_verifier
+        
         return authorization_url, state
     
-    def exchange_code_for_tokens(self, code: str, state: str) -> Dict:
+    def exchange_code_for_tokens(self, code: str, state: str, code_verifier: str = None) -> Dict:
         """
         Exchange authorization code for access and refresh tokens.
+        code_verifier must be the same one generated during get_authorization_url (PKCE).
         """
         from google_auth_oauthlib.flow import Flow
         
@@ -193,13 +198,16 @@ class GmailOAuthService:
                 'web': {
                     'client_id': self.client_id,
                     'client_secret': self.client_secret,
-                    'redirect_uri': self.redirect_uri,
                     'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
                     'token_uri': 'https://oauth2.googleapis.com/token',
                 }
             },
-            scopes=self.SCOPES
+            scopes=self.SCOPES,
+            redirect_uri=self.redirect_uri
         )
+        
+        # Restore the code_verifier from the original authorization request
+        flow.code_verifier = code_verifier
         
         flow.fetch_token(code=code)
         return {
@@ -238,6 +246,7 @@ class GmailOAuthService:
         """
         Get the user's email address from Gmail API.
         """
+        import google.oauth2.credentials
         from googleapiclient.discovery import build
         
         credentials = google.oauth2.credentials.Credentials(token=access_token)
@@ -259,6 +268,7 @@ class GmailOAuthService:
         Fetch recent emails from Gmail.
         Filters by broker senders and/or quote subjects if provided.
         """
+        import google.oauth2.credentials
         from googleapiclient.discovery import build
 
         credentials = google.oauth2.credentials.Credentials(token=access_token)
@@ -268,14 +278,19 @@ class GmailOAuthService:
         query_parts = []
 
         # Filter by broker emails (if provided)
+        broker_queries = []
         if broker_emails:
             broker_queries = [f"from:{email}" for email in broker_emails]
-            query_parts.append(f"({' OR '.join(broker_queries)})")
 
         # Filter by quote subjects (if provided)
+        subject_queries = []
         if quote_subjects:
-            subject_queries = [f"subject:{subject}" for subject in quote_subjects]
-            query_parts.append(f"({' OR '.join(subject_queries)})")
+            subject_queries = [f'subject:"{subject}"' for subject in quote_subjects]
+
+        # Combine broker and subject filters with OR (match either)
+        all_filters = broker_queries + subject_queries
+        if all_filters:
+            query_parts.append(f"({' OR '.join(all_filters)})")
 
         # Default to attachments if no other filters
         if not query_parts:
@@ -323,6 +338,7 @@ class GmailOAuthService:
         """
         Download attachment from Gmail.
         """
+        import google.oauth2.credentials
         from googleapiclient.discovery import build
         
         credentials = google.oauth2.credentials.Credentials(token=access_token)
