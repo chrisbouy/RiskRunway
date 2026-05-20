@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - RiskRunway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black">
+    <div class="min-h-screen py-12 px-4">
+        <div class="max-w-3xl mx-auto bg-gray-900 rounded-lg shadow-lg border border-gray-700 p-8 md:p-12">
+            <div class="text-center mb-10">
+                <h1 class="text-3xl font-bold text-white">RiskRunway</h1>
+                <h2 class="text-xl text-gray-300 mt-2">Privacy Policy</h2>
+                <p class="text-gray-500 mt-2 text-sm">Effective Date: May 19, 2025</p>
+            </div>
+
+            <div class="prose prose-invert max-w-none space-y-8 text-gray-300 text-sm leading-relaxed">
+                <p>
+                    RiskRunway ("we," "our," or "us") is a commercial insurance workflow platform built for insurance agencies. This Privacy Policy explains how we handle information when you use our application at app.risk-runway.com.
+                </p>
+                <p>
+                    We take your privacy seriously. Our core principle is simple: we process your data to do the job, then it's gone. We do not sell, share, or store your clients' information beyond what is necessary to operate the service.
+                </p>
+
+                <!-- Section 1 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">1. Information We Collect</h3>
+
+                    <h4 class="text-md font-medium text-gray-200 mt-4 mb-2">Account Information</h4>
+                    <p>When you create an account, we collect:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>Your name and email address</li>
+                        <li>Authentication credentials via Microsoft or Google OAuth (we never see your password)</li>
+                        <li>Your agency name</li>
+                    </ul>
+
+                    <h4 class="text-md font-medium text-gray-200 mt-4 mb-2">Email Data (Outlook and Gmail)</h4>
+                    <p>With your explicit permission, RiskRunway connects to your Outlook or Gmail inbox to check for quote emails and broker correspondence related to your active submissions. Specifically:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>We read emails from brokers you have configured in the application</li>
+                        <li>We display those emails to you for review</li>
+                        <li>We do not store email content in our database — emails are processed in memory and discarded</li>
+                        <li>We never access emails unrelated to your insurance submissions</li>
+                        <li>You can revoke access at any time from your Microsoft or Google account settings</li>
+                    </ul>
+
+                    <h4 class="text-md font-medium text-gray-200 mt-4 mb-2">Insurance Submission Data</h4>
+                    <p>To operate the pipeline workflow, we store the following in our secure database:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>Insured names and coverage details you enter into the application</li>
+                        <li>Quote data extracted from PDF documents you upload</li>
+                        <li>Policy status and workflow stage information</li>
+                        <li>Broker contact information you configure</li>
+                    </ul>
+                </div>
+
+                <!-- Section 2 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">2. How We Use Your Information</h3>
+                    <p>We use information solely to provide and improve the RiskRunway service:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>To operate the submission-to-bind workflow pipeline</li>
+                        <li>To extract and normalize quote data from uploaded PDFs using AI</li>
+                        <li>To check your inbox for relevant broker emails on your behalf</li>
+                        <li>To send submission emails to brokers you have configured</li>
+                        <li>To provide AMS data entry assistance via the local desktop agent</li>
+                        <li>To authenticate you securely via Microsoft or Google</li>
+                    </ul>
+                    <p class="mt-3">We do not use your data for advertising, analytics resale, or any purpose unrelated to the service you signed up for.</p>
+                </div>
+
+                <!-- Section 3 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">3. AI Processing</h3>
+                    <p>
+                        RiskRunway uses artificial intelligence to extract and normalize data from quote PDFs. This processing is performed using Amazon Bedrock (Claude by Anthropic), hosted within our AWS infrastructure in the United States.
+                    </p>
+                    <p class="mt-3">
+                        Document content submitted for AI processing is used only for the purpose of extraction and is not used to train AI models. AWS and Anthropic's data processing terms apply to this processing.
+                    </p>
+                </div>
+
+                <!-- Section 4 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">4. How We Store and Protect Your Data</h3>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>All data is stored on Amazon Web Services (AWS) infrastructure in the United States</li>
+                        <li>All data in transit is encrypted using TLS/HTTPS</li>
+                        <li>Database credentials and API keys are stored in AWS Secrets Manager, never in application code</li>
+                        <li>Uploaded documents are stored in Amazon S3 with restricted access controls</li>
+                        <li>We do not store email content — it is processed in memory only</li>
+                    </ul>
+                </div>
+
+                <!-- Section 5 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">5. Data Sharing</h3>
+                    <p>We do not sell your data. We do not share your data with third parties for marketing. We share data only in the following limited circumstances:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li><strong class="text-gray-200">Amazon Web Services</strong> — infrastructure hosting (AWS data processing terms apply)</li>
+                        <li><strong class="text-gray-200">Anthropic / AWS Bedrock</strong> — AI quote extraction only</li>
+                        <li><strong class="text-gray-200">SendGrid</strong> — transactional email delivery (submission emails to brokers)</li>
+                        <li><strong class="text-gray-200">Microsoft / Google</strong> — OAuth authentication only</li>
+                        <li><strong class="text-gray-200">Law enforcement</strong> — only if required by law or valid legal process</li>
+                    </ul>
+                </div>
+
+                <!-- Section 6 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">6. Your Rights and Choices</h3>
+                    <p>You have the right to:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>Access the data we hold about you — contact us at the email below</li>
+                        <li>Request deletion of your account and associated data</li>
+                        <li>Revoke Microsoft or Google OAuth access at any time via your Microsoft or Google account settings</li>
+                        <li>Export your submission data upon request</li>
+                    </ul>
+                    <p class="mt-3">To make any of these requests, contact us at: <a href="mailto:privacy@risk-runway.com" class="text-blue-400 hover:text-blue-300">privacy@risk-runway.com</a></p>
+                </div>
+
+                <!-- Section 7 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">7. The Local Desktop Agent</h3>
+                    <p>
+                        The optional RiskRunway desktop agent (local_agent.py) runs on your local machine and assists with entering bound policy data into your agency management system (AMS). This agent takes screenshots of your screen solely to identify the AMS window and field locations. Screenshots are processed locally and transmitted to our AI service only for the purpose of completing the data entry task. Screenshots are not stored after the task is complete.
+                    </p>
+                </div>
+
+                <!-- Section 8 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">8. Data Retention</h3>
+                    <p>
+                        Submission and policy data is retained for as long as your account is active. Email content is never stored. Upon account cancellation, your data will be deleted within 30 days upon request. Backups may retain data for up to 90 days after deletion.
+                    </p>
+                </div>
+
+                <!-- Section 9 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">9. Children's Privacy</h3>
+                    <p>
+                        RiskRunway is a business-to-business application intended for use by licensed insurance professionals. We do not knowingly collect information from anyone under the age of 18.
+                    </p>
+                </div>
+
+                <!-- Section 10 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">10. Changes to This Policy</h3>
+                    <p>
+                        We may update this Privacy Policy from time to time. We will notify you of material changes by email or by displaying a notice in the application. Continued use of RiskRunway after changes take effect constitutes your acceptance of the updated policy.
+                    </p>
+                </div>
+
+                <!-- Section 11 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">11. Contact Us</h3>
+                    <p>If you have questions about this Privacy Policy or how we handle your data, please contact:</p>
+                    <div class="mt-3 ml-4">
+                        <p class="font-medium text-gray-200">RiskRunway</p>
+                        <p>Email: <a href="mailto:privacy@risk-runway.com" class="text-blue-400 hover:text-blue-300">privacy@risk-runway.com</a></p>
+                        <p>Website: <a href="https://risk-runway.com" class="text-blue-400 hover:text-blue-300">https://risk-runway.com</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

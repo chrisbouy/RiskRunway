@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - RiskRunway Quote Parser Chrome Extension</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black">
+    <div class="min-h-screen py-12 px-4">
+        <div class="max-w-3xl mx-auto bg-gray-900 rounded-lg shadow-lg border border-gray-700 p-8 md:p-12">
+            <div class="text-center mb-10">
+                <h1 class="text-3xl font-bold text-white">RiskRunway Quote Parser</h1>
+                <h2 class="text-xl text-gray-300 mt-2">Chrome Extension Privacy Policy</h2>
+                <p class="text-gray-500 mt-2 text-sm">Effective Date: May 19, 2025</p>
+            </div>
+
+            <div class="prose prose-invert max-w-none space-y-8 text-gray-300 text-sm leading-relaxed">
+                <p>
+                    This Privacy Policy applies to the RiskRunway Quote Parser Chrome Extension (the "Extension"), published by RiskRunway. The Extension allows insurance agents to open a commercial insurance quote PDF in Chrome, click the extension icon, and have the relevant policy data parsed and displayed in a popup for easy copy-paste into their agency management system (AMS).
+                </p>
+                <p>
+                    Our core principle: we process your PDF to do the job, then it's gone. We do not store, sell, or share the contents of your quote documents.
+                </p>
+
+                <!-- Section 1 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">1. What the Extension Does</h3>
+                    <p>When you activate the Extension on a quote PDF open in Chrome:</p>
+                    <ol class="list-decimal list-inside space-y-1 ml-4">
+                        <li>The Extension reads the content of the currently open PDF tab</li>
+                        <li>That content is transmitted securely (HTTPS/TLS) to the RiskRunway server</li>
+                        <li>Our AI service (Amazon Bedrock / Claude by Anthropic) extracts relevant policy fields</li>
+                        <li>The parsed data is returned and displayed in the Extension popup</li>
+                        <li>You copy the data you need into your AMS</li>
+                        <li>The PDF content is discarded immediately — nothing is stored on our servers</li>
+                    </ol>
+                </div>
+
+                <!-- Section 2 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">2. Information We Access</h3>
+
+                    <h4 class="text-md font-medium text-gray-200 mt-4 mb-2">PDF Content</h4>
+                    <p>
+                        The Extension reads the text content of the active PDF tab solely to perform quote data extraction. This content is transmitted to our server for AI processing and is not retained after the response is returned to you.
+                    </p>
+
+                    <h4 class="text-md font-medium text-gray-200 mt-4 mb-2">No Other Data</h4>
+                    <p>
+                        The Extension does not access your browsing history, other tabs, cookies, passwords, or any data outside of the specific PDF you activate it on. It does not track your activity.
+                    </p>
+                </div>
+
+                <!-- Section 3 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">3. Data Transmission and Storage</h3>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>All data transmitted between the Extension and our server is encrypted using HTTPS/TLS</li>
+                        <li>PDF content is sent to our AWS-hosted server in the United States for AI processing</li>
+                        <li>Parsed results are returned to your browser and displayed in the popup</li>
+                        <li>We do not store PDF content, parsed results, or any document data after processing is complete</li>
+                        <li>No quote data is written to a database or retained on our servers</li>
+                    </ul>
+                </div>
+
+                <!-- Section 4 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">4. AI Processing</h3>
+                    <p>
+                        Quote data extraction is performed using Amazon Bedrock (Claude by Anthropic), hosted within our AWS infrastructure in the United States. Document content is used only for the purpose of field extraction and is not used to train AI models. AWS and Anthropic's data processing terms apply.
+                    </p>
+                </div>
+
+                <!-- Section 5 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">5. Permissions We Request</h3>
+                    <p>The Extension requests only the permissions necessary to function:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li><strong class="text-gray-200">activeTab</strong> — to read the content of the PDF you have open when you click the extension icon</li>
+                        <li><strong class="text-gray-200">scripting</strong> — to extract text from the active PDF tab</li>
+                        <li><strong class="text-gray-200">storage</strong> — to remember minimal preferences such as your last used settings (no document content is stored)</li>
+                    </ul>
+                    <p class="mt-3">
+                        We do not request broad host permissions, access to all sites, or any permission beyond what is needed to parse the active PDF.
+                    </p>
+                </div>
+
+                <!-- Section 6 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">6. Data Sharing</h3>
+                    <p>We do not sell your data. We share data only as required to operate the service:</p>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li><strong class="text-gray-200">Amazon Web Services</strong> — infrastructure hosting for processing</li>
+                        <li><strong class="text-gray-200">Anthropic / AWS Bedrock</strong> — AI extraction only, during processing, not retained</li>
+                        <li><strong class="text-gray-200">Law enforcement</strong> — only if required by law or valid legal process</li>
+                    </ul>
+                </div>
+
+                <!-- Section 7 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">7. Who Can Use This Extension</h3>
+                    <p>
+                        The RiskRunway Quote Parser is a business tool intended for use by licensed insurance professionals. It is not intended for use by anyone under the age of 18. We do not knowingly collect information from minors.
+                    </p>
+                </div>
+
+                <!-- Section 8 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">8. Changes to This Policy</h3>
+                    <p>
+                        We may update this Privacy Policy from time to time. Any changes will be reflected in the Chrome Web Store listing and at the URL below. Continued use of the Extension after changes take effect constitutes your acceptance of the updated policy.
+                    </p>
+                </div>
+
+                <!-- Section 9 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-3">9. Contact Us</h3>
+                    <p>If you have questions about this Privacy Policy, please contact:</p>
+                    <div class="mt-3 ml-4">
+                        <p class="font-medium text-gray-200">RiskRunway</p>
+                        <p>Email: <a href="mailto:privacy@risk-runway.com" class="text-blue-400 hover:text-blue-300">privacy@risk-runway.com</a></p>
+                        <p>Website: <a href="https://risk-runway.com" class="text-blue-400 hover:text-blue-300">https://risk-runway.com</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

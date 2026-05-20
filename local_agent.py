@@ -430,7 +430,7 @@ class PersistentOverlay:
         self.root.configure(bg="#1a1f2e")
         self.root.resizable(False, False)
 
-        w, h = 220, 160
+        w, h = 220, 250
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{w}x{h}+{screen_w - w - 20}+80")
 
@@ -489,7 +489,7 @@ class PersistentOverlay:
             font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
             justify="center", wraplength=180,
         )
-        self.instruction_label.pack(pady=(4, 10))
+        self.instruction_label.pack(pady=(2, 6))
 
         self.push_button = self.tk.Button(
             self.body,
@@ -505,8 +505,17 @@ class PersistentOverlay:
             self.body, text="close",
             font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2",
         )
-        self.cancel_label.pack(pady=(6, 0))
+        self.cancel_label.pack(pady=(2, 0))
         self.cancel_label.bind("<Button-1>", lambda e: self._on_close())
+
+        # Disclaimer
+        self.disclaimer_label = self.tk.Label(
+            self.body,
+            text="RiskRunway is assisting with data entry based on extracted and user-provided information. Please verify all values in the target system before saving. By proceeding, you acknowledge that you are responsible for reviewing and confirming the accuracy and completeness of all data entered into your AMS.",
+            font=("Helvetica", 7), fg="#5a6180", bg="#1a1f2e",
+            justify="center", wraplength=196,
+        )
+        self.disclaimer_label.pack(pady=(2, 0))
 
         self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
 

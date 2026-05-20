@@ -65,6 +65,22 @@ def health():
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 
+# ============================================================================
+# PUBLIC PAGES (no login required)
+# ============================================================================
+
+@bp.route('/privacy', methods=['GET'])
+def privacy_policy():
+    """Main application privacy policy"""
+    return render_template('privacy.html')
+
+
+@bp.route('/extension/privacy', methods=['GET'])
+def extension_privacy_policy():
+    """Chrome extension privacy policy"""
+    return render_template('extension_privacy.html')
+
+
 # Server-side OAuth flow cache — avoids Flask cookie 4KB size limit
 # The MSAL flow object (with PKCE verifier) is too large for cookie-based sessions
 import time
