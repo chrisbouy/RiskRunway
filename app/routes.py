@@ -735,7 +735,13 @@ def create_submission_entry():
     try:
         print(f"Received submission creation request with form data: {request.form} and files: {request.files}")
         insured_name = (request.form.get('insured_name') or '').strip()
-        coverage_type_requested = (request.form.get('coverage_type_requested') or '').strip()
+        coverage_types_list = request.form.getlist('coverage_types')
+        # Backward compat: fall back to single value field
+        if not coverage_types_list:
+            single = (request.form.get('coverage_type_requested') or '').strip()
+            coverage_types_list = [single] if single else []
+        else:
+            coverage_types_list = [ct.strip() for ct in coverage_types_list if ct.strip()]
         file = request.files.get('file')
         has_file = bool(file and file.filename)
 
@@ -787,7 +793,7 @@ def create_submission_entry():
                 'retail_agent': None,
                 'quote_number': None,
                 'account_number': None,
-                'coverage_types': [coverage_type_requested] if coverage_type_requested else [],
+                'coverage_types': coverage_types_list,
                 'effective_date': effective_date
             }
 

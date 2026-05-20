@@ -1201,15 +1201,6 @@
         </div>
 
         <div id="quotingStageSection" class="stage-section active">
-        <!-- Loading Overlay for Quote Processing -->
-        <div id="quoteLoadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10000]">
-            <div class="bg-gray-800 rounded-lg p-8 border border-gray-600 text-center">
-                <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                <h3 class="text-xl font-bold text-white mb-2">Processing Quote</h3>
-                <p class="text-gray-400 mb-2">Running OCR on the quote document...</p>
-                <p class="text-sm text-gray-500">This may take a few moments</p>
-            </div>
-        </div>
 
         <!-- Upload section -->
         <div class="card" style="margin-bottom: 1rem;">
@@ -2263,7 +2254,7 @@
 
         myDropzone.on("addedfile", function(file) {
             // Show quote processing overlay
-            document.getElementById('quoteLoadingOverlay').classList.remove('hidden');
+            document.getElementById('quoteLoadingOverlay').style.display = 'flex';
 
             // Start timer
             const uploadStartTime = performance.now();
@@ -2296,7 +2287,7 @@
                 const msg = document.getElementById('processing-msg');
                 if (msg) msg.remove();
                 // Hide quote processing overlay
-                document.getElementById('quoteLoadingOverlay').classList.add('hidden');
+                document.getElementById('quoteLoadingOverlay').style.display = 'none';
 
                 if (data.success) {
                     loadSubmission().then(() => {
@@ -2316,7 +2307,7 @@
                 console.error(`❌ Upload failed after ${errorDuration}s:`, error);
                 alert('Upload failed');
                 // Hide quote processing overlay
-                document.getElementById('quoteLoadingOverlay').classList.add('hidden');
+                document.getElementById('quoteLoadingOverlay').style.display = 'none';
                 const msg = document.getElementById('processing-msg');
                 if (msg) msg.remove();
             });
@@ -4200,5 +4191,14 @@ Thank you for your attention to this matter.`;
         // Load submission data on page load
         loadSubmission();
     </script>
+<!-- Loading Overlay for Quote Processing - placed outside all containers to avoid transform containment issues -->
+<div id="quoteLoadingOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:10000;display:none;">
+    <div class="bg-gray-800 rounded-lg p-8 border border-gray-600 text-center">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <h3 class="text-xl font-bold text-white mb-2">Processing Quote</h3>
+        <p class="text-gray-400 mb-2">Running OCR on the quote document...</p>
+        <p class="text-sm text-gray-500">This may take a few moments</p>
+    </div>
+</div>
 </body>
 </html>

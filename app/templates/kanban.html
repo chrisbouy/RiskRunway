@@ -670,11 +670,18 @@
                     </div>
 
                     <div class="mb-5">
-                        <label for="coverageTypeInput" class="block text-sm font-semibold text-gray-300 mb-1">Coverage Type Requested</label>
-                        <input id="coverageTypeInput"
-                               type="text"
-                               class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
-                               placeholder="Optional">
+                        <label class="block text-sm font-semibold text-gray-300 mb-1">Coverage Line Types</label>
+                        <div id="coverageTypesContainer">
+                            <div class="coverage-type-row flex items-center gap-2 mb-2">
+                                <input type="text"
+                                       class="coverage-type-input w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
+                                       placeholder="e.g. General Liability">
+                                <button type="button" class="remove-coverage-btn px-2 py-1 text-red-400 hover:text-red-300 text-lg font-bold hidden" title="Remove">&times;</button>
+                            </div>
+                        </div>
+                        <button type="button" id="addCoverageTypeBtn" class="mt-1 text-xs text-blue-400 hover:text-blue-300 font-medium">
+                            + Add another coverage line
+                        </button>
                     </div>
 
                     <div class="flex justify-end gap-2">
@@ -1542,9 +1549,46 @@
             createSubmission(formData);
         });
 
+        document.getElementById('addCoverageTypeBtn').addEventListener('click', function() {
+            const container = document.getElementById('coverageTypesContainer');
+            const row = document.createElement('div');
+            row.className = 'coverage-type-row flex items-center gap-2 mb-2';
+            row.innerHTML = `
+                <input type="text"
+                       class="coverage-type-input w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
+                       placeholder="e.g. General Liability">
+                <button type="button" class="remove-coverage-btn px-2 py-1 text-red-400 hover:text-red-300 text-lg font-bold" title="Remove">&times;</button>
+            `;
+            container.appendChild(row);
+            // Show remove buttons on all rows when there's more than one
+            updateRemoveButtons();
+        });
+
+        document.getElementById('coverageTypesContainer').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-coverage-btn')) {
+                e.target.closest('.coverage-type-row').remove();
+                updateRemoveButtons();
+            }
+        });
+
+        function updateRemoveButtons() {
+            const rows = document.querySelectorAll('#coverageTypesContainer .coverage-type-row');
+            rows.forEach(row => {
+                const btn = row.querySelector('.remove-coverage-btn');
+                if (rows.length > 1) {
+                    btn.classList.remove('hidden');
+                } else {
+                    btn.classList.add('hidden');
+                }
+            });
+        }
+
         document.getElementById('createSubmissionBtn').addEventListener('click', async function() {
             const insuredName = document.getElementById('insuredNameInput').value.trim();
-            const coverageType = document.getElementById('coverageTypeInput').value.trim();
+            const coverageInputs = document.querySelectorAll('#coverageTypesContainer .coverage-type-input');
+            const coverageTypes = Array.from(coverageInputs)
+                .map(input => input.value.trim())
+                .filter(v => v.length > 0);
 
             if (!insuredName) {
                 alert('Enter insured name.');
@@ -1554,9 +1598,9 @@
             const btn = this;
             const formData = new FormData();
             formData.append('insured_name', insuredName);
-            if (coverageType) {
-                formData.append('coverage_type_requested', coverageType);
-            }
+            coverageTypes.forEach(ct => {
+                formData.append('coverage_types', ct);
+            });
 
             await createSubmission(formData, { button: btn });
         });

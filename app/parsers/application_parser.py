@@ -18,8 +18,6 @@ import settings
 from app.parsers.llm_parsers import BedrockClient, GeminiClient, GroqClient
 from app.parsers.two_pass_parser import groq_request_with_backoff, _is_text_garbage
 
-DEFAULT_MODEL = settings.GEMINI_MODEL
-
 PASS2_APPLICATION_PROMPT = dedent(
     """
     You are extracting CLIENT + SUBMISSION intake data from an insurance APPLICATION document.
@@ -56,18 +54,6 @@ PASS2_APPLICATION_PROMPT = dedent(
           "zip": "string or null"
         }
       },
-      "retail_agent": {
-        "name": "string or null",
-        "code": "string or null",
-        "address": {
-          "street": "string or null",
-          "city": "string or null",
-          "state": "string or null",
-          "zip": "string or null"
-        },
-        "phone": "string or null"
-      },
-      "quote_number": "string or null",
       "account_number": "string or null",
       "submission": {
         "effective_date": "YYYY-MM-DD string or null",
@@ -88,8 +74,6 @@ def _get_llm_client():
         return GroqClient(settings.GROQ_API_KEY, model=settings.GROQ_MODEL)
     if provider == "bedrock":
         return BedrockClient(model=settings.BEDROCK_MODEL, region=settings.BEDROCK_REGION)
-    if provider == "gemini":
-        return GeminiClient(genai.Client(api_key=settings.GEMINI_API_KEY), DEFAULT_MODEL)
     raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
 
 
