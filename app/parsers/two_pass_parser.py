@@ -20,9 +20,6 @@ import settings
 import pdfplumber
 import pytesseract
 
-DEFAULT_MODEL = settings.GEMINI_MODEL
-
-
 # ============================================================================
 # PASS 1: OCR and Layout Extraction
 # ============================================================================
@@ -30,26 +27,26 @@ PASS1_OCR_PROMPT = dedent(
     """
     You are performing OCR and layout extraction on an insurance quote document.
     
-Extract ALL visible text from the document.
+    Extract ALL visible text from the document.
 
-Rules:
-- Preserve page breaks
-- Preserve line order
-- Do NOT infer section names
-- Do NOT label content
-- Do NOT interpret tables
-- Represent tables as plain text rows exactly as seen
-- Do NOT summarize or reorganize
+    Rules:
+    - Preserve page breaks
+    - Preserve line order
+    - Do NOT infer section names
+    - Do NOT label content
+    - Do NOT interpret tables
+    - Represent tables as plain text rows exactly as seen
+    - Do NOT summarize or reorganize
 
-Return:
-{
-  "pages": [
+    Return:
     {
-      "page_number": 1,
-      "text": "raw text exactly as seen"
+    "pages": [
+        {
+        "page_number": 1,
+        "text": "raw text exactly as seen"
+        }
+    ]
     }
-  ]
-}
     """
 )
 
@@ -63,276 +60,228 @@ PASS2_NORMALIZATION_PROMPT = dedent(
     INPUT: OCR text from an insurance quote document
     OUTPUT: Valid JSON only (no markdown, no explanations)
 
-═══════════════════════════════════════════════════════════════
-CRITICAL EXTRACTION RULES
-═══════════════════════════════════════════════════════════════
+    ═══════════════════════════════════════════════════════════════
+    CRITICAL EXTRACTION RULES
+    ═══════════════════════════════════════════════════════════════
 
-1. ONLY extract values that are EXPLICITLY STATED in the document
-   - If a value is ambiguous, unclear, or requires inference: return null
-   - If multiple conflicting values exist: return null
+    1. ONLY extract values that are EXPLICITLY STATED in the document
+    - If a value is ambiguous, unclear, or requires inference: return null
+    - If multiple conflicting values exist: return null
 
-2. NEVER extract a person's name into company/entity fields
-   - ❌ BAD: "Carrier": "John Smith" 
-   - ✓ GOOD: "Carrier": "Great American Insurance Company"
-   - If only a person is listed, return null for that field
+    2. NEVER extract a person's name into company/entity fields
+    - ❌ BAD: "Carrier": "John Smith" 
+    - ✓ GOOD: "Carrier": "Great American Insurance Company"
+    - If only a person is listed, return null for that field
 
-3. Each DISTINCT coverage type must be its own policy object
-   - Do NOT combine or merge coverages
-   - Even if they share the same carrier/dates
+    3. Each DISTINCT coverage type must be its own policy object
+    - Do NOT combine or merge coverages
+    - Even if they share the same carrier/dates
 
-4. Policy-level fees/taxes ONLY if explicitly tied to that specific policy
-   - If fees/taxes only appear in a totals section: leave policy fields null
+    4. Policy-level fees/taxes ONLY if explicitly tied to that specific policy
+    - If fees/taxes only appear in a totals section: leave policy fields null
 
-5. Carrier = insurance company that assumes the risk
-   - NOT a person, NOT a syndicate member name
-   - "Underwritten by" ≠ automatically the carrier
-   - If unclear which entity is the carrier: return null
+    5. Carrier = insurance company that assumes the risk
+    - NOT a person, NOT a syndicate member name
+    - "Underwritten by" ≠ automatically the carrier
+    - If unclear which entity is the carrier: return null
 
-═══════════════════════════════════════════════════════════════
-FIELD EXTRACTION GUIDE (with synonyms)
-═══════════════════════════════════════════════════════════════
+    ═══════════════════════════════════════════════════════════════
+    FIELD EXTRACTION GUIDE (with synonyms)
+    ═══════════════════════════════════════════════════════════════
 
-INSURED (the customer buying insurance):
-  • Label may appear as: "Insured", "Named Insured", "Applicant", "Borrower", 
-    "Account Name", "Customer", "Firm Name", "DBA", "Policyholder"
+    INSURED (the customer buying insurance):
+    • Label may appear as: "Insured", "Named Insured", "Applicant", "Borrower", 
+        "Account Name", "Customer", "Firm Name", "DBA", "Policyholder"
+        
+    RETAIL AGENT ...
+    • This is a COMPANY, not a person
+    • Usually located in the SAME STATE as the insured
+    • May have a "Producer Code" or "Agent Code"
+    • Only fill this field when a separate retail/producing agent is explicitly identified.
+    • IMPORTANT: On wholesale broker proposals/cover letters, the retail agent is often 
+        the "To:" recipient at the top of the document — the company the proposal is 
+        addressed to. If a company name and address appear in a "To:" block, treat that 
+        as the retail agent.
+    • "Attn:" following a company name indicates a contact person, not the company name itself.
     
-RETAIL AGENT ...
-  • This is a COMPANY, not a person
-  • Usually located in the SAME STATE as the insured
-  • May have a "Producer Code" or "Agent Code"
-  • Only fill this field when a separate retail/producing agent is explicitly identified.
-  • IMPORTANT: On wholesale broker proposals/cover letters, the retail agent is often 
-    the "To:" recipient at the top of the document — the company the proposal is 
-    addressed to. If a company name and address appear in a "To:" block, treat that 
-    as the retail agent.
-  • "Attn:" following a company name indicates a contact person, not the company name itself.
-  
-GENERAL AGENT / WHOLESALE BROKER ...
-  • This is the producer/proposer of the quote. Company that originally created the document.
-  • If only one agency appears on the quote and there is no separately labeled retail/producer agency, assume this agency is the quote producer/wholesale broker.
-  • Do not use the same agency for `retail_agent` unless the document explicitly names it as the customer's retail agent.
-  • Address may appear as "Company Name - City, State" format on a single line
-    (e.g. "Amwins - Baton Rouge, LA"). In this case extract city and state only,
-    street should be null.
-  • Do NOT extract city name as street address.
-  • If no street number is present, street must be null.
-  
-ADDRESSES:
-  • If a zip code appears joined to a state abbreviation (e.g. LA70002), treat as state=LA zip=70002
-  • Suite/Floor/Unit on the line immediately following a street address should be 
-    appended to the street field with a comma (e.g. "3850 N. Causeway Blvd., Suite 1150")
-  • Never insert spaces into quote numbers, policy numbers, or reference numbers
-    even if they appear to have missing spaces
+    GENERAL AGENT / WHOLESALE BROKER ...
+    • This is the producer/proposer of the quote. Company that originally created the document.
+    • If only one agency appears on the quote and there is no separately labeled retail/producer agency, assume this agency is the quote producer/wholesale broker.
+    • Do not use the same agency for `retail_agent` unless the document explicitly names it as the customer's retail agent.
+    • Address may appear as "Company Name - City, State" format on a single line
+        (e.g. "Amwins - Baton Rouge, LA"). In this case extract city and state only,
+        street should be null.
+    • Do NOT extract city name as street address.
+    • If no street number is present, street must be null.
     
-COVERAGE TYPE:
-  • Normalize to standard terms:
-    - "General Liability" (from: CGL, Commercial General Liability, GL)
-    - "Workers Compensation" (from: WC, Work Comp, Workers Comp)
-    - "Commercial Auto" (from: CA, Business Auto, Auto)
-    - "Commercial Property" (from: CP, Property, Building)
-    - "Professional Liability" (from: E&O, Errors & Omissions)
-    - "Cyber Liability" (from: Cyber, Data Breach, Privacy)
-    - "Directors & Officers" (from: D&O)
-    - "Umbrella" (from: Excess, Umbrella Liability)
-  • Use the standard term in your output, not the abbreviation
+    ADDRESSES:
+    • If a zip code appears joined to a state abbreviation (e.g. LA70002), treat as state=LA zip=70002
+    • Suite/Floor/Unit on the line immediately following a street address should be 
+        appended to the street field with a comma (e.g. "3850 N. Causeway Blvd., Suite 1150")
+    • Never insert spaces into quote numbers, policy numbers, or reference numbers
+        even if they appear to have missing spaces
+        
+    COVERAGE TYPE:
+    • Normalize to standard terms:
+        - "General Liability" (from: CGL, Commercial General Liability, GL)
+        - "Workers Compensation" (from: WC, Work Comp, Workers Comp)
+        - "Commercial Auto" (from: CA, Business Auto, Auto)
+        - "Commercial Property" (from: CP, Property, Building)
+        - "Professional Liability" (from: E&O, Errors & Omissions)
+        - "Cyber Liability" (from: Cyber, Data Breach, Privacy)
+        - "Directors & Officers" (from: D&O)
+        - "Umbrella" (from: Excess, Umbrella Liability)
+    • Use the standard term in your output, not the abbreviation
 
-CARRIER (insurance company):
-  • Label may appear as: "Carrier", "Underwriter", "Insurer", "Insurance Company", 
-    "Underwriting Company", "Company", "Issuing Company"
-  • Extract the COMPANY NAME, not person names
-  • Common patterns to watch for:
-    - "Underwritten by XYZ Insurance Company" → Carrier: "XYZ Insurance Company"
-    - "Paper: ABC Mutual" → Carrier: "ABC Mutual"
+    CARRIER (insurance company):
+    • Label may appear as: "Carrier", "Underwriter", "Insurer", "Insurance Company", 
+        "Underwriting Company", "Company", "Issuing Company"
+    • Extract the COMPANY NAME, not person names
+    • Common patterns to watch for:
+        - "Underwritten by XYZ Insurance Company" → Carrier: "XYZ Insurance Company"
+        - "Paper: ABC Mutual" → Carrier: "ABC Mutual"
 
-POLICY NUMBER:
-  • May appear as: "Policy No.", "Policy #", "Contract Number", "Reference Number"
-  • Often labeled "TBD" or "To Be Determined" on quotes (extract as-is)
+    POLICY NUMBER:
+    • May appear as: "Policy No.", "Policy #", "Contract Number", "Reference Number"
+    • Often labeled "TBD" or "To Be Determined" on quotes (extract as-is)
 
-DATES:
-  • Effective Date labels: "Eff Date", "Inception", "Policy Start", "Effective"
-  • Expiration Date labels: "Exp Date", "Expiry", "Policy End", "Expiration"
-  • Format all dates as: YYYY-MM-DD
-  • If you see "12/31/2024", convert to "2024-12-31"
+    DATES:
+    • Effective Date labels: "Eff Date", "Inception", "Policy Start", "Effective"
+    • Expiration Date labels: "Exp Date", "Expiry", "Policy End", "Expiration"
+    • Format all dates as: YYYY-MM-DD
+    • If you see "12/31/2024", convert to "2024-12-31"
 
-POLICY TERM:
-  • May appear as: "Term", "Policy Period", "Coverage Period"
-  • Extract as stated (e.g., "12 months", "1 year", "6 months")
-
-
-PREMIUM:
-  • The BASE premium BEFORE taxes and fees
-  • "Base Premium", "Written Premium", "Annual Premium" = correct field
-  • "Total Annual Premium", "Total Due", "Amount Due" = WRONG - 
-    this includes taxes/fees, do NOT use this as premium
-  • Extract the FULL TERM amount (not per-payment or per-month)
+    POLICY TERM:
+    • May appear as: "Term", "Policy Period", "Coverage Period"
+    • Extract as stated (e.g., "12 months", "1 year", "6 months")
 
 
-TAX:
-  • May appear as: "Tax", "Surplus Lines Tax", "SL Tax", "State Tax", "Premium Tax"
-  • May be shown as percentage or dollar amount (extract dollar amount)
+    PREMIUM:
+    • The BASE premium BEFORE taxes and fees
+    • "Base Premium", "Written Premium", "Annual Premium" = correct field
+    • "Total Annual Premium", "Total Due", "Amount Due" = WRONG - 
+        this includes taxes/fees, do NOT use this as premium
+    • Extract the FULL TERM amount (not per-payment or per-month)
 
-FEE:
-  • May appear as: "Fee", "Policy Fee", "Admin Fee", "Inspection Fee"
-  • If multiple carrier fees exist (Policy Fee, Inspection Fee, Admin Fee),
-    sum them into a single total fee value
-  • This is carrier fees, NOT broker fees
 
-BROKER FEE:
-  • May appear as: "Broker Fee", "Supplier Fee", "MGA Fee", "Wholesale Fee"
-  • Separate from policy fees
+    TAX:
+    • May appear as: "Tax", "Surplus Lines Tax", "SL Tax", "State Tax", "Premium Tax"
+    • May be shown as percentage or dollar amount (extract dollar amount)
 
-MINIMUM EARNED:
-  • May appear as: "Minimum Earned", "Min Earned", "Fully Earned", "Short Rate"
-  • Can be percentage (e.g., "90%") or dollar amount
-  • Extract percentage as decimal (90% → 90, not 0.90)
+    FEE:
+    • May appear as: "Fee", "Policy Fee", "Admin Fee", "Inspection Fee"
+    • If multiple carrier fees exist (Policy Fee, Inspection Fee, Admin Fee),
+        sum them into a single total fee value
+    • This is carrier fees, NOT broker fees
 
-TOTALS SECTION:
-  • Usually at bottom of document in a box, table, or summary
-  • May be labeled: "Summary", "Payment Schedule", "Amount Due", "Total Due"
-  • Extract:
-    - Total Premium (sum of all premiums) -The BASE premium BEFORE taxes and fees
-    - Total Tax (sum of all taxes)
-    - Total Fee (sum of all fees, excluding broker fees)
-    - Total Broker Fee (if shown separately)
-    - Grand Total (final amount due) - The final amount due, including taxes and fees
+    BROKER FEE:
+    • May appear as: "Broker Fee", "Supplier Fee", "MGA Fee", "Wholesale Fee"
+    • Separate from policy fees
 
-DOWN PAYMENT / FINANCING:
-  • May appear as: "Down Payment", "Deposit", "Required Down", "Initial Payment"
-  • Amount Financed may be calculated as: Grand Total - Down Payment
-  • Often NOT shown on quotes (return null if not present)
-  • "Minimum and Deposit" or "Annual Minimum and Deposit" is NOT a down payment — 
-    it refers to the minimum earned premium requirement, not a financing arrangement.
-  • Only populate down_payment when an explicit installment/financing plan is shown
-    with language like "Down Payment", "Initial Payment", "Amount Due at Inception"
-    alongside remaining installment amounts.
-  • If no financing schedule is present, both down_payment and amount_financed should be null.
+    MINIMUM EARNED:
+    • May appear as: "Minimum Earned", "Min Earned", "Fully Earned", "Short Rate"
+    • Can be percentage (e.g., "90%") or dollar amount
+    • Extract percentage as decimal (90% → 90, not 0.90)
 
-NOTES:
-- If a phone number follows an address, it's likely a contact number for that entity. 
-- All numbers (except number of months in policy term) should have two decimal places (e.g., 254.50, not 254.5)
-═══════════════════════════════════════════════════════════════
-OUTPUT JSON SCHEMA
-═══════════════════════════════════════════════════════════════
+    TOTALS SECTION:
+    • Usually at bottom of document in a box, table, or summary
+    • May be labeled: "Summary", "Payment Schedule", "Amount Due", "Total Due"
+    • Extract:
+        - Total Premium (sum of all premiums) -The BASE premium BEFORE taxes and fees
+        - Total Tax (sum of all taxes)
+        - Total Fee (sum of all fees, excluding broker fees)
+        - Total Broker Fee (if shown separately)
+        - Grand Total (final amount due) - The final amount due, including taxes and fees
 
-Return this EXACT structure (all fields required, use null if not found):
+    DOWN PAYMENT / FINANCING:
+    • May appear as: "Down Payment", "Deposit", "Required Down", "Initial Payment"
+    • Amount Financed may be calculated as: Grand Total - Down Payment
+    • Often NOT shown on quotes (return null if not present)
+    • "Minimum and Deposit" or "Annual Minimum and Deposit" is NOT a down payment — 
+        it refers to the minimum earned premium requirement, not a financing arrangement.
+    • Only populate down_payment when an explicit installment/financing plan is shown
+        with language like "Down Payment", "Initial Payment", "Amount Due at Inception"
+        alongside remaining installment amounts.
+    • If no financing schedule is present, both down_payment and amount_financed should be null.
 
-{
-    "insured": {
-        "name": "string or null",
-        "address": {
-            "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
-            "city": "string or null",
-            "state": "string or null",
-            "zip": "string or null"
-        }
-    },
-    "retail_agent": {
-        "name": "string or null (company name)",
-        "code": "string or null",
-        "address": {
-            "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
-            "city": "string or null",
-            "state": "string or null",
-            "zip": "string or null"
+    NOTES:
+    - If a phone number follows an address, it's likely a contact number for that entity. 
+    - All numbers (except number of months in policy term) should have two decimal places (e.g., 254.50, not 254.5)
+    ═══════════════════════════════════════════════════════════════
+    OUTPUT JSON SCHEMA
+    ═══════════════════════════════════════════════════════════════
+
+    Return this EXACT structure (all fields required, use null if not found):
+
+    {
+        "insured": {
+            "name": "string or null",
+            "address": {
+                "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
+                "city": "string or null",
+                "state": "string or null",
+                "zip": "string or null"
+            }
         },
-        "phone": "string or null"
-    },
-    "general_agent_or_wholesale_broker": {
-        "name": "string or null (company name)",
-        "address": {
-            "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
-            "city": "string or null",
-            "state": "string or null",
-            "zip": "string or null"
+        "retail_agent": {
+            "name": "string or null (company name)",
+            "code": "string or null",
+            "address": {
+                "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
+                "city": "string or null",
+                "state": "string or null",
+                "zip": "string or null"
+            },
+            "phone": "string or null"
         },
-        "phone": "string or null",
-        "fax": "string or null"
-    },
-    "quote_number": "string or null",
-    "policies": [
-        {
-            "coverage_type": "string or null (use standard term, not abbreviation)",
-            "carrier": "string or null (company name only)",
-            "policy_number": "string or null",
-            "effective_date": "string or null (YYYY-MM-DD format)",
-            "expiration_date": "string or null (YYYY-MM-DD format)",
-            "policy_term": "number or null (number of months)",
-            "annual_premium": "number or null",
-            "tax": "number or null",
-            "fee": "number or null",
-            "broker_fee": "number or null",
-            "minimum_earned_percent": "number or null (as whole number, e.g. 90 not 0.90)",
-            "minimum_earned_amount": "number or null"
+        "general_agent_or_wholesale_broker": {
+            "name": "string or null (company name)",
+            "address": {
+                "street": "string or null - include suite/floor/unit if present in the document. If no suite is present, do NOT add any placeholder text. Return only what is explicitly in the document.",
+                "city": "string or null",
+                "state": "string or null",
+                "zip": "string or null"
+            },
+            "phone": "string or null",
+            "fax": "string or null"
+        },
+        "quote_number": "string or null",
+        "policies": [
+            {
+                "coverage_type": "string or null (use standard term, not abbreviation)",
+                "carrier": "string or null (company name only)",
+                "policy_number": "string or null",
+                "effective_date": "string or null (YYYY-MM-DD format)",
+                "expiration_date": "string or null (YYYY-MM-DD format)",
+                "policy_term": "number or null (number of months)",
+                "annual_premium": "number or null",
+                "tax": "number or null",
+                "fee": "number or null",
+                "broker_fee": "number or null",
+                "minimum_earned_percent": "number or null (as whole number, e.g. 90 not 0.90)",
+                "minimum_earned_amount": "number or null"
+            }
+        ],
+        "totals": {
+            "total_premium": "number or null",
+            "total_tax": "number or null",
+            "total_fee": "number or null",
+            "total_broker_fee": "number or null",
+            "grand_total": "number or null"
+        },
+        "financing": {
+            "down_payment": "number or null",
+            "amount_financed": "number or null"
         }
-    ],
-    "totals": {
-        "total_premium": "number or null",
-        "total_tax": "number or null",
-        "total_fee": "number or null",
-        "total_broker_fee": "number or null",
-        "grand_total": "number or null"
-    },
-    "financing": {
-        "down_payment": "number or null",
-        "amount_financed": "number or null"
     }
-}
 
-═══════════════════════════════════════════════════════════════
-RETURN ONLY VALID JSON - NO MARKDOWN - NO EXPLANATIONS
-═══════════════════════════════════════════════════════════════
+    ═══════════════════════════════════════════════════════════════
+    RETURN ONLY VALID JSON - NO MARKDOWN - NO EXPLANATIONS
+    ═══════════════════════════════════════════════════════════════
 """
 )
 
-# ============================================================================
-# PASS 3: Quote Intent Classification
-# ============================================================================
-PASS3_INTENT_PROMPT = dedent(
-    """
-    You are analyzing an insurance quote to determine its intent and relationship to other quotes.
-    
-    You will receive:
-    1. The normalized quote data (JSON)
-    2. Context about existing quotes in the submission (if any)
-    
-    Your job is to classify the quote's intent and identify how it should be displayed.
-    
-    QUOTE INTENT TYPES:
-    - "new_coverage" - This quote adds NEW coverage types not previously quoted
-    - "competing_quote" - This quote is for the SAME coverage(s) from a different carrier/broker (shopping quotes)
-    - "renewal" - This quote renews existing coverage
-    - "endorsement" - This quote modifies existing coverage
-    - "unknown" - Cannot determine intent
-    
-    COMPARISON GROUPS:
-    Common groups: "GL" (General Liability), "WC" (Workers Comp), "Auto", "Property", "Cyber", "E&O", "D&O", etc.
-    
-    INSTRUCTIONS:
-    1. Identify which coverage types are in this quote
-    2. Determine if these coverages already exist in the submission
-    3. If they exist, this is likely a "competing_quote"
-    4. If they don't exist, this is likely "new_coverage"
-    5. Identify what makes this quote different from existing quotes (carrier, premium, terms, etc.)
-    
-    Return valid JSON only using this schema:
-    {
-        "quote_intent": "string - one of: new_coverage, competing_quote, renewal, endorsement, unknown",
-        "applies_to_coverages": ["array of coverage type strings from the quote"],
-        "comparison_groups": ["array of comparison group identifiers - e.g. GL, WC, Auto"],
-        "competing_with_quote_ids": ["array of quote IDs this competes with, if applicable"],
-        "key_differences": {
-            "carrier": "boolean - different carrier?",
-            "premium": "boolean - different premium?",
-            "terms": "boolean - different terms/conditions?",
-            "broker": "boolean - different broker?"
-        },
-        "notes": "string - brief explanation of the classification",
-        "confidence": "string - high, medium, low"
-    }
-    
-    Return ONLY valid JSON. No markdown. No explanations.
-    """
-)
+
 
 def get_llm_client():
     provider = settings.LLM_PROVIDER.lower()
@@ -342,8 +291,6 @@ def get_llm_client():
         return GroqClient(settings.GROQ_API_KEY, model=settings.GROQ_MODEL)
     if provider == "bedrock":
         return BedrockClient(model=settings.BEDROCK_MODEL, region=settings.BEDROCK_REGION)
-    if provider == "gemini":
-        return GeminiClient(genai.Client(api_key=settings.GEMINI_API_KEY), DEFAULT_MODEL)
     raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
 # ============================================================================
 # Processing Functions
@@ -581,7 +528,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     layout_data = pass1_extract_quote_layout(pdf_path)
     metadata['pass1_duration'] = time.time() - pass1_start
     print(f"  ✓ Pass 1 (quote) complete ({metadata['pass1_duration']:.2f}s)")
-    # print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
+    print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
 
     # Pass 2: Normalize to JSON
     print("Pass 2 of two_pass_parser.process_quote_two_pass: Normalizing to JSON schema...")
@@ -589,7 +536,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     normalized_data = pass2_normalize_quote_data(layout_data)
     metadata['pass2_duration'] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
-    # print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
+    print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
 
     metadata['total_duration'] = time.time() - start_time
     print(f"✓ All quote passes complete ({metadata['total_duration']:.2f}s)")
