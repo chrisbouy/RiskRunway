@@ -112,6 +112,7 @@ class Submission(Base):
     status_label = Column(String(255), nullable=True)
     appetite_score = Column(Integer, nullable=True)  # PF appetite score 0-100
     assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)  # User assignment
+    notes = Column(Text, nullable=True)  # JSON object with stage-keyed notes
 
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
@@ -146,8 +147,23 @@ class Submission(Base):
             'quote_count': len(self.quotes) if self.quotes else 0,
             'appetite_score': self.appetite_score,
             'assigned_to': self.assigned_to,
-            'assigned_user': self.assigned_user.to_dict() if self.assigned_user else None
+            'assigned_user': self.assigned_user.to_dict() if self.assigned_user else None,
+            'notes': self._parse_notes()
         }
+
+    def _parse_notes(self):
+        """Parse notes JSON safely, handling legacy plain-text values."""
+        if not self.notes:
+            return {}
+        try:
+            parsed = json.loads(self.notes)
+            if isinstance(parsed, dict):
+                return parsed
+            # If it parsed but isn't a dict, wrap it
+            return {"submission": str(parsed)}
+        except (json.JSONDecodeError, TypeError):
+            # Legacy plain text — put it under 'submission' key
+            return {"submission": self.notes}
 
 
 class Quote(Base):

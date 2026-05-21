@@ -872,6 +872,20 @@
         </div>
     </div>
 
+    <!-- Notes Popup Modal -->
+    <div id="notesPopupModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-white">Notes</h2>
+                <button id="closeNotesPopup" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <div id="notesPopupContent" style="display: flex; flex-direction: column; gap: 0;"></div>
+            <div class="flex justify-end mt-4">
+                <button id="closeNotesPopupBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm">Close</button>
+            </div>
+        </div>
+    </div>
+
 
 
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
@@ -1365,11 +1379,16 @@
                 return `<option value="${doc.id}">${escapeHtml(label)}</option>`;
             }).join('');
 
+            // Add single "Notes" option if any stage has a note
+            const notesObj = (submission.notes && typeof submission.notes === 'object') ? submission.notes : {};
+            const hasAnyNote = Object.values(notesObj).some(v => v && v.trim());
+            const noteOptions = hasAnyNote ? `<option value="note:all">📝 Notes</option>` : '';
+
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
                 <div class="card-row">
                     <div class="card-left">
-                        ${docOptions ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="">Documents</option>${docOptions}</select>` : ''}
+                        ${(docOptions || noteOptions) ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="">Docs</option>${docOptions}${noteOptions ? (docOptions ? '<option disabled>───</option>' : '') + noteOptions : ''}</select>` : ''}
                     </div>
                     <div class="card-right">
                         <div class="card-status">${escapeHtml(status)}</div>
@@ -1419,9 +1438,14 @@
             if (docSelect) {
                 docSelect.addEventListener('change', async function(e) {
                     e.stopPropagation();
-                    const docId = this.value;
-                    if (!docId) return;
-                    window.open(`/api/documents/${docId}/download`, '_blank');
+                    const val = this.value;
+                    if (!val) return;
+
+                    if (val.startsWith('note:')) {
+                        openNotesPopup(submission);
+                    } else {
+                        window.open(`/api/documents/${val}/download`, '_blank');
+                    }
                     this.value = '';
                 });
             }
@@ -2328,6 +2352,50 @@
                 console.error('Error saving broker:', error);
                 alert('Error saving broker');
             }
+        });
+
+        // ============================================================================
+        // NOTES POPUP
+        // ============================================================================
+        let notesPopupSubmission = null;
+
+        function openNotesPopup(submission) {
+            notesPopupSubmission = submission;
+            const modal = document.getElementById('notesPopupModal');
+            const content = document.getElementById('notesPopupContent');
+
+            const notesObj = (typeof submission.notes === 'object' && submission.notes) ? submission.notes : {};
+            const stages = [
+                { key: 'submission', label: 'Submission Note' },
+                { key: 'quoting', label: 'Quoting Stage Note' },
+                { key: 'bind', label: 'Bind Stage Note' }
+            ];
+
+            content.innerHTML = stages.map((stage, i) => {
+                const text = notesObj[stage.key] || '';
+                const displayText = text ? escapeHtml(text) : '<span style="color:#6b7280; font-style:italic;">No notes</span>';
+                const divider = i < stages.length - 1 ? '<div style="border-bottom: 1px solid #374151; margin: 0.5rem 0;"></div>' : '';
+                return `
+                    <div>
+                        <div style="font-size: 0.688rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 0.25rem;">${stage.label}</div>
+                        <div style="font-size: 0.813rem; color: #e5e7eb; white-space: pre-wrap; line-height: 1.5; padding: 0.25rem 0;">${displayText}</div>
+                    </div>
+                    ${divider}
+                `;
+            }).join('');
+
+            modal.classList.remove('hidden');
+        }
+
+        // Close notes popup
+        document.getElementById('closeNotesPopup').addEventListener('click', () => {
+            document.getElementById('notesPopupModal').classList.add('hidden');
+        });
+        document.getElementById('closeNotesPopupBtn').addEventListener('click', () => {
+            document.getElementById('notesPopupModal').classList.add('hidden');
+        });
+        document.getElementById('notesPopupModal').addEventListener('click', function(e) {
+            if (e.target === this) this.classList.add('hidden');
         });
 
         // Run initialization on page load

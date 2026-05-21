@@ -2865,6 +2865,45 @@ def update_submission_status_label(submission_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/api/submission/<int:submission_id>/notes', methods=['PUT'])
+@login_required
+def update_submission_notes(submission_id):
+    """Update submission notes for a specific stage."""
+    try:
+        data = request.get_json() or {}
+        stage = data.get('stage', 'submission')
+        note_text = (data.get('notes') or '').strip()
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            # Load existing notes JSON or start fresh
+            existing = {}
+            if submission.notes:
+                try:
+                    existing = json.loads(submission.notes)
+                except Exception:
+                    existing = {}
+
+            # Update the specific stage note
+            if note_text:
+                existing[stage] = note_text
+            else:
+                existing.pop(stage, None)
+
+            submission.notes = json.dumps(existing) if existing else None
+            db_session.commit()
+        finally:
+            db_session.close()
+
+        return jsonify({'success': True, 'notes': existing})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bp.route('/api/submission/<int:submission_id>/move_to_bind', methods=['POST'])
 @login_required
 def move_submission_to_bind(submission_id):
