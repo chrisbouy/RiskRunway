@@ -4432,16 +4432,17 @@ def get_ams_agent_install_status():
 @bp.route('/api/ams/vision', methods=['POST'])
 def ams_vision():
     """
-    Receives a screenshot + form data from the local agent, calls the configured
-    LLM provider (via LLM_PROVIDER in .env) to identify form fields, and returns
-    the field coordinate map.
+    Receives a screenshot + form data from the local agent, calls Claude via
+    Bedrock to identify form fields and return pixel coordinates.
+    Always uses Bedrock regardless of LLM_PROVIDER — only Claude Vision can
+    reliably return precise x/y coordinates from screenshots.
     No auth required — called by the local agent on the user's machine.
     """
     try:
         from PIL import Image
         from io import BytesIO
         import settings as settings_module
-        from app.parsers.llm_parsers import GroqClient, BedrockClient, GeminiClient
+        from app.parsers.llm_parsers import BedrockClient
 
         data = request.get_json()
         if not data:
@@ -4454,7 +4455,7 @@ def ams_vision():
         if not screenshot_b64:
             return jsonify({'success': False, 'error': 'screenshot is required'}), 400
 
-        # Decode the screenshot into a PIL Image for the LLM clients
+        # Decode the screenshot into a PIL Image for the LLM client
         screenshot_bytes = base64.b64decode(screenshot_b64)
         screenshot_image = Image.open(BytesIO(screenshot_bytes)).convert("RGB")
 
@@ -4505,27 +4506,11 @@ def ams_vision():
             '}'
         )
 
-        # Use the configured LLM provider
-        provider = settings_module.LLM_PROVIDER.lower()
-        logger.info(f"[AMS Vision] Using LLM provider: {provider}")
-
-        if provider == "groq":
-            if not settings_module.GROQ_API_KEY:
-                return jsonify({'success': False, 'error': 'GROQ_API_KEY is required when LLM_PROVIDER=groq'}), 500
-            client = GroqClient(settings_module.GROQ_API_KEY, model=settings_module.GROQ_MODEL)
-        elif provider == "bedrock":
-            client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
-        elif provider == "gemini":
-            if not settings_module.GEMINI_API_KEY:
-                return jsonify({'success': False, 'error': 'GEMINI_API_KEY is required when LLM_PROVIDER=gemini'}), 500
-            from google import genai
-            genai_client = genai.Client(api_key=settings_module.GEMINI_API_KEY)
-            client = GeminiClient(genai_client, model=settings_module.GEMINI_MODEL)
-        else:
-            return jsonify({'success': False, 'error': f'Unknown LLM_PROVIDER: {provider}'}), 500
+        # Always use Bedrock/Claude for AMS vision — only model that returns pixel coordinates
+        client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
 
         field_map = client.generate_json_with_images(prompt, [screenshot_image])
-        print(f"[AMS Vision] {provider} raw response: {json.dumps(field_map, indent=2)}")
+        logger.info(f"[AMS Vision] Bedrock returned {len(field_map)} field matches")
 
         return jsonify({'success': True, 'field_map': field_map})
 
