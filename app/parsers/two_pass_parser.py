@@ -8,6 +8,7 @@ Pass 3: Quote Intent Classification - Determine quote type and comparison strate
 
 from textwrap import dedent
 import json
+import os
 import time
 
 import time
@@ -414,6 +415,10 @@ def pass1_extract_quote_layout(pdf_path):
     # First, find the last relevant page to avoid processing useless pages
     last_page_to_process = _find_last_relevant_page(pdf_path)
 
+    # Determine where to save page images (same directory as the PDF)
+    pdf_dir = os.path.dirname(os.path.abspath(pdf_path))
+    pdf_stem = os.path.splitext(os.path.basename(pdf_path))[0]
+
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
             # Skip pages after financial data
@@ -422,6 +427,16 @@ def pass1_extract_quote_layout(pdf_path):
                 continue
 
             print(f"  Processing page {page_num}...")
+
+            # Always save a page image for later use by AMS vision export
+            page_image = page.to_image(resolution=200).original
+            page_image_filename = f"{pdf_stem}_page_{page_num}.jpg"
+            page_image_path = os.path.join(pdf_dir, page_image_filename)
+            # Convert to RGB if needed (JPEG doesn't support alpha)
+            if page_image.mode in ("RGBA", "P", "LA"):
+                page_image = page_image.convert("RGB")
+            page_image.save(page_image_path, format="JPEG", quality=80)
+            print(f"    ✓ Saved page image: {page_image_path}")
 
             # Try text extraction first (for digital PDFs)
             page_text = page.extract_text()
@@ -432,10 +447,11 @@ def pass1_extract_quote_layout(pdf_path):
                 print(f"    ✓ Extracted {len(page_text)} chars via text extraction")
                 pages_data.append({
                     "page_number": page_num,
-                    "text": _fix_pdf_spacing(page_text)
+                    "text": _fix_pdf_spacing(page_text),
+                    "image_path": page_image_path
                 })
                 # Clean up memory after each page
-                del page_text
+                del page_text, page_image
                 gc.collect()
             else:
                 # Either no text, or garbage text - use OCR
@@ -444,40 +460,45 @@ def pass1_extract_quote_layout(pdf_path):
                 else:
                     print(f"    ⚠️  Scanned PDF, using OCR...")
 
-                # Convert page to image at 300 DPI (good balance of quality/speed)
-                page_image = page.to_image(resolution=300).original
+                # Use the already-captured page image for OCR (re-render at higher DPI)
+                ocr_image = page.to_image(resolution=300).original
 
                 # Single-pass OCR with best settings for insurance docs
                 # PSM 6 = uniform block of text (best for structured documents)
                 # OEM 3 = default (LSTM + legacy)
                 try:
                     config = '--oem 3 --psm 6'
-                    text = pytesseract.image_to_string(page_image, config=config)
+                    text = pytesseract.image_to_string(ocr_image, config=config)
                     char_count = len(text)
                     print(f"    ✓ OCR extracted {char_count} chars")
 
                     pages_data.append({
                         "page_number": page_num,
-                        "text": _fix_pdf_spacing(text)
+                        "text": _fix_pdf_spacing(text),
+                        "image_path": page_image_path
                     })
 
                     # Clean up memory
-                    del page_image, text
+                    del page_image, ocr_image, text
                     gc.collect()
                 except Exception as e:
                     print(f"    ✗ OCR failed: {e}")
                     # Add empty page so we don't skip it entirely
                     pages_data.append({
                         "page_number": page_num,
-                        "text": ""
+                        "text": "",
+                        "image_path": page_image_path
                     })
                     # Clean up on error too
                     if 'page_image' in locals():
                         del page_image
+                    if 'ocr_image' in locals():
+                        del ocr_image
                     gc.collect()
 
     return {
-        "pages": pages_data
+        "pages": pages_data,
+        "last_relevant_page": last_page_to_process
     }
 
 def _fix_pdf_spacing(text):
@@ -528,7 +549,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     layout_data = pass1_extract_quote_layout(pdf_path)
     metadata['pass1_duration'] = time.time() - pass1_start
     print(f"  ✓ Pass 1 (quote) complete ({metadata['pass1_duration']:.2f}s)")
-    print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
+    # print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
 
     # Pass 2: Normalize to JSON
     print("Pass 2 of two_pass_parser.process_quote_two_pass: Normalizing to JSON schema...")
@@ -536,7 +557,7 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     normalized_data = pass2_normalize_quote_data(layout_data)
     metadata['pass2_duration'] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
-    print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
+    # print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
 
     metadata['total_duration'] = time.time() - start_time
     print(f"✓ All quote passes complete ({metadata['total_duration']:.2f}s)")

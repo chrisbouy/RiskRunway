@@ -2836,7 +2836,13 @@ def delete_submission(submission_id):
         # Store submission info for logging
         insured_name = submission.insured_name
 
-        # Delete the submission (cascade will delete quotes due to relationship)
+        # Delete related ams_export_jobs (non-nullable FK, not covered by cascade)
+        db_session.query(AmsExportJob).filter_by(submission_id=submission_id).delete()
+
+        # Delete related email messages (backref without cascade)
+        db_session.query(EmailMessage).filter_by(submission_id=submission_id).delete()
+
+        # Delete the submission (cascade will delete quotes, documents, audit_logs)
         db_session.delete(submission)
 
         # Keep a deletion audit entry without an FK to the row being removed.
@@ -3119,7 +3125,16 @@ def update_submission_status(submission_id):
             return jsonify({'success': False, 'error': 'Submission not found'}), 404
 
         # Update status
-        submission.status = SubmissionStatus[new_status.upper().replace(' ', '_')]
+        new_status_enum = SubmissionStatus[new_status.upper().replace(' ', '_')]
+        submission.status = new_status_enum
+
+        # If moving back to quoting (IN_PROGRESS), clear quote outcomes
+        if new_status_enum == SubmissionStatus.IN_PROGRESS:
+            quotes = session.query(Quote).filter_by(submission_id=submission_id).all()
+            for quote in quotes:
+                quote.quote_outcome = None
+                quote.status = QuoteStatus.RECEIVED
+
         session.commit()
         session.close()
 
@@ -3242,6 +3257,86 @@ def move_submission_to_bind(submission_id):
             user=session.get('username'),
             submission_id=submission_id,
             details=json.dumps({'quote_outcomes': quote_outcomes})
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/submission/<int:submission_id>/drag_to_bind', methods=['POST'])
+@login_required
+def drag_submission_to_bind(submission_id):
+    """Handle drag-to-bind from kanban board.
+    
+    Validates that there are no duplicate coverage types among quotes,
+    then marks all quotes as WON and moves submission to CHOSEN status.
+    """
+    try:
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            quotes = db_session.query(Quote).filter_by(submission_id=submission_id).all()
+
+            if not quotes:
+                return jsonify({'success': False, 'error': 'No quotes found for this submission'}), 400
+
+            # Check for duplicate coverage types among quotes
+            coverage_types = []
+            for quote in quotes:
+                if quote.extracted_json:
+                    try:
+                        extracted = json.loads(quote.extracted_json)
+                        # Handle policies array structure
+                        if 'policies' in extracted and isinstance(extracted['policies'], list):
+                            for policy in extracted['policies']:
+                                coverage = (policy.get('coverage_type') or '').strip().lower()
+                                if coverage and coverage not in ('null', 'n/a', ''):
+                                    coverage_types.append(coverage)
+                        else:
+                            # Fallback: top-level coverage_type
+                            coverage = (extracted.get('coverage_type') or '').strip().lower()
+                            if coverage and coverage not in ('null', 'n/a', ''):
+                                coverage_types.append(coverage)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            # Check for duplicates
+            seen = set()
+            duplicates = set()
+            for ct in coverage_types:
+                if ct in seen:
+                    duplicates.add(ct)
+                seen.add(ct)
+
+            if duplicates:
+                return jsonify({
+                    'success': False,
+                    'error': 'duplicate_coverages',
+                    'message': "This submission can't be moved to binding because it has multiple quotes for the same coverage type. Please open the submission and select which quotes to bind.",
+                    'duplicates': list(duplicates)
+                }), 400
+
+            # All good - mark all quotes as WON and move to CHOSEN
+            for quote in quotes:
+                quote.quote_outcome = 'WON'
+                quote.status = QuoteStatus.CHOSEN
+
+            submission.status = SubmissionStatus.CHOSEN
+            db_session.commit()
+        finally:
+            db_session.close()
+
+        log_action(
+            entity_type='submission',
+            entity_id=submission_id,
+            action='moved_to_bind',
+            user=session.get('username'),
+            submission_id=submission_id,
+            details=json.dumps({'source': 'kanban_drag', 'all_quotes_won': True})
         )
 
         return jsonify({'success': True})
@@ -4432,10 +4527,10 @@ def get_ams_agent_install_status():
 @bp.route('/api/ams/vision', methods=['POST'])
 def ams_vision():
     """
-    Receives a screenshot + form data from the local agent, calls Claude via
-    Bedrock to identify form fields and return pixel coordinates.
-    Always uses Bedrock regardless of LLM_PROVIDER — only Claude Vision can
-    reliably return precise x/y coordinates from screenshots.
+    Receives a screenshot from the local agent + a job_id to look up the quote.
+    Sends the original quote page images + the AMS screenshot to Claude Vision,
+    which reads the source document directly and matches data to form fields.
+    Always uses Bedrock — only Claude Vision returns precise pixel coordinates.
     No auth required — called by the local agent on the user's machine.
     """
     try:
@@ -4449,15 +4544,50 @@ def ams_vision():
             return jsonify({'success': False, 'error': 'No JSON payload'}), 400
 
         screenshot_b64 = data.get('screenshot')
-        json_data = data.get('json_data', {})
+        job_id = data.get('job_id')
         already_filled = data.get('already_filled', [])
 
         if not screenshot_b64:
             return jsonify({'success': False, 'error': 'screenshot is required'}), 400
 
-        # Decode the screenshot into a PIL Image for the LLM client
+        # Decode the AMS screenshot
         screenshot_bytes = base64.b64decode(screenshot_b64)
         screenshot_image = Image.open(BytesIO(screenshot_bytes)).convert("RGB")
+
+        # Load quote page images from the job's quote
+        quote_images = []
+        if job_id:
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job and job.quote_id:
+                    quote = db_session.query(Quote).filter_by(id=job.quote_id).first()
+                    if quote and quote.pass1_layout_json:
+                        layout = json.loads(quote.pass1_layout_json)
+                        for page in layout.get('pages', []):
+                            img_path = page.get('image_path')
+                            if img_path and os.path.exists(img_path):
+                                quote_images.append(Image.open(img_path).convert("RGB"))
+                                logger.info(f"[AMS Vision] Loaded quote page image: {img_path}")
+                elif job:
+                    # No specific quote_id — try to find quote via submission
+                    quotes = db_session.query(Quote).filter_by(submission_id=job.submission_id).all()
+                    for quote in quotes:
+                        if quote.pass1_layout_json:
+                            layout = json.loads(quote.pass1_layout_json)
+                            for page in layout.get('pages', []):
+                                img_path = page.get('image_path')
+                                if img_path and os.path.exists(img_path):
+                                    quote_images.append(Image.open(img_path).convert("RGB"))
+                                    logger.info(f"[AMS Vision] Loaded quote page image: {img_path}")
+                            break  # Use first quote with images
+            finally:
+                db_session.close()
+
+        # Fallback: if no quote images found, use the old json_data approach
+        json_data = data.get('json_data', {})
+        if not quote_images and not json_data:
+            return jsonify({'success': False, 'error': 'No quote images or data available'}), 400
 
         # Build the prompt
         skip_note = ""
@@ -4467,50 +4597,97 @@ def ams_vision():
                 f"{sorted(already_filled)}\n"
             )
 
-        prompt = (
-            "You are looking at a screenshot of an insurance AMS "
-            "(Agency Management System) form.\n\n"
+        if quote_images:
+            # New approach: quote images + AMS screenshot
+            num_quote_pages = len(quote_images)
+            prompt = (
+                f"You are looking at {num_quote_pages + 1} images.\n\n"
+                f"Images 1-{num_quote_pages}: Pages from an insurance quote document (the SOURCE data).\n"
+                f"Image {num_quote_pages + 1}: A screenshot of an AMS (Agency Management System) form (the TARGET to fill).\n\n"
 
-            "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
-            f"{json.dumps(json_data, indent=2)}\n\n"
+                "Your job:\n"
+                "1. Read the quote document to extract all relevant insurance data "
+                "(insured name, address, carrier, dates, premiums, broker, etc.).\n"
+                "2. Look at the AMS form screenshot and identify every visible, editable field.\n"
+                "3. Match data from the quote to the appropriate form fields.\n"
+                "4. Return pixel coordinates (x, y) for each text field on the AMS form screenshot "
+                f"(the LAST image, image {num_quote_pages + 1}).\n\n"
 
-            "Your job:\n"
-            "1. Look at every visible, editable field on the form.\n"
-            "2. Match available data to fields using common sense.\n"
-            "3. Return a JSON object for ONLY fields you have a value for.\n"
+                "STRICT RULES:\n"
+                "- Coordinates must reference the LAST image (the AMS form screenshot).\n"
+                "- Only include a match if you are confident the data belongs in that field.\n"
+                "- DO NOT guess values — only use data explicitly visible in the quote document.\n"
+                "- Broker field on the form is likely referring to the wholesale broker from the quote.\n"
+                "- Producer field on the form is referring to the retail agent from the quote.\n"
+                "- For fields that are not textboxes (dropdowns, checkboxes), omit coordinates.\n"
+                "- Skip fields already filled.\n\n"
 
-            "STRICT RULES:\n"
-            "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
-            "- DO NOT guess values.\n"
-            "- DO NOT include fields unless you are confident.\n"
-            "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
-            "- Producer field on the form is referring to the retail agent listed in the data.\n"
-            "- For fields that are not textboxes, omit coordinates.\n"
-            "- Skip fields already filled.\n\n"
+                "Formatting rules:\n"
+                "- Dates → MM/DD/YYYY\n"
+                "- Currency → digits only (no $)\n"
+                "- State → 2-letter abbreviation\n"
+                "- Phone → (555) 000-0000 if possible\n\n"
 
-            "Formatting rules:\n"
-            "- Dates → MM/DD/YYYY\n"
-            "- Currency → digits only (no $)\n"
-            "- State → 2-letter abbreviation\n"
-            "- Phone → (555) 000-0000 if possible\n\n"
+                f"{skip_note}"
 
-            f"{skip_note}"
+                "Return ONLY valid JSON. No explanation.\n"
+                "Format:\n"
+                '{\n'
+                '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "field_type": "text_field"},\n'
+                '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "field_type": "text_field"},\n'
+                '  "State":            {"value": "LA", "field_type": "dropdown_field"},\n'
+                '  "Line of Business": {"value": "Commercial Property", "field_type": "dropdown_field"}\n'
+                '}'
+            )
+            # Send quote pages first, then AMS screenshot last
+            all_images = quote_images + [screenshot_image]
+        else:
+            # Fallback: old approach with pre-extracted JSON
+            prompt = (
+                "You are looking at a screenshot of an insurance AMS "
+                "(Agency Management System) form.\n\n"
 
-            "Return ONLY valid JSON. No explanation.\n"
-            "Format:\n"
-            '{\n'
-            '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name", "field_type": "text_field"},\n'
-            '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date", "field_type": "text_field"},\n'
-            '  "State":            {"value": "LA", "key_path": "insured state", "field_type": "dropdown_field"},\n'
-            '  "Line of Business": {"value": "Commercial Property", "key_path": "type of coverage", "field_type": "dropdown_field"}\n'
-            '}'
-        )
+                "Here is data available to fill this form — use what matches, ignore what doesn't:\n"
+                f"{json.dumps(json_data, indent=2)}\n\n"
 
-        # Always use Bedrock/Claude for AMS vision — only model that returns pixel coordinates
+                "Your job:\n"
+                "1. Look at every visible, editable field on the form.\n"
+                "2. Match available data to fields using common sense.\n"
+                "3. Return a JSON object for ONLY fields you have a value for.\n"
+
+                "STRICT RULES:\n"
+                "- Only include a match if you can clearly explain (to yourself) why the label and key refer to the same concept.\n"
+                "- DO NOT guess values.\n"
+                "- DO NOT include fields unless you are confident.\n"
+                "- Broker field on the form is likely referring to the wholesale broker listed in the data.\n"
+                "- Producer field on the form is referring to the retail agent listed in the data.\n"
+                "- For fields that are not textboxes, omit coordinates.\n"
+                "- Skip fields already filled.\n\n"
+
+                "Formatting rules:\n"
+                "- Dates → MM/DD/YYYY\n"
+                "- Currency → digits only (no $)\n"
+                "- State → 2-letter abbreviation\n"
+                "- Phone → (555) 000-0000 if possible\n\n"
+
+                f"{skip_note}"
+
+                "Return ONLY valid JSON. No explanation.\n"
+                "Format:\n"
+                '{\n'
+                '  "Insured Name":     {"x": 630, "y": 354, "value": "Acme Corp LLC", "key_path": "insured name", "field_type": "text_field"},\n'
+                '  "Effective Date":   {"x": 322, "y": 727, "value": "02/10/2026", "key_path": "policy start date", "field_type": "text_field"},\n'
+                '  "State":            {"value": "LA", "key_path": "insured state", "field_type": "dropdown_field"},\n'
+                '  "Line of Business": {"value": "Commercial Property", "key_path": "type of coverage", "field_type": "dropdown_field"}\n'
+                '}'
+            )
+            all_images = [screenshot_image]
+
+        # Always use Bedrock/Claude — only model that returns pixel coordinates
         client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
 
-        field_map = client.generate_json_with_images(prompt, [screenshot_image])
-        logger.info(f"[AMS Vision] Bedrock returned {len(field_map)} field matches")
+        field_map = client.generate_json_with_images(prompt, all_images)
+        logger.info(f"[AMS Vision] Bedrock returned {len(field_map)} field matches (quote_images={len(quote_images)})")
 
         return jsonify({'success': True, 'field_map': field_map})
 
@@ -4553,12 +4730,25 @@ def create_ams_export_job():
                 if quote.extracted_json:
                     json_data = json.loads(quote.extracted_json)
             else:
-                # Get all quotes for this submission
+                # Get all quotes for this submission — prefer WON quote for AMS export
                 quotes = db_session.query(Quote).filter_by(submission_id=submission_id).all()
-                json_data = {
-                    'submission': submission.to_dict(),
-                    'quotes': [json.loads(q.extracted_json) for q in quotes if q.extracted_json]
-                }
+                won_quote = next((q for q in quotes if q.quote_outcome == 'WON'), None)
+                if won_quote:
+                    quote_id = won_quote.id
+                    if won_quote.extracted_json:
+                        json_data = json.loads(won_quote.extracted_json)
+                elif quotes:
+                    # Fallback to first quote if none marked WON
+                    quote_id = quotes[0].id
+                    json_data = {
+                        'submission': submission.to_dict(),
+                        'quotes': [json.loads(q.extracted_json) for q in quotes if q.extracted_json]
+                    }
+                else:
+                    json_data = {
+                        'submission': submission.to_dict(),
+                        'quotes': []
+                    }
             
             # Create the job
             job = AmsExportJob(

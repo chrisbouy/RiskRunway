@@ -275,7 +275,7 @@ def screenshots_almost_equal(first: bytes, second: bytes, threshold: float = 2.0
     logger.info(f"Screenshot diff score: {mean_diff:.2f}")
     return mean_diff <= threshold
 
-def  run_vision_job(server_url: str, json_data: dict, region: dict) -> bool:
+def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int = None) -> bool:
     all_filled: set = set()
     remaining_data  = flatten_job_data(json_data)   # starts full, shrinks each pass
     previous_pass_screenshot: Optional[bytes] = None
@@ -293,7 +293,7 @@ def  run_vision_job(server_url: str, json_data: dict, region: dict) -> bool:
             logger.info("Screen is unchanged from the prior pass — stopping.")
             break
 
-        tb_data_map = get_tb_coords(server_url, current_ss, remaining_data, all_filled)
+        tb_data_map = get_tb_coords(server_url, current_ss, remaining_data, all_filled, job_id=job_id)
         safe_click  = tb_data_map.pop("__safe_click__", None)
         logger.info(f"filling")
         newly_filled = tb_fill(tb_data_map, region, scale)
@@ -340,10 +340,11 @@ def  run_vision_job(server_url: str, json_data: dict, region: dict) -> bool:
     return len(all_filled) > 0
 
 def get_tb_coords(server_url: str, screenshot_bytes: bytes,
-                          json_data: dict, already_filled: set) -> dict:
+                          json_data: dict, already_filled: set, job_id: int = None) -> dict:
     """
-    Send screenshot + data to the server, which calls Claude via Bedrock
-    and returns the field coordinate map.
+    Send screenshot + job_id to the server, which loads the quote page images
+    and calls Claude via Bedrock to match source data to form fields.
+    Falls back to json_data if job_id is not available.
     """
     skip_list = sorted(already_filled) if already_filled else []
 
@@ -352,12 +353,14 @@ def get_tb_coords(server_url: str, screenshot_bytes: bytes,
         'json_data': json_data,
         'already_filled': skip_list,
     }
+    if job_id:
+        payload['job_id'] = job_id
 
     try:
         response = requests.post(
             f"{server_url}/api/ams/vision",
             json=payload,
-            timeout=60
+            timeout=120
         )
         response.raise_for_status()
         data = response.json()
@@ -808,7 +811,7 @@ def run_job(job: dict, server_url: str):
     # Define the work function to run in a thread
     def do_work():
         try:
-            success = run_vision_job(server_url, json_data, region)
+            success = run_vision_job(server_url, json_data, region, job_id=job_id)
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")

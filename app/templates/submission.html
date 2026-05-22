@@ -1818,7 +1818,7 @@
             }
 
             const unique = areVisibleCoveragesUnique();
-            btn.disabled = false;
+            btn.disabled = !unique;
             btn.classList.toggle('ready', unique);
             btn.title = unique
                 ? 'Ready: visible coverage types are unique'

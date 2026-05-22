@@ -227,11 +227,11 @@ def process_application_two_pass(pdf_path):
 
     # Log text pages only (images can't be serialized)
     text_pages = [p for p in layout["pages"] if "text" in p]
-    if text_pages:
-        print(f"  Pass 1 text data: {json.dumps(text_pages, indent=2)}")
+    # if text_pages:
+        # print(f"  Pass 1 text data: {json.dumps(text_pages, indent=2)}")
     if has_scanned:
         image_pages = [p["page_number"] for p in layout["pages"] if "image" in p]
-        print(f"  Pass 1 scanned pages (sent as images): {image_pages}")
+        # print(f"  Pass 1 scanned pages (sent as images): {image_pages}")
 
     # Pass 2: Normalize to JSON (uses vision for scanned pages)
     print("Pass 2 of application_parser.process_application_two_pass: Normalizing to JSON schema...")
@@ -239,7 +239,7 @@ def process_application_two_pass(pdf_path):
     normalized = pass2_normalize_application_data(layout)
     metadata["pass2_duration"] = time.time() - pass2_start
     print(f"  ✓ Pass 2 (application) complete ({metadata['pass2_duration']:.2f}s)")
-    print(f"  Pass 2 data: {json.dumps(normalized, indent=2)}")
+    # print(f"  Pass 2 data: {json.dumps(normalized, indent=2)}")
 
     metadata["total_duration"] = time.time() - start
     metadata["extraction_method"] = "vision" if has_scanned else "text"
