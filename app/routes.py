@@ -1049,7 +1049,7 @@ def download_document(document_id):
         if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
             local_path = doc.storage_key
         else:
-            local_path = os.path.join(current_app.config['DOCUMENTS_LOCAL_FOLDER'], doc.storage_key)
+            local_path = os.path.join(current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER']), doc.storage_key)
         if not os.path.exists(local_path):
             return "Document file missing", 404
 
@@ -1339,6 +1339,7 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
                 'from_email': unified_email.from_email,
                 'from_name': unified_email.from_name,
                 'subject': unified_email.subject or '(No subject)',
+                'body_text': unified_email.body_text or '',
                 'received_date': unified_email.date.isoformat() if unified_email.date else None,
                 'has_attachments': len(unified_email.attachments) > 0,
                 'attachment_count': len(unified_email.attachments),
@@ -1992,6 +1993,140 @@ def add_email_correspondence(email_id, submission_id):
         finally:
             db_session.close()
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/save_correspondence', methods=['POST'])
+@login_required
+def save_email_correspondence_stateless():
+    """
+    Save email as correspondence document to a submission.
+    Stateless — accepts email content directly from the frontend (no DB email lookup).
+    Marks the email as read in the provider after saving.
+    
+    Request body:
+    {
+        "submission_id": int,
+        "message_id": str,
+        "account_id": int,
+        "provider": str,
+        "from_name": str,
+        "from_email": str,
+        "subject": str,
+        "body_text": str,
+        "received_date": str (ISO format)
+    }
+    """
+    try:
+        data = request.get_json()
+        submission_id = data.get('submission_id')
+        message_id = data.get('message_id')
+        account_id = data.get('account_id')
+        provider = data.get('provider')
+        from_name = data.get('from_name', '')
+        from_email = data.get('from_email', '')
+        subject = data.get('subject', '(No subject)')
+        body_text = data.get('body_text', '(No text content)')
+        received_date = data.get('received_date', '')
+
+        if not all([submission_id, message_id, account_id, provider]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+
+        db_session = get_session()
+        try:
+            # Verify submission exists
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            insured_name = submission.insured_name or 'unknown_insured'
+            sender_label = from_name or from_email or 'unknown'
+
+            # Create a text file with the email content
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            display_filename = f"Email with {sender_label}.txt"
+            unique_filename = f"{timestamp}_correspondence_{submission_id}.txt"
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+
+            email_content = f"From: {from_name or from_email}\nTo: {session.get('username', 'unknown')}\nSubject: {subject}\nDate: {received_date}\n\n---\n\n{body_text}"
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(email_content)
+
+            # Upload to storage
+            term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
+            doc_key = _build_storage_key(submission_id, 'CORRESPONDENCE', unique_filename, session.get('user_id'), insured_name)
+            storage_provider_val, storage_key = _storage_upload(filepath, doc_key, 'text/plain')
+
+            doc = Document(
+                submission_id=submission_id,
+                quote_id=None,
+                document_type=DocumentType.CORRESPONDENCE,
+                carrier=sender_label,
+                term_key=term_key,
+                version=1,
+                is_active=True,
+                storage_provider=storage_provider_val,
+                storage_key=storage_key,
+                original_filename=display_filename,
+                content_type='text/plain',
+                size_bytes=os.path.getsize(filepath) if os.path.exists(filepath) else None,
+                uploaded_by=session.get('username')
+            )
+            db_session.add(doc)
+            db_session.flush()
+            doc_id = doc.id
+            db_session.commit()
+
+            # Clean up temp file
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            except Exception as e:
+                logger.warning(f"Could not delete temp file {filepath}: {e}")
+
+            # Mark email as read in provider
+            try:
+                account = db_session.query(ConnectedAccount).filter_by(id=account_id).first()
+                if account:
+                    from app.oauth_services import get_oauth_service
+                    oauth_service = get_oauth_service(provider, current_app.config)
+                    tokens = account.get_decrypted_tokens()
+                    access_token = tokens.get('access_token')
+
+                    if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                        from datetime import timedelta
+                        refresh_token = tokens.get('refresh_token')
+                        if refresh_token:
+                            new_tokens = oauth_service.refresh_access_token(refresh_token)
+                            account.set_encrypted_tokens(new_tokens)
+                            account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
+                            db_session.commit()
+                            access_token = new_tokens.get('access_token')
+
+                    if access_token:
+                        oauth_service.mark_as_read(access_token, message_id)
+            except Exception as e:
+                logger.warning(f"Failed to mark email as read in provider: {e}")
+
+            # Log action
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='email_correspondence_added',
+                submission_id=submission_id,
+                details=json.dumps({'message_id': message_id, 'subject': subject, 'from': sender_label})
+            )
+
+            return jsonify({
+                'success': True,
+                'document_id': doc_id,
+                'submission_id': submission_id
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        logger.error(f"Save correspondence error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

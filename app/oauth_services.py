@@ -90,6 +90,25 @@ def decrypt_token(encrypted_tokens: str) -> Dict:
 # Unified Email Data Model
 # ============================================================================
 
+
+def _html_to_text(html: str) -> str:
+    """Strip HTML tags and decode entities to produce plain text."""
+    import re
+    from html import unescape
+    # Remove style and script blocks
+    text = re.sub(r'<(style|script)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    # Replace <br> and block-level tags with newlines
+    text = re.sub(r'<br\s*/?>|</p>|</div>|</tr>|</li>', '\n', text, flags=re.IGNORECASE)
+    # Strip remaining tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decode HTML entities
+    text = unescape(text)
+    # Collapse excessive whitespace but preserve paragraph breaks
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 class UnifiedEmail:
     """
     Normalized email structure regardless of provider.
@@ -470,6 +489,10 @@ class GmailOAuthService:
             except:
                 pass
         
+        # Fall back to stripping HTML if no plain text body
+        if not text_body and html_body:
+            text_body = _html_to_text(html_body)
+        
         return text_body, html_body
     
     def _extract_attachments(self, payload: Dict, message_id: str) -> List[Dict]:
@@ -729,7 +752,8 @@ class OutlookOAuthService:
             params={
                 '$top': max_results,
                 '$filter': filter_query,
-                '$select': 'id,subject,from,toRecipients,receivedDateTime,body,attachments'
+                '$select': 'id,subject,from,toRecipients,receivedDateTime,body,hasAttachments',
+                '$expand': 'attachments'
             }
         )
         
@@ -803,6 +827,9 @@ class OutlookOAuthService:
                 body_text = body_info.get('content', '')
             elif body_info.get('contentType') == 'html':
                 body_html = body_info.get('content', '')
+                # Extract plain text from HTML as fallback
+                if body_html and not body_text:
+                    body_text = _html_to_text(body_html)
             
             # Attachments - fetch separately if we have access_token
             attachments = []

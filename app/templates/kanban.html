@@ -834,8 +834,9 @@
             <div id="noEmailsMessage" class="text-gray-500 text-center py-8 hidden">
                 No new messages
             </div>
-            <div class="flex justify-end gap-2 mt-6">
-                <button id="closeNewMessagesBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+            <div class="flex items-center justify-between mt-6">
+                <p class="text-gray-400 text-sm">To bring back a dismissed message, mark it as unread in your Inbox (usually via right-click).</p>
+                <button id="closeNewMessagesBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex-shrink-0 ml-4">
                     Close
                 </button>
             </div>
@@ -868,6 +869,45 @@
                 <button id="cancelSelectSubmission" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
                     Cancel
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Correspondence Popup Modal -->
+    <div id="correspondencePopupModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-white">📧 Email Correspondence</h3>
+                <button id="closeCorrespondencePopup" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <span class="text-gray-400 text-sm">From:</span>
+                    <span id="correspondenceFrom" class="text-white ml-2"></span>
+                </div>
+                <div>
+                    <span class="text-gray-400 text-sm">Subject:</span>
+                    <span id="correspondenceSubject" class="text-white ml-2"></span>
+                </div>
+                <div>
+                    <span class="text-gray-400 text-sm">Date:</span>
+                    <span id="correspondenceDate" class="text-white ml-2"></span>
+                </div>
+                <hr class="border-gray-600">
+                <pre id="correspondenceBody" class="text-gray-200 text-sm whitespace-pre-wrap bg-gray-900 rounded p-4 max-h-80 overflow-y-auto"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Correspondence Popup Modal -->
+    <div id="allCorrespondenceModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-5xl max-h-[85vh] overflow-y-auto border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-white">📧 All Email Correspondence</h3>
+                <button id="closeAllCorrespondencePopup" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div id="allCorrespondenceContent" class="space-y-4">
+                <!-- Emails will be loaded here -->
             </div>
         </div>
     </div>
@@ -1374,21 +1414,63 @@
                 status = renewalCountdown || 'Bound';
             }
 
-            const docOptions = (submission.documents || []).map((doc) => {
+            // Build doc options: non-correspondence first, then correspondence in received order
+            const allDocs = submission.documents || [];
+            const nonCorrespondenceDocs = allDocs.filter(d => d.document_type !== 'Correspondence');
+            // Correspondence docs come from DB newest-first; reverse for received (oldest-first) order
+            const correspondenceDocs = allDocs
+                .filter(d => d.document_type === 'Correspondence')
+                .reverse();
+
+            // Non-correspondence options (apps, quotes, etc.)
+            const nonCorrOptions = nonCorrespondenceDocs.map(doc => {
                 const label = `${doc.document_type}: ${doc.name}`;
-                return `<option value="${doc.id}">${escapeHtml(label)}</option>`;
+                return `<option value="${doc.id}" data-doc-type="${doc.document_type}">${escapeHtml(label)}</option>`;
             }).join('');
 
-            // Add single "Notes" option if any stage has a note
+            // Correspondence options in received order
+            const correspondenceCounts = {};
+            const corrOptions = correspondenceDocs.map(doc => {
+                const sender = doc.carrier || 'unknown';
+                correspondenceCounts[sender] = (correspondenceCounts[sender] || 0) + 1;
+                const label = `📧 Email ${correspondenceCounts[sender]} from ${sender}`;
+                return `<option value="${doc.id}" data-doc-type="Correspondence">${escapeHtml(label)}</option>`;
+            }).join('');
+
+            // "View All Emails" option (only if more than one correspondence)
+            const viewAllEmailsOption = correspondenceDocs.length > 1
+                ? `<option value="viewall:emails">📧 View All Emails</option>` : '';
+
+            // Notes section
             const notesObj = (submission.notes && typeof submission.notes === 'object') ? submission.notes : {};
-            const hasAnyNote = Object.values(notesObj).some(v => v && v.trim());
-            const noteOptions = hasAnyNote ? `<option value="note:all">📝 Notes</option>` : '';
+            const stageOrder = ['submission', 'quoting', 'bind'];
+            const noteEntries = stageOrder.filter(k => notesObj[k] && notesObj[k].trim());
+            const noteOptions = noteEntries.map(k => {
+                const labels = { submission: 'Submission', quoting: 'Quoting', bind: 'Bind' };
+                return `<option value="note:${k}">📝 ${labels[k]} Note</option>`;
+            }).join('');
+            const viewAllNotesOption = noteEntries.length > 1
+                ? `<option value="note:all">📝 View All Notes</option>` : '';
+
+            // Assemble dropdown
+            let selectOptions = '';
+            if (nonCorrOptions) selectOptions += nonCorrOptions;
+            if (corrOptions) {
+                if (selectOptions) selectOptions += '<option disabled>───</option>';
+                selectOptions += corrOptions;
+                if (viewAllEmailsOption) selectOptions += viewAllEmailsOption;
+            }
+            if (noteOptions) {
+                if (selectOptions) selectOptions += '<option disabled>───</option>';
+                selectOptions += noteOptions;
+                if (viewAllNotesOption) selectOptions += viewAllNotesOption;
+            }
 
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
                 <div class="card-row">
                     <div class="card-left">
-                        ${(docOptions || noteOptions) ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="">Docs</option>${docOptions}${noteOptions ? (docOptions ? '<option disabled>───</option>' : '') + noteOptions : ''}</select>` : ''}
+                        ${selectOptions ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="" hidden>Docs</option>${selectOptions}</select>` : ''}
                     </div>
                     <div class="card-right">
                         <div class="card-status">${escapeHtml(status)}</div>
@@ -1441,10 +1523,20 @@
                     const val = this.value;
                     if (!val) return;
 
-                    if (val.startsWith('note:')) {
+                    if (val === 'viewall:emails') {
+                        openAllCorrespondencePopup(submission);
+                    } else if (val === 'note:all') {
+                        openNotesPopup(submission);
+                    } else if (val.startsWith('note:')) {
                         openNotesPopup(submission);
                     } else {
-                        window.open(`/api/documents/${val}/download`, '_blank');
+                        const selectedOption = this.options[this.selectedIndex];
+                        const docType = selectedOption.dataset.docType;
+                        if (docType === 'Correspondence') {
+                            openCorrespondencePopup(val);
+                        } else {
+                            window.open(`/api/documents/${val}/download`, '_blank');
+                        }
                     }
                     this.value = '';
                 });
@@ -1906,7 +1998,8 @@
                         ${attachmentsList ? `<div class="mb-2">${attachmentsList}</div>` : ''}
                         <div class="flex gap-2 mt-2">
                             ${hasQuote ? `<button class="ingest-quote-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-message-id="${email.message_id}">📄 Ingest Quote</button>` : ''}
-                            <button class="dismiss-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-message-id="${email.message_id}">🗑️ Dismiss</button>
+                            <button class="save-correspondence-btn px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700" data-message-id="${email.message_id}">💬 Save as Correspondence</button>
+                            <button class="dismiss-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-message-id="${email.message_id}">� Dismiss</button>
                         </div>
                     `;
                     
@@ -1921,11 +2014,19 @@
                     });
                 });
                 
+                document.querySelectorAll('.save-correspondence-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const msgId = this.dataset.messageId;
+                        const emailData = cachedEmails.find(e => e.message_id === msgId);
+                        if (emailData) openSubmissionSelector(emailData, 'correspondence');
+                    });
+                });
+                
                 document.querySelectorAll('.dismiss-email-btn').forEach(btn => {
                     btn.addEventListener('click', async function() {
                         const msgId = this.dataset.messageId;
                         const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData && confirm('Dismiss this email? It will be marked as read.')) {
+                        if (emailData && confirm('Mark this email as read? It won\'t appear here again unless you mark it unread in your inbox.')) {
                             await dismissEmail(emailData);
                         }
                     });
@@ -1948,9 +2049,12 @@
             if (action === 'quote') {
                 title.textContent = 'Select Submission for Quote';
                 description.textContent = 'Select a submission to attach this quote to:';
+            } else if (action === 'correspondence') {
+                title.textContent = 'Save as Correspondence';
+                description.textContent = 'Select a submission to save this email to:';
             } else {
-                title.textContent = 'Select Submission for Correspondence';
-                description.textContent = 'Select a submission to add this email as correspondence:';
+                title.textContent = 'Select Submission';
+                description.textContent = 'Select a submission:';
             }
             
             document.getElementById('selectSubmissionModal').classList.remove('hidden');
@@ -2025,35 +2129,64 @@
                     selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
                     cancelBtn.disabled = true;
                     closeBtn.disabled = true;
-                }
-                
-                const response = await fetch('/api/email/ingest_quote', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        submission_id: submissionId,
-                        message_id: currentEmailData.message_id,
-                        account_id: currentEmailData.account_id,
-                        provider: currentEmailData.provider,
-                        attachments: currentEmailData.attachments
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('Quote ingested successfully!');
                     
-                    // Remove from in-memory cache
-                    cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
-                    document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                    const response = await fetch('/api/email/ingest_quote', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            submission_id: submissionId,
+                            message_id: currentEmailData.message_id,
+                            account_id: currentEmailData.account_id,
+                            provider: currentEmailData.provider,
+                            attachments: currentEmailData.attachments
+                        })
+                    });
                     
-                    document.getElementById('selectSubmissionModal').classList.add('hidden');
-                    document.getElementById('newMessagesModal').classList.add('hidden');
+                    const data = await response.json();
                     
-                    await loadSubmissions();
-                } else {
-                    alert('Error: ' + (data.error || 'Unknown error'));
+                    if (data.success) {
+                        alert('Quote ingested successfully!');
+                        cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
+                        document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                        document.getElementById('selectSubmissionModal').classList.add('hidden');
+                        document.getElementById('newMessagesModal').classList.add('hidden');
+                        await loadSubmissions();
+                    } else {
+                        alert('Error: ' + (data.error || 'Unknown error'));
+                    }
+                } else if (currentEmailAction === 'correspondence') {
+                    selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
+                    cancelBtn.disabled = true;
+                    closeBtn.disabled = true;
+                    
+                    const response = await fetch('/api/email/save_correspondence', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            submission_id: submissionId,
+                            message_id: currentEmailData.message_id,
+                            account_id: currentEmailData.account_id,
+                            provider: currentEmailData.provider,
+                            from_name: currentEmailData.from_name || '',
+                            from_email: currentEmailData.from_email || '',
+                            subject: currentEmailData.subject || '',
+                            body_text: currentEmailData.body_text || '',
+                            received_date: currentEmailData.received_date || ''
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert('Email saved as correspondence!');
+                        cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
+                        document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                        document.getElementById('selectSubmissionModal').classList.add('hidden');
+                        document.getElementById('newMessagesModal').classList.add('hidden');
+                        await loadSubmissions();
+                    } else {
+                        alert('Error: ' + (data.error || 'Unknown error'));
+                    }
                 }
             } catch (error) {
                 console.error('Failed to process email action:', error);
@@ -2352,6 +2485,127 @@
                 console.error('Error saving broker:', error);
                 alert('Error saving broker');
             }
+        });
+
+        // ============================================================================
+        // CORRESPONDENCE POPUP
+        // ============================================================================
+
+        async function openCorrespondencePopup(docId) {
+            try {
+                const response = await fetch(`/api/documents/${docId}/download`);
+                const text = await response.text();
+                
+                // Parse the email text format
+                const lines = text.split('\n');
+                let from = '', subject = '', date = '', body = '';
+                let bodyStarted = false;
+                
+                for (const line of lines) {
+                    if (bodyStarted) {
+                        body += line + '\n';
+                    } else if (line.startsWith('From: ')) {
+                        from = line.substring(6);
+                    } else if (line.startsWith('Subject: ')) {
+                        subject = line.substring(9);
+                    } else if (line.startsWith('Date: ')) {
+                        date = line.substring(6);
+                    } else if (line.trim() === '---') {
+                        bodyStarted = true;
+                    }
+                }
+                
+                const formattedDate = date ? new Date(date).toLocaleString() : '';
+                
+                const modal = document.getElementById('correspondencePopupModal');
+                document.getElementById('correspondenceFrom').textContent = from;
+                document.getElementById('correspondenceSubject').textContent = subject;
+                document.getElementById('correspondenceDate').textContent = formattedDate;
+                document.getElementById('correspondenceBody').textContent = body.trim() || '(No email body)';
+                modal.classList.remove('hidden');
+            } catch (error) {
+                console.error('Failed to load correspondence:', error);
+                alert('Failed to load email correspondence.');
+            }
+        }
+
+        document.getElementById('closeCorrespondencePopup').addEventListener('click', function() {
+            document.getElementById('correspondencePopupModal').classList.add('hidden');
+        });
+
+        // ============================================================================
+        // ALL CORRESPONDENCE POPUP
+        // ============================================================================
+
+        async function openAllCorrespondencePopup(submission) {
+            const modal = document.getElementById('allCorrespondenceModal');
+            const content = document.getElementById('allCorrespondenceContent');
+            content.innerHTML = '<p class="text-gray-400 text-center">Loading emails...</p>';
+            modal.classList.remove('hidden');
+
+            // Get correspondence docs in received order (reversed from DB newest-first)
+            const corrDocs = (submission.documents || [])
+                .filter(d => d.document_type === 'Correspondence')
+                .reverse();
+
+            // Fetch all correspondence files in parallel
+            const emailResults = await Promise.all(corrDocs.map(async (doc) => {
+                try {
+                    const response = await fetch(`/api/documents/${doc.id}/download`);
+                    const text = await response.text();
+                    const lines = text.split('\n');
+                    let from = '', subject = '', date = '', body = '';
+                    let bodyStarted = false;
+                    for (const line of lines) {
+                        if (bodyStarted) {
+                            body += line + '\n';
+                        } else if (line.startsWith('From: ')) {
+                            from = line.substring(6);
+                        } else if (line.startsWith('Subject: ')) {
+                            subject = line.substring(9);
+                        } else if (line.startsWith('Date: ')) {
+                            date = line.substring(6);
+                        } else if (line.trim() === '---') {
+                            bodyStarted = true;
+                        }
+                    }
+                    return { from, subject, date, body: body.trim(), rawDate: date };
+                } catch (e) {
+                    return { from: '?', subject: '?', date: '', body: '(Failed to load)', rawDate: '' };
+                }
+            }));
+
+            // Sort by received date (oldest first)
+            emailResults.sort((a, b) => {
+                const da = a.rawDate ? new Date(a.rawDate) : new Date(0);
+                const db = b.rawDate ? new Date(b.rawDate) : new Date(0);
+                return da - db;
+            });
+
+            // Render 2-column layout: metadata left, body right
+            if (emailResults.length === 0) {
+                content.innerHTML = '<p class="text-gray-500 text-center">No correspondence emails found.</p>';
+                return;
+            }
+
+            content.innerHTML = emailResults.map((email, i) => {
+                const formattedDate = email.rawDate ? new Date(email.rawDate).toLocaleString() : '—';
+                const bodyText = email.body || '(No email body)';
+                return `
+                    <div class="grid grid-cols-[220px_1fr] gap-4 border border-gray-600 rounded-lg p-4 bg-gray-900 bg-opacity-50">
+                        <div class="space-y-2 border-r border-gray-700 pr-4">
+                            <div><span class="text-gray-500 text-xs uppercase">From</span><div class="text-gray-200 text-sm">${escapeHtml(email.from)}</div></div>
+                            <div><span class="text-gray-500 text-xs uppercase">Subject</span><div class="text-gray-200 text-sm">${escapeHtml(email.subject)}</div></div>
+                            <div><span class="text-gray-500 text-xs uppercase">Received</span><div class="text-gray-200 text-sm">${escapeHtml(formattedDate)}</div></div>
+                        </div>
+                        <pre class="text-gray-300 text-sm whitespace-pre-wrap bg-gray-900 rounded p-3 max-h-60 overflow-y-auto m-0">${escapeHtml(bodyText)}</pre>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('closeAllCorrespondencePopup').addEventListener('click', function() {
+            document.getElementById('allCorrespondenceModal').classList.add('hidden');
         });
 
         // ============================================================================

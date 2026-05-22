@@ -193,6 +193,30 @@ def _ensure_schema_updates(engine):
         except Exception as e:
             print(f"[schema] ENUM '{enum_name}' skipped: {e}")
 
+    # Step 1b: Add missing values to existing ENUM types
+    # ALTER TYPE ... ADD VALUE cannot run inside a transaction, so use autocommit
+    raw_conn = engine.raw_connection()
+    try:
+        raw_conn.set_session(autocommit=True)
+        cursor = raw_conn.cursor()
+        for enum_name, enum_class in enum_types.items():
+            try:
+                for e in enum_class:
+                    val = e.name  # Use .name (uppercase) to match existing DB convention
+                    cursor.execute(
+                        "SELECT 1 FROM pg_enum WHERE enumtypid = "
+                        "(SELECT oid FROM pg_type WHERE typname = %s) AND enumlabel = %s",
+                        (enum_name, val)
+                    )
+                    if not cursor.fetchone():
+                        cursor.execute(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{val}'")
+                        print(f"Added value '{val}' to ENUM type: {enum_name}")
+            except Exception as e:
+                print(f"[schema] ENUM value add for '{enum_name}' skipped: {e}")
+        cursor.close()
+    finally:
+        raw_conn.close()
+
     # Step 2: Add missing columns (each ALTER in its own transaction)
     _add_missing_columns(engine, inspector)
 

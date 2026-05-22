@@ -68,3 +68,6 @@ playwright-report/data/*
 playwright-report/trace/*
 test-results/*
 
+# Uploads
+/uploads
+

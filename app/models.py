@@ -48,6 +48,7 @@ class DocumentType(enum.Enum):
     QUOTE = "Quote"
     BINDER = "Binder"
     FINANCE_AGREEMENT = "Finance Agreement"
+    CORRESPONDENCE = "Correspondence"
     OTHER = "Other"
 
 
