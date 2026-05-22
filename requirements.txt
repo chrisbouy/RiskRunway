@@ -17,6 +17,7 @@ werkzeug
 sqlalchemy
 gunicorn
 sendgrid
+resend
 boto3
 apscheduler
 # OAuth and API clients

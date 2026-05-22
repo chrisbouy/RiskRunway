@@ -62,15 +62,28 @@ class User(Base):
     username = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True, index=True)  # For password resets
     role = Column(Enum(UserRole), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     signature = Column(Text, nullable=True)  # Email signature for follow-ups
     ams_agent_installed = Column(Boolean, default=False, nullable=False)  # Whether user has completed agent setup
+    password_reset_token = Column(String(255), nullable=True)
+    password_reset_expires = Column(DateTime, nullable=True)
 
     # Relationships
     assigned_submissions = relationship("Submission", back_populates="assigned_user")
     brokers = relationship("Broker", back_populates="user", cascade="all, delete-orphan")
+
+    @staticmethod
+    def validate_password(password):
+        """
+        Validate password meets minimum requirements.
+        Returns (is_valid, error_message).
+        """
+        if not password or len(password) < 12:
+            return False, 'Password must be at least 12 characters long'
+        return True, None
 
     def set_password(self, password):
         """Hash and set the user's password"""
@@ -89,6 +102,7 @@ class User(Base):
             'id': self.id,
             'username': self.username,
             'full_name': self.full_name,
+            'email': self.email,
             'role': self.role.value,
             'is_active': self.is_active,
             'signature': self.signature,

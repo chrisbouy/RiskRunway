@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, ses
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 import requests
 import base64
@@ -371,6 +371,168 @@ def logout():
     """Logout and clear session"""
     session.clear()
     return jsonify({'success': True})
+
+
+# ============================================================================
+# PASSWORD RESET ROUTES
+# ============================================================================
+
+@bp.route('/forgot-password', methods=['GET'])
+def forgot_password_page():
+    """Display the forgot password form"""
+    return render_template('forgot_password.html')
+
+
+@bp.route('/api/forgot-password', methods=['POST'])
+def forgot_password():
+    """Send a password reset email"""
+    import secrets
+    try:
+        data = request.get_json()
+        email = (data.get('email') or '').strip().lower()
+
+        if not email:
+            return jsonify({'success': False, 'error': 'Email is required'}), 400
+
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(email=email, is_active=True).first()
+
+            # Always return success to prevent email enumeration
+            if not user:
+                return jsonify({'success': True, 'message': 'If an account with that email exists, a reset link has been sent.'})
+
+            # Generate reset token
+            token = secrets.token_urlsafe(32)
+            user.password_reset_token = token
+            user.password_reset_expires = datetime.utcnow() + timedelta(hours=1)
+            db_session.commit()
+
+            # Send reset email via Resend
+            base_url = current_app.config.get('APP_BASE_URL', 'http://localhost:5001')
+            reset_url = f"{base_url}/reset-password?token={token}"
+
+            _send_password_reset_email(user.email, user.full_name, reset_url)
+
+            return jsonify({'success': True, 'message': 'If an account with that email exists, a reset link has been sent.'})
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        logger.error(f"Forgot password error: {e}")
+        return jsonify({'success': False, 'error': 'An error occurred. Please try again.'}), 500
+
+
+@bp.route('/reset-password', methods=['GET'])
+def reset_password_page():
+    """Display the reset password form"""
+    token = request.args.get('token')
+    if not token:
+        return redirect(url_for('main.login'))
+    return render_template('reset_password.html', token=token)
+
+
+@bp.route('/api/reset-password', methods=['POST'])
+def reset_password():
+    """Reset password using token"""
+    try:
+        data = request.get_json()
+        token = data.get('token')
+        new_password = data.get('password')
+
+        if not token or not new_password:
+            return jsonify({'success': False, 'error': 'Token and password are required'}), 400
+
+        # Validate password
+        is_valid, error_msg = User.validate_password(new_password)
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(password_reset_token=token).first()
+
+            if not user:
+                return jsonify({'success': False, 'error': 'Invalid or expired reset link'}), 400
+
+            if user.password_reset_expires and user.password_reset_expires < datetime.utcnow():
+                return jsonify({'success': False, 'error': 'Reset link has expired. Please request a new one.'}), 400
+
+            # Set new password and clear token
+            user.set_password(new_password)
+            user.password_reset_token = None
+            user.password_reset_expires = None
+            db_session.commit()
+
+            log_action(
+                entity_type='user',
+                entity_id=user.id,
+                action='password_reset',
+                details=f"Password reset completed for {user.username}"
+            )
+
+            return jsonify({'success': True, 'message': 'Password has been reset. You can now log in.'})
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        logger.error(f"Reset password error: {e}")
+        return jsonify({'success': False, 'error': 'An error occurred. Please try again.'}), 500
+
+
+def _send_password_reset_email(to_email, user_name, reset_url):
+    """Send password reset email via Resend API"""
+    import requests as http_requests
+
+    api_key = current_app.config.get('RESEND_API_KEY')
+    from_email = current_app.config.get('RESEND_FROM_EMAIL', 'noreply@risk-runway.com')
+
+    if not api_key:
+        raise ValueError("RESEND_API_KEY is not configured")
+
+    html_body = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <h2 style="color: #1a1a1a; margin-bottom: 24px;">Reset Your Password</h2>
+        <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+            Hi {user_name},
+        </p>
+        <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+            We received a request to reset your password. Click the button below to choose a new one:
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{reset_url}" style="background-color: #2563eb; color: white; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">
+                Reset Password
+            </a>
+        </div>
+        <p style="color: #6b7280; font-size: 14px; line-height: 1.5;">
+            This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+        </p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;" />
+        <p style="color: #9ca3af; font-size: 12px;">
+            Risk Runway — Insurance Premium Finance System
+        </p>
+    </div>
+    """
+
+    response = http_requests.post(
+        'https://api.resend.com/emails',
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        },
+        json={
+            'from': f'Risk Runway <{from_email}>',
+            'to': [to_email],
+            'subject': 'Reset Your Password - Risk Runway',
+            'html': html_body
+        }
+    )
+
+    if response.status_code not in (200, 201):
+        logger.error(f"Resend API error: {response.status_code} - {response.text}")
+        raise ValueError(f"Failed to send email: {response.text}")
+
+    logger.info(f"Password reset email sent to {to_email}")
 
 
 # ============================================================================
@@ -3310,6 +3472,11 @@ def create_user():
         if not all([username, password, full_name, role]):
             return jsonify({'success': False, 'error': 'All fields are required'}), 400
 
+        # Validate password
+        is_valid, error_msg = User.validate_password(password)
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
         # Validate role
         try:
             user_role = UserRole[role]
@@ -3327,6 +3494,7 @@ def create_user():
             new_user = User(
                 username=username,
                 full_name=full_name,
+                email=data.get('email'),
                 role=user_role,
                 is_active=True
             )
@@ -3376,6 +3544,9 @@ def update_user(user_id):
                 user.is_active = data['is_active']
 
             if 'password' in data and data['password']:
+                is_valid, error_msg = User.validate_password(data['password'])
+                if not is_valid:
+                    return jsonify({'success': False, 'error': error_msg}), 400
                 user.set_password(data['password'])
 
             db_session.commit()
@@ -4261,12 +4432,16 @@ def get_ams_agent_install_status():
 @bp.route('/api/ams/vision', methods=['POST'])
 def ams_vision():
     """
-    Receives a screenshot + form data from the local agent, calls Claude via
-    Bedrock to identify form fields, and returns the field coordinate map.
+    Receives a screenshot + form data from the local agent, calls the configured
+    LLM provider (via LLM_PROVIDER in .env) to identify form fields, and returns
+    the field coordinate map.
     No auth required — called by the local agent on the user's machine.
     """
     try:
-        import boto3
+        from PIL import Image
+        from io import BytesIO
+        import settings as settings_module
+        from app.parsers.llm_parsers import GroqClient, BedrockClient, GeminiClient
 
         data = request.get_json()
         if not data:
@@ -4279,10 +4454,11 @@ def ams_vision():
         if not screenshot_b64:
             return jsonify({'success': False, 'error': 'screenshot is required'}), 400
 
-        # Decode the screenshot
+        # Decode the screenshot into a PIL Image for the LLM clients
         screenshot_bytes = base64.b64decode(screenshot_b64)
+        screenshot_image = Image.open(BytesIO(screenshot_bytes)).convert("RGB")
 
-        # Build the prompt (same logic that was in local_agent.py)
+        # Build the prompt
         skip_note = ""
         if already_filled:
             skip_note = (
@@ -4329,62 +4505,27 @@ def ams_vision():
             '}'
         )
 
-        # Call Bedrock
-        aws_region = current_app.config.get('S3_REGION', 'us-east-1')
-        model_id = os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-6')
+        # Use the configured LLM provider
+        provider = settings_module.LLM_PROVIDER.lower()
+        logger.info(f"[AMS Vision] Using LLM provider: {provider}")
 
-        bedrock = boto3.client("bedrock-runtime", region_name=aws_region)
+        if provider == "groq":
+            if not settings_module.GROQ_API_KEY:
+                return jsonify({'success': False, 'error': 'GROQ_API_KEY is required when LLM_PROVIDER=groq'}), 500
+            client = GroqClient(settings_module.GROQ_API_KEY, model=settings_module.GROQ_MODEL)
+        elif provider == "bedrock":
+            client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
+        elif provider == "gemini":
+            if not settings_module.GEMINI_API_KEY:
+                return jsonify({'success': False, 'error': 'GEMINI_API_KEY is required when LLM_PROVIDER=gemini'}), 500
+            from google import genai
+            genai_client = genai.Client(api_key=settings_module.GEMINI_API_KEY)
+            client = GeminiClient(genai_client, model=settings_module.GEMINI_MODEL)
+        else:
+            return jsonify({'success': False, 'error': f'Unknown LLM_PROVIDER: {provider}'}), 500
 
-        content = [
-            {"image": {"format": "jpeg", "source": {"bytes": screenshot_bytes}}},
-            {"text": prompt},
-        ]
-
-        response = bedrock.converse_stream(
-            modelId=model_id,
-            messages=[{"role": "user", "content": content}],
-        )
-
-        full_text = []
-        for event in response["stream"]:
-            if "contentBlockDelta" in event:
-                delta = event["contentBlockDelta"].get("delta", {})
-                if "text" in delta:
-                    full_text.append(delta["text"])
-
-        raw = "".join(full_text)
-        logger.info(f"[AMS Vision] Claude response ({len(raw)} chars)")
-
-        # Parse the JSON from Claude's response
-        import re as re_module
-        field_map = None
-
-        # Try plain JSON
-        try:
-            field_map = json.loads(raw.strip())
-        except json.JSONDecodeError:
-            pass
-
-        # Try fenced block
-        if field_map is None:
-            fence = re_module.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re_module.DOTALL)
-            if fence:
-                try:
-                    field_map = json.loads(fence.group(1))
-                except json.JSONDecodeError:
-                    pass
-
-        # Try first { ... } block
-        if field_map is None:
-            brace = re_module.search(r"\{.*\}", raw, re_module.DOTALL)
-            if brace:
-                try:
-                    field_map = json.loads(brace.group(0))
-                except json.JSONDecodeError:
-                    pass
-
-        if field_map is None:
-            return jsonify({'success': False, 'error': f'Could not parse Claude response: {raw[:200]}'}), 500
+        field_map = client.generate_json_with_images(prompt, [screenshot_image])
+        print(f"[AMS Vision] {provider} raw response: {json.dumps(field_map, indent=2)}")
 
         return jsonify({'success': True, 'field_map': field_map})
 

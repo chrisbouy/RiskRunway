@@ -258,6 +258,9 @@ def _add_missing_columns(engine, inspector):
     if 'users' in table_names:
         _safe_add_column('users', 'signature', 'TEXT')
         _safe_add_column('users', 'ams_agent_installed', 'BOOLEAN DEFAULT FALSE NOT NULL')
+        _safe_add_column('users', 'email', 'VARCHAR(255)')
+        _safe_add_column('users', 'password_reset_token', 'VARCHAR(255)')
+        _safe_add_column('users', 'password_reset_expires', 'TIMESTAMP')
 
     # brokers
     if 'brokers' in table_names:

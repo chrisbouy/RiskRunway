@@ -28,6 +28,11 @@ class Config:
     BUG_REPORT_SENDER = os.environ.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
     SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 
+    # Resend (transactional emails: password resets, etc.)
+    RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+    RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'noreply@risk-runway.com')
+    APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:5001')
+
     # OAuth Email Integration Configuration
     # Gmail OAuth (configure via Google Cloud Console)
     GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '')

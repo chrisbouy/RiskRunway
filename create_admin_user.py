@@ -10,7 +10,7 @@ from app.database import init_db, get_session
 from app.models import User, UserRole
 
 
-def create_admin_user(username='admin1', password='123', full_name='Admin User'):
+def create_admin_user(username='chrisbouy', password='riskrunway2025', full_name='Chris Bouy', email='chrisbouy@risk-runway.com'):
     """Create an admin user."""
     # Initialize database (creates tables if they don't exist)
     init_db()
@@ -22,12 +22,18 @@ def create_admin_user(username='admin1', password='123', full_name='Admin User')
         existing = session.query(User).filter_by(username=username).first()
         if existing:
             print(f"User '{username}' already exists (id={existing.id})")
+            # Update password and email if needed
+            existing.set_password(password)
+            existing.email = email
+            session.commit()
+            print(f"Updated password and email for '{username}'")
             return existing
         
         # Create new admin user
         user = User(
             username=username,
             full_name=full_name,
+            email=email,
             role=UserRole.ADMIN
         )
         user.set_password(password)
@@ -47,4 +53,4 @@ def create_admin_user(username='admin1', password='123', full_name='Admin User')
 
 
 if __name__ == '__main__':
-    create_admin_user('admin1', '123', 'Admin User')
+    create_admin_user()

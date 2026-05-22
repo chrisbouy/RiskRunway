@@ -61,20 +61,19 @@ def parse_riskrunway_url(url: str) -> dict:
 
 def get_local_agent_path() -> Path:
     """Find local_agent.py relative to launcher location."""
-    # Launcher is in launcher/ directory, local_agent.py is in parent
     launcher_dir = Path(__file__).parent.absolute()
     project_root = launcher_dir.parent
     
-    agent_path = project_root / 'local_agent.py'
-    
-    if agent_path.exists():
-        return agent_path
-    
-    # Fallback: search in common locations
+    # Check common locations in priority order:
+    # 1. Same directory as launcher (inside .app bundle: Contents/Resources/)
+    # 2. Parent directory (dev layout: launcher/ -> project root)
+    # 3. Well-known install paths
     search_paths = [
+        launcher_dir / 'local_agent.py',
+        project_root / 'local_agent.py',
         Path.home() / 'RiskRunway' / 'local_agent.py',
         Path.home() / '.riskrunway' / 'local_agent.py',
-        Path('/Applications/RiskRunway.app/Contents/Resources/local_agent.py'),
+        Path('/Applications/RiskRunwayLauncher.app/Contents/Resources/local_agent.py'),
     ]
     
     for path in search_paths:
