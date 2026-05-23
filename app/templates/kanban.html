@@ -2197,12 +2197,11 @@
                     const data = await response.json();
                     
                     if (data.success) {
-                        alert('Quote ingested successfully!');
                         cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
                         document.getElementById('newMessageCount').textContent = cachedEmails.length;
                         document.getElementById('selectSubmissionModal').classList.add('hidden');
                         document.getElementById('newMessagesModal').classList.add('hidden');
-                        await loadSubmissions();
+                        window.location.href = `/submission/${submissionId}`;
                     } else {
                         alert('Error: ' + (data.error || 'Unknown error'));
                     }

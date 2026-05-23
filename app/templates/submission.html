@@ -3178,16 +3178,8 @@ Thank you for your attention to this matter.`;
                     alert(`Submission sent to ${sentCount} broker(s)!`);
                 }
 
-                // Close modal and switch to quoting screen
-                document.getElementById('submitToMarketModal').classList.add('hidden');
-
-                const statusDropdown = document.getElementById('statusDropdown');
-                statusDropdown.value = 'IN_PROGRESS';
-                applyStageView('IN_PROGRESS', submissionData?.effective_date);
-
-                document.getElementById('submissionStageSection').classList.remove('active');
-                document.getElementById('quotingStageSection').classList.add('active');
-                document.getElementById('bindStageSection').classList.remove('active');
+                // Redirect to kanban board
+                window.location.href = '/';
             } catch (error) {
                 console.error('Error submitting to market:', error);
                 alert(error.message || 'Error submitting to market');

@@ -752,7 +752,7 @@ class OutlookOAuthService:
             params={
                 '$top': max_results,
                 '$filter': filter_query,
-                '$select': 'id,subject,from,toRecipients,receivedDateTime,body,hasAttachments',
+                '$select': 'id,subject,from,toRecipients,receivedDateTime,body,hasAttachments,attachments',
                 '$expand': 'attachments'
             }
         )
@@ -834,26 +834,27 @@ class OutlookOAuthService:
             # Attachments - fetch separately if we have access_token
             attachments = []
             
-            # First check if attachments came in the message (inline)
+            # First check if attachments came in the message (via $expand)
             inline_attachments = message.get('attachments', [])
-            print(f"Message {message_id} has {len(inline_attachments)} inline attachments")
             if inline_attachments:
                 print(f"Message {message_id} has {len(inline_attachments)} inline attachments")
                 for att in inline_attachments:
-                    print(f"Inline attachment: {att}")
+                    # Skip inline images (contentId indicates inline/embedded)
+                    if att.get('isInline', False) and not att.get('name', '').lower().endswith(('.pdf', '.xlsx', '.xls', '.docx', '.doc')):
+                        continue
                     attachments.append({
                         'message_id': message_id,
                         'attachment_id': att.get('id', ''),
                         'filename': att.get('name', ''),
-                        'content_type': att.get('odataType', ''),
+                        'content_type': att.get('contentType', att.get('odataType', '')),
                         'size': att.get('size', 0)
                     })
             
-            # If no attachments and we have access_token, fetch them separately
-            print(f"Attachments: {attachments}")
-            if not attachments and access_token:
+            # If no attachments found inline but message says it has them, fetch separately
+            has_attachments_flag = message.get('hasAttachments', False)
+            if not attachments and has_attachments_flag and access_token:
                 try:
-                    print(f"Fetching attachments for {message_id} (separate call)")
+                    print(f"Fetching attachments for {message_id} (separate call, hasAttachments={has_attachments_flag})")
                     att_response = requests.get(
                         f'https://graph.microsoft.com/v1.0/me/messages/{message_id}/attachments',
                         headers={'Authorization': f'Bearer {access_token}'}
@@ -862,12 +863,13 @@ class OutlookOAuthService:
                         att_data = att_response.json().get('value', [])
                         print(f"Message {message_id} fetched {len(att_data)} attachments (separate call)")
                         for att in att_data:
-                            # print(f"Fetched attachment: {att}")
+                            if att.get('isInline', False) and not att.get('name', '').lower().endswith(('.pdf', '.xlsx', '.xls', '.docx', '.doc')):
+                                continue
                             attachments.append({
                                 'message_id': message_id,
                                 'attachment_id': att.get('id', ''),
                                 'filename': att.get('name', ''),
-                                'content_type': att.get('odataType', ''),
+                                'content_type': att.get('contentType', att.get('odataType', '')),
                                 'size': att.get('size', 0)
                             })
                 except Exception as e:
