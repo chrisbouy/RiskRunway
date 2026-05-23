@@ -71,3 +71,10 @@ test-results/*
 # Uploads
 /uploads
 
+
+# AMS fill debug screenshots
+logs/fill_screenshots/
+
+# Launcher build artifacts
+launcher/dist/
+launcher/build/

@@ -70,6 +70,9 @@ POLL_INTERVAL      = 0.5   # seconds between idle polls
 MAX_SCROLL_PASSES  = 1     # max scroll passes per job (safety limit)
 CLICK_DELAY        = 0.08  # seconds to wait after clicking a field
 FILL_DELAY         = 0.06  # seconds between filling each field
+VERIFY_DELAY       = 0.12  # seconds to wait before verifying a field
+MAX_FIELD_RETRIES  = 3     # max attempts per field before giving up
+RETRY_OFFSET_PX    = 3     # pixel nudge on retry attempts
 
 # Crop the detected app window down to the form viewport so vision
 # never sees browser chrome, tabs, or the address bar.
@@ -81,6 +84,11 @@ FORM_REGION_INSET_BOTTOM = 18
 IS_MAC        = platform.system() == "Darwin"
 PASTE_HOTKEY  = ("command", "v") if IS_MAC else ("ctrl", "v")
 SELECT_HOTKEY = ("command", "a") if IS_MAC else ("ctrl", "a")
+COPY_HOTKEY   = ("command", "c") if IS_MAC else ("ctrl", "c")
+
+# Debug output directory for fill verification screenshots
+DEBUG_FILL_DIR = Path(__file__).parent / "logs" / "fill_screenshots"
+DEBUG_FILL_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -296,7 +304,7 @@ def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int 
         tb_data_map = get_tb_coords(server_url, current_ss, remaining_data, all_filled, job_id=job_id)
         safe_click  = tb_data_map.pop("__safe_click__", None)
         logger.info(f"filling")
-        newly_filled = tb_fill(tb_data_map, region, scale)
+        newly_filled = tb_fill(tb_data_map, region, scale, job_id=job_id)
         all_filled.update(newly_filled)
 
         # COMMENTED OUT: Remove the data values that got placed this pass
@@ -379,17 +387,136 @@ def get_tb_coords(server_url: str, screenshot_bytes: bytes,
         logger.error(f"Vision API error: {e}")
         return {}
 
-def tb_fill(tb_dict: dict, region: dict, scale: float) -> set:
+def verify_field_filled(value: str) -> str:
+    """
+    After pasting into a field, select-all + copy to read back what's in the
+    focused element. Returns a verdict: 'hit', 'miss_empty', 'miss_page_selected'.
+
+    Heuristic:
+      - Clipboard contains the pasted value (substring) → hit
+      - Clipboard is empty or unchanged → miss (click landed on non-editable)
+      - Clipboard is >5x longer than value → miss (Cmd+A selected the whole page)
+    """
+    time.sleep(VERIFY_DELAY)
+    # Clear clipboard so we can detect "nothing copied"
+    pyperclip.copy("")
+    pyautogui.hotkey(*SELECT_HOTKEY)
+    time.sleep(0.04)
+    pyautogui.hotkey(*COPY_HOTKEY)
+    time.sleep(0.04)
+
+    clipboard = pyperclip.paste().strip()
+
+    if not clipboard:
+        return "miss_empty"
+    # If clipboard is way longer than our value, we probably selected the whole page
+    if len(clipboard) > max(len(value) * 5, 200):
+        return "miss_page_selected"
+    # Check if our value is present in what was selected
+    if value.lower() in clipboard.lower():
+        return "hit"
+    # The field has *something* but not our value — could be a pre-filled field
+    # we accidentally clicked, or the paste didn't take
+    return "miss_wrong_content"
+
+
+def capture_miss_thumbnail(abs_x: int, abs_y: int, label: str, attempt: int, region: dict):
+    """
+    Capture a small screenshot (~200x120px) around the click point for debugging.
+    Saved to the debug directory with field name and attempt number.
+    """
+    thumb_w, thumb_h = 200, 120
+    # Center the thumbnail on the click point, but clamp to screen
+    tx = abs_x - thumb_w // 2
+    ty = abs_y - thumb_h // 2
+
+    try:
+        if USE_MSS:
+            with mss.mss() as sct:
+                monitor = {"left": tx, "top": ty, "width": thumb_w, "height": thumb_h}
+                shot = sct.grab(monitor)
+                img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        else:
+            bbox = (tx, ty, tx + thumb_w, ty + thumb_h)
+            img = ImageGrab.grab(bbox=bbox, all_screens=True)
+
+        # Draw a red crosshair at the click point (center of thumbnail)
+        draw = ImageDraw.Draw(img)
+        cx, cy = thumb_w // 2, thumb_h // 2
+        draw.line([(cx - 10, cy), (cx + 10, cy)], fill="red", width=2)
+        draw.line([(cx, cy - 10), (cx, cy + 10)], fill="red", width=2)
+
+        safe_label = re.sub(r'[^\w\-]', '_', label)[:40]
+        timestamp = time.strftime("%H%M%S")
+        filename = f"miss_{safe_label}_attempt{attempt}_{timestamp}.png"
+        path = DEBUG_FILL_DIR / filename
+        img.save(str(path))
+        logger.info(f"  📸 Miss thumbnail saved: {path}")
+    except Exception as e:
+        logger.warning(f"  Could not save miss thumbnail: {e}")
+
+
+def save_annotated_screenshot(region: dict, click_log: list, job_id: int = None):
+    """
+    Take a full screenshot of the form region and draw X markers at every
+    click coordinate. Each X is labeled with the field name and color-coded:
+      green = verified hit, red = miss after all retries, yellow = unverified.
+    """
+    try:
+        if USE_MSS:
+            with mss.mss() as sct:
+                monitor = {
+                    "left": region["x"], "top": region["y"],
+                    "width": region["width"], "height": region["height"],
+                }
+                shot = sct.grab(monitor)
+                img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        else:
+            bbox = (region["x"], region["y"],
+                    region["x"] + region["width"], region["y"] + region["height"])
+            img = ImageGrab.grab(bbox=bbox, all_screens=True)
+
+        draw = ImageDraw.Draw(img)
+
+        for entry in click_log:
+            # Convert absolute coords to relative within the region
+            rx = entry["abs_x"] - region["x"]
+            ry = entry["abs_y"] - region["y"]
+            status = entry.get("status", "unknown")
+
+            color = {"hit": "#00cc44", "miss": "#ff2222", "unknown": "#ffaa00"}.get(status, "#ffaa00")
+
+            # Draw X marker
+            size = 12
+            draw.line([(rx - size, ry - size), (rx + size, ry + size)], fill=color, width=2)
+            draw.line([(rx - size, ry + size), (rx + size, ry - size)], fill=color, width=2)
+
+            # Label
+            label_text = f"{entry['label']}"
+            draw.text((rx + size + 3, ry - 8), label_text, fill=color)
+
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        job_tag = f"_job{job_id}" if job_id else ""
+        filename = f"fill_map{job_tag}_{timestamp}.png"
+        path = DEBUG_FILL_DIR / filename
+        img.save(str(path))
+        logger.info(f"📋 Annotated fill map saved: {path}")
+        print(f"  Fill map: {path}")
+    except Exception as e:
+        logger.warning(f"Could not save annotated screenshot: {e}")
+
+
+def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> set:
     filled = set()
+    failed = set()
+    click_log = []  # Track all click attempts for the annotated screenshot
+
     # Click somewhere safe first to ensure browser address bar isn't focused
     safe_x = region["x"] + region["width"] // 2
     safe_y = region["y"] + region["height"] // 2
     pyautogui.click(safe_x, safe_y)
-    # time.sleep(0.1)
-    # pyautogui.press("escape")   # dismiss any dropdowns/autocomplete
-    # time.sleep(0.1)
-    
-    # print(f"\n  Filling textboxes from this quote/tb_dict : {tb_dict} \n")
+    time.sleep(0.05)
+
     for path, info in flatten_with_path(tb_dict):
         label = path.split(".")[-1]
         # Skip metadata keys
@@ -402,19 +529,93 @@ def tb_fill(tb_dict: dict, region: dict, scale: float) -> set:
         if info.get("field_type") != "text_field":
             logger.debug(f"Skipping '{label}' — not a text field")
             continue
-        abs_x = int(info["x"] / scale) + region["x"]
-        abs_y = int(info["y"] / scale) + region["y"]
-        try:
-            pyautogui.click(abs_x, abs_y)
-            time.sleep(CLICK_DELAY)
-            pyautogui.hotkey(*SELECT_HOTKEY)   # select all existing text
-            pyperclip.copy(value)
-            logger.info(f"FILLING FIELD: json Path: {path} Value: {value} Coords: ({abs_x},{abs_y})")
-            pyautogui.hotkey(*PASTE_HOTKEY)    # paste (overwrites selection)
-            filled.add(label)
-            # check for successful paste by taking another screenshot and looking for the value? log success and remove from json
-        except Exception as e:
-            logger.warning(f"  Failed to fill '{label}' at ({abs_x},{abs_y}): {e}")
+
+        base_x = int(info["x"] / scale) + region["x"]
+        base_y = int(info["y"] / scale) + region["y"]
+
+        field_filled = False
+        for attempt in range(1, MAX_FIELD_RETRIES + 1):
+            # On retries, nudge the click slightly (down-right, then up-left)
+            if attempt == 1:
+                abs_x, abs_y = base_x, base_y
+            elif attempt == 2:
+                abs_x = base_x + RETRY_OFFSET_PX
+                abs_y = base_y + RETRY_OFFSET_PX
+            else:
+                abs_x = base_x - RETRY_OFFSET_PX
+                abs_y = base_y - RETRY_OFFSET_PX
+
+            try:
+                pyautogui.click(abs_x, abs_y)
+                time.sleep(CLICK_DELAY)
+                pyautogui.hotkey(*SELECT_HOTKEY)
+                pyperclip.copy(value)
+                pyautogui.hotkey(*PASTE_HOTKEY)
+                time.sleep(FILL_DELAY)
+
+                # Verify the paste landed
+                verdict = verify_field_filled(value)
+
+                if verdict == "hit":
+                    logger.info(
+                        f"✓ FILLED '{label}' | attempt {attempt} | "
+                        f"value='{value}' | coords=({abs_x},{abs_y})"
+                    )
+                    click_log.append({
+                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                        "status": "hit", "attempt": attempt, "value": value,
+                    })
+                    filled.add(label)
+                    field_filled = True
+                    # Click safe spot to deselect before moving to next field
+                    pyautogui.click(safe_x, safe_y)
+                    time.sleep(0.03)
+                    break
+                else:
+                    logger.warning(
+                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} | "
+                        f"verdict={verdict} | value='{value}' | coords=({abs_x},{abs_y})"
+                    )
+                    # Capture a thumbnail of the miss area
+                    capture_miss_thumbnail(abs_x, abs_y, label, attempt, region)
+                    # Press Escape to deselect / dismiss anything before retry
+                    pyautogui.press("escape")
+                    time.sleep(0.05)
+                    # Click safe spot to reset focus
+                    pyautogui.click(safe_x, safe_y)
+                    time.sleep(0.05)
+
+            except Exception as e:
+                logger.error(
+                    f"✗ EXCEPTION '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} | "
+                    f"coords=({abs_x},{abs_y}) | error: {e}"
+                )
+                pyautogui.click(safe_x, safe_y)
+                time.sleep(0.05)
+
+        if not field_filled:
+            logger.error(
+                f"✗✗ FAILED '{label}' after {MAX_FIELD_RETRIES} attempts | "
+                f"value='{value}' | base_coords=({base_x},{base_y})"
+            )
+            click_log.append({
+                "label": label, "abs_x": base_x, "abs_y": base_y,
+                "status": "miss", "attempt": MAX_FIELD_RETRIES, "value": value,
+            })
+            failed.add(label)
+
+    # Save annotated full-page screenshot with all click locations
+    save_annotated_screenshot(region, click_log, job_id=job_id)
+
+    # Summary log
+    logger.info(
+        f"Fill summary: {len(filled)} filled, {len(failed)} failed "
+        f"| filled={sorted(filled)} | failed={sorted(failed)}"
+    )
+    if failed:
+        print(f"  ⚠️  Failed fields ({len(failed)}): {sorted(failed)}")
+        print(f"  Debug images: {DEBUG_FILL_DIR}")
+
     return filled
 
 class PersistentOverlay:
@@ -535,6 +736,63 @@ class PersistentOverlay:
         cy = self.root.winfo_y() + self.root.winfo_height() // 2
         self.position_result = (cx, cy)
         logger.info(f"User clicked Push Data Here at ({cx}, {cy})")
+        # Collapse into spinner mode
+        self._enter_spinner_mode()
+
+    def _enter_spinner_mode(self):
+        """Collapse the overlay into a tiny spinner widget."""
+        # Hide body content
+        self.body.pack_forget()
+
+        # Create spinner frame
+        self.spinner_frame = self.tk.Frame(self.root, bg="#1a1f2e")
+        self.spinner_frame.pack(fill="both", expand=True, padx=8, pady=6)
+
+        self.spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        self.spinner_idx = 0
+
+        self.spinner_label = self.tk.Label(
+            self.spinner_frame, text=self.spinner_chars[0],
+            font=("Courier", 16), fg="#4f8ef7", bg="#1a1f2e",
+        )
+        self.spinner_label.pack(side="left", padx=(4, 6))
+
+        self.spinner_status = self.tk.Label(
+            self.spinner_frame, text="working...",
+            font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
+        )
+        self.spinner_status.pack(side="left")
+
+        # Shrink window
+        self.root.geometry("160x60")
+        self._spinning = True
+
+    def _exit_spinner_mode(self):
+        """Restore the overlay back to full size with the button."""
+        self._spinning = False
+        if hasattr(self, 'spinner_frame'):
+            self.spinner_frame.pack_forget()
+            self.spinner_frame.destroy()
+        self.body.pack(fill="both", expand=True, padx=12, pady=6)
+        self.root.geometry("220x250")
+
+    def _tick_spinner(self):
+        """Advance the spinner animation by one frame. Call from update loop."""
+        if not getattr(self, '_spinning', False):
+            return
+        self.spinner_idx = (self.spinner_idx + 1) % len(self.spinner_chars)
+        try:
+            self.spinner_label.config(text=self.spinner_chars[self.spinner_idx])
+        except self.tk.TclError:
+            pass
+
+    def set_spinner_text(self, text: str):
+        """Update the status text shown next to the spinner."""
+        if hasattr(self, 'spinner_status'):
+            try:
+                self.spinner_status.config(text=text)
+            except self.tk.TclError:
+                pass
 
     def _on_close(self):
         """Called when user closes the widget"""

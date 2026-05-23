@@ -10,7 +10,7 @@ from app.database import init_db, get_session
 from app.models import User, UserRole
 
 
-def create_admin_user(username='chrisbouy', password='riskrunway2025', full_name='Chris Bouy', email='chrisbouy@risk-runway.com'):
+def create_admin_user(username, password, full_name, email):
     """Create an admin user."""
     # Initialize database (creates tables if they don't exist)
     init_db()
