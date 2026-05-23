@@ -618,10 +618,11 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
 
     return filled
 
-class PersistentOverlay:
+class SelectionPopup:
     """
-    A persistent, draggable widget that stays alive across multiple jobs.
-    Uses update() instead of mainloop() to avoid freezing.
+    Draggable popup shown before work starts.
+    User drags it onto the AMS window and clicks 'Push Data Here'.
+    Destroyed immediately after the click so it's never in screenshots.
     """
     def __init__(self):
         import tkinter as tk
@@ -643,16 +644,11 @@ class PersistentOverlay:
         self.should_close = False
         self.drag = {"x": 0, "y": 0}
 
-        # Build UI
         self._build_ui()
-
-        # Configure close handler
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        logger.info("Persistent overlay created")
+        logger.info("Selection popup created")
 
     def _build_ui(self):
-        """Build the widget UI components"""
         # Header / drag handle
         hdr = self.tk.Frame(self.root, bg="#141824", cursor="fleur")
         hdr.pack(fill="x")
@@ -664,62 +660,41 @@ class PersistentOverlay:
         inner.bind("<ButtonPress-1>", self._drag_start)
         inner.bind("<B1-Motion>", self._drag_move)
 
-        # Status labels
-        self.title_label = self.tk.Label(inner, text="AMS Agent", font=("Courier", 11, "bold"),
-                                         fg="#4f8ef7", bg="#141824")
-        self.title_label.pack(side="left")
-        self.title_label.bind("<ButtonPress-1>", self._drag_start)
-        self.title_label.bind("<B1-Motion>", self._drag_move)
-
-        self.status_indicator = self.tk.Label(inner, text="●", font=("Courier", 8),
-                                              fg="#2ecc8a", bg="#141824")
-        self.status_indicator.pack(side="right", padx=(0, 4))
-        self.status_indicator.bind("<ButtonPress-1>", self._drag_start)
-        self.status_indicator.bind("<B1-Motion>", self._drag_move)
-
-        self.status_text = self.tk.Label(inner, text="ready", font=("Helvetica", 9),
-                                         fg="#5a6180", bg="#141824")
-        self.status_text.pack(side="right", padx=4)
-        self.status_text.bind("<ButtonPress-1>", self._drag_start)
-        self.status_text.bind("<B1-Motion>", self._drag_move)
+        title = self.tk.Label(inner, text="AMS Agent", font=("Courier", 11, "bold"),
+                              fg="#4f8ef7", bg="#141824")
+        title.pack(side="left")
+        title.bind("<ButtonPress-1>", self._drag_start)
+        title.bind("<B1-Motion>", self._drag_move)
 
         # Body
-        self.body = self.tk.Frame(self.root, bg="#1a1f2e")
-        self.body.pack(fill="both", expand=True, padx=12, pady=6)
+        body = self.tk.Frame(self.root, bg="#1a1f2e")
+        body.pack(fill="both", expand=True, padx=12, pady=6)
 
-        self.instruction_label = self.tk.Label(
-            self.body,
-            text="Drag onto AMS window\nthen click below.",
+        self.tk.Label(
+            body, text="Drag onto AMS window\nthen click below.",
             font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
             justify="center", wraplength=180,
-        )
-        self.instruction_label.pack(pady=(2, 6))
+        ).pack(pady=(2, 6))
 
-        self.push_button = self.tk.Button(
-            self.body,
-            text="Push Data Here",
+        self.tk.Button(
+            body, text="Push Data Here",
             font=("Helvetica", 11, "bold"), fg="#ffffff", bg="#4f8ef7",
             activebackground="#3a7ee8", activeforeground="#ffffff",
             relief="flat", cursor="hand2", padx=10, pady=8,
             command=self._on_push,
-        )
-        self.push_button.pack(fill="x")
+        ).pack(fill="x")
 
-        self.cancel_label = self.tk.Label(
-            self.body, text="close",
-            font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2",
-        )
-        self.cancel_label.pack(pady=(2, 0))
-        self.cancel_label.bind("<Button-1>", lambda e: self._on_close())
+        cancel = self.tk.Label(body, text="close",
+                               font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2")
+        cancel.pack(pady=(2, 0))
+        cancel.bind("<Button-1>", lambda e: self._on_close())
 
-        # Disclaimer
-        self.disclaimer_label = self.tk.Label(
-            self.body,
-            text="RiskRunway is assisting with data entry based on extracted and user-provided information. Please verify all values in the target system before saving. By proceeding, you acknowledge that you are responsible for reviewing and confirming the accuracy and completeness of all data entered into your AMS.",
+        self.tk.Label(
+            body,
+            text="RiskRunway is assisting with data entry. Please verify all values before saving.",
             font=("Helvetica", 7), fg="#5a6180", bg="#1a1f2e",
             justify="center", wraplength=196,
-        )
-        self.disclaimer_label.pack(pady=(2, 0))
+        ).pack(pady=(2, 0))
 
         self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
 
@@ -731,124 +706,172 @@ class PersistentOverlay:
         self.root.geometry(f"+{e.x_root - self.drag['x']}+{e.y_root - self.drag['y']}")
 
     def _on_push(self):
-        """Called when user clicks 'Push Data Here'"""
         cx = self.root.winfo_x() + self.root.winfo_width() // 2
         cy = self.root.winfo_y() + self.root.winfo_height() // 2
         self.position_result = (cx, cy)
         logger.info(f"User clicked Push Data Here at ({cx}, {cy})")
-        # Collapse into spinner mode
-        self._enter_spinner_mode()
-
-    def _enter_spinner_mode(self):
-        """Collapse the overlay into a tiny spinner widget."""
-        # Hide body content
-        self.body.pack_forget()
-
-        # Create spinner frame
-        self.spinner_frame = self.tk.Frame(self.root, bg="#1a1f2e")
-        self.spinner_frame.pack(fill="both", expand=True, padx=8, pady=6)
-
-        self.spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-        self.spinner_idx = 0
-
-        self.spinner_label = self.tk.Label(
-            self.spinner_frame, text=self.spinner_chars[0],
-            font=("Courier", 16), fg="#4f8ef7", bg="#1a1f2e",
-        )
-        self.spinner_label.pack(side="left", padx=(4, 6))
-
-        self.spinner_status = self.tk.Label(
-            self.spinner_frame, text="working...",
-            font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
-        )
-        self.spinner_status.pack(side="left")
-
-        # Shrink window
-        self.root.geometry("160x60")
-        self._spinning = True
-
-    def _exit_spinner_mode(self):
-        """Restore the overlay back to full size with the button."""
-        self._spinning = False
-        if hasattr(self, 'spinner_frame'):
-            self.spinner_frame.pack_forget()
-            self.spinner_frame.destroy()
-        self.body.pack(fill="both", expand=True, padx=12, pady=6)
-        self.root.geometry("220x250")
-
-    def _tick_spinner(self):
-        """Advance the spinner animation by one frame. Call from update loop."""
-        if not getattr(self, '_spinning', False):
-            return
-        self.spinner_idx = (self.spinner_idx + 1) % len(self.spinner_chars)
-        try:
-            self.spinner_label.config(text=self.spinner_chars[self.spinner_idx])
-        except self.tk.TclError:
-            pass
-
-    def set_spinner_text(self, text: str):
-        """Update the status text shown next to the spinner."""
-        if hasattr(self, 'spinner_status'):
-            try:
-                self.spinner_status.config(text=text)
-            except self.tk.TclError:
-                pass
 
     def _on_close(self):
-        """Called when user closes the widget"""
         self.should_close = True
-        logger.info("User requested to close overlay")
-
-    def set_status(self, status: str, color: str = "#5a6180", indicator_color: str = "#2ecc8a"):
-        """Update the status text and colors"""
-        self.status_text.config(text=status, fg=color)
-        self.status_indicator.config(fg=indicator_color)
-        self.update()
-
-    def set_button_enabled(self, enabled: bool):
-        """Enable or disable the push button"""
-        if enabled:
-            self.push_button.config(state="normal", cursor="hand2")
-        else:
-            self.push_button.config(state="disabled", cursor="arrow")
-        self.update()
+        logger.info("User cancelled selection popup")
 
     def update(self):
-        """Process pending events - call this regularly to keep UI responsive"""
         try:
             self.root.update_idletasks()
             self.root.update()
         except self.tk.TclError:
-            # Widget was destroyed
             pass
 
     def wait_for_click(self) -> Optional[tuple]:
-        """
-        Wait for user to click 'Push Data Here' or close the widget.
-        Returns (x, y) position or None if cancelled.
-        Uses update() loop instead of mainloop() to stay responsive.
-        """
+        """Block until user clicks or closes. Returns (x, y) or None."""
         self.position_result = None
-        self.set_status("ready", "#5a6180", "#2ecc8a")
-        self.set_button_enabled(True)
-
         logger.info("Waiting for user to click 'Push Data Here'...")
 
         while self.position_result is None and not self.should_close:
             self.update()
-            time.sleep(0.01)  # Small delay to prevent CPU spinning
+            time.sleep(0.01)
 
         if self.should_close:
             return None
-
         return self.position_result
 
     def destroy(self):
-        """Destroy the widget"""
         try:
             self.root.destroy()
         except:
             pass
+        logger.info("Selection popup destroyed")
+
+
+class SpinnerOverlay:
+    """
+    A tiny, borderless floating spinner shown during export work.
+    No window chrome — just an animated character on a small pill.
+    Positioned where the selection popup was (where user clicked).
+    """
+    def __init__(self, x: int = 16, y: int = 16):
+        import tkinter as tk
+        self.tk = tk
+        self.root = tk.Tk()
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-alpha", 0.85)
+        self.root.configure(bg="#1a1f2e")
+        self.root.resizable(False, False)
+
+        # Position where the popup was
+        self.root.geometry(f"140x36+{x}+{y}")
+
+        self.spinner_chars = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
+        self.spinner_idx = 0
+        self._last_tick = 0.0
+
+        frame = tk.Frame(self.root, bg="#1a1f2e")
+        frame.pack(fill="both", expand=True, padx=6, pady=4)
+
+        self.spinner_label = tk.Label(
+            frame, text=self.spinner_chars[0],
+            font=("Courier", 14), fg="#4f8ef7", bg="#1a1f2e",
+        )
+        self.spinner_label.pack(side="left", padx=(2, 4))
+
+        self.status_label = tk.Label(
+            frame, text="exporting...",
+            font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
+        )
+        self.status_label.pack(side="left")
+
+        self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
+        logger.info("Spinner overlay created")
+
+    def set_text(self, text: str):
+        try:
+            self.status_label.config(text=text)
+        except self.tk.TclError:
+            pass
+
+    def update(self):
+        """Call regularly to animate the spinner and process events."""
+        try:
+            now = time.time()
+            if now - self._last_tick > 0.08:
+                self.spinner_idx = (self.spinner_idx + 1) % len(self.spinner_chars)
+                self.spinner_label.config(text=self.spinner_chars[self.spinner_idx])
+                self._last_tick = now
+            # Keep on top even when pyautogui clicks steal focus
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.update_idletasks()
+            self.root.update()
+        except self.tk.TclError:
+            pass
+
+    def flash_result(self, success: bool):
+        """No-op — spinner just stays until destroy() is called."""
+        pass
+
+    def destroy(self):
+        try:
+            self.root.destroy()
+        except:
+            pass
+        logger.info("Spinner overlay destroyed")
+
+
+class PersistentOverlay:
+    """
+    Wraps SelectionPopup + SpinnerOverlay into the interface expected by run_job.
+    Phase 1: Shows SelectionPopup for window selection.
+    Phase 2: Destroys popup, shows SpinnerOverlay during work.
+    Phase 3: Flashes result, destroys spinner.
+    """
+    def __init__(self):
+        self.popup = SelectionPopup()
+        self.spinner = None
+        self.should_close = False
+
+    def wait_for_click(self) -> Optional[tuple]:
+        result = self.popup.wait_for_click()
+        if self.popup.should_close:
+            self.should_close = True
+        return result
+
+    def begin_work(self):
+        """Destroy the popup and show the spinner where the popup was."""
+        # Grab popup position before destroying it
+        try:
+            px = self.popup.root.winfo_x()
+            py = self.popup.root.winfo_y()
+        except:
+            px, py = 16, 16
+        self.popup.destroy()
+        self.spinner = SpinnerOverlay(x=px, y=py)
+
+    def set_status(self, status: str, color: str = "#5a6180", indicator_color: str = "#2ecc8a"):
+        if self.spinner:
+            self.spinner.set_text(status)
+
+    def set_button_enabled(self, enabled: bool):
+        pass  # No button in spinner mode
+
+    def update(self):
+        if self.spinner:
+            self.spinner.update()
+        elif self.popup:
+            self.popup.update()
+
+    def flash_result(self, success: bool):
+        pass  # Spinner stays visible until destroy() is called
+
+    def destroy(self):
+        if self.spinner:
+            self.spinner.destroy()
+            self.spinner = None
+        if self.popup:
+            try:
+                self.popup.destroy()
+            except:
+                pass
         logger.info("Overlay destroyed")
 
 def prompt_user_to_select_window() -> Optional[dict]:
@@ -1054,14 +1077,13 @@ def run_job(job: dict, server_url: str):
     region = prompt_user_to_select_window()
     if region is None:
         update_job_status(server_url, job_id, "failed", "User cancelled")
-        persistent_overlay.set_status("cancelled", "#e74c3c", "#e74c3c")
+        persistent_overlay.destroy()
         return
 
     logger.info(f"Target region: {region}")
 
-    # Update widget to show we're working
-    persistent_overlay.set_status("working...", "#f39c12", "#f39c12")
-    persistent_overlay.set_button_enabled(False)
+    # Destroy the selection popup and show the tiny spinner
+    persistent_overlay.begin_work()
 
     # Store result from thread to avoid widget updates in background thread
     result = {"success": None, "error": None}
@@ -1092,18 +1114,15 @@ def run_job(job: dict, server_url: str):
         persistent_overlay.update()
         time.sleep(0.05)
 
-    # Update widget status on MAIN THREAD after work completes
+    # Flash result and auto-destroy
     if result.get("error"):
-        persistent_overlay.set_status("error", "#e74c3c", "#e74c3c")
+        persistent_overlay.flash_result(False)
     elif result.get("success"):
-        persistent_overlay.set_status("complete!", "#2ecc8a", "#2ecc8a")
+        persistent_overlay.flash_result(True)
     else:
-        persistent_overlay.set_status("no fields filled", "#e74c3c", "#e74c3c")
+        persistent_overlay.flash_result(False)
 
-    # Re-enable the button after a short delay
-    time.sleep(2)
-    persistent_overlay.set_status("ready", "#5a6180", "#2ecc8a")
-    persistent_overlay.set_button_enabled(True)
+    persistent_overlay.destroy()
 
 def polling_loop(server_url: str):
     """Runs in background. Puts jobs on job_queue for the main thread."""
