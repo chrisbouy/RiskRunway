@@ -1383,21 +1383,110 @@ def _get_user_broker_emails(db_session: Session, user_id: int) -> List[str]:
     return broker_emails
 
 
+def _expand_insured_name_variants(name: str) -> List[str]:
+    """
+    Generate all subject-search variants for an insured name.
+
+    Examples:
+        'LTR Holdings, LLC dba Wolf Disposals' produces:
+            ['ltr holdings, llc dba wolf disposals',
+             'ltr holdings, llc',
+             'ltr holdings',
+             'ltr',
+             'wolf disposals',
+             'wolf']
+    """
+    import re
+
+    if not name:
+        return []
+
+    ENTITY_SUFFIXES = [
+        'l.l.c.', 'llc',
+        'l.l.p.', 'llp',
+        'p.l.l.c.', 'pllc',
+        'p.l.c.', 'plc',
+        'p.c.', 'pc',
+        'l.p.', 'lp',
+        'inc.', 'inc', 'incorporated',
+        'corp.', 'corp', 'corporation',
+        'co.', 'co', 'company',
+        'ltd.', 'ltd', 'limited',
+    ]
+
+    variants = set()
+    full = name.strip().lower()
+    if not full:
+        return []
+    variants.add(full)
+
+    # Split on dba / d/b/a / d.b.a.
+    dba_parts = re.split(r'\s+(?:dba|d/b/a|d\.b\.a\.?)\s+', full)
+    parts_to_process = [p.strip() for p in dba_parts if p.strip()]
+
+    # Always include each dba half as a variant
+    for part in parts_to_process:
+        variants.add(part)
+
+    for part in parts_to_process:
+        # Strip trailing entity suffix (with optional comma before it)
+        core = part
+        # Remove trailing entity suffixes iteratively (handles 'Foo Holdings, Inc.')
+        changed = True
+        while changed:
+            changed = False
+            for suffix in ENTITY_SUFFIXES:
+                # Match suffix at the end, optionally preceded by comma+space or just space
+                pattern = r'(?:,\s*|\s+)' + re.escape(suffix) + r'\s*$'
+                new_core = re.sub(pattern, '', core).strip()
+                if new_core and new_core != core:
+                    core = new_core
+                    changed = True
+        if core:
+            variants.add(core)
+            # First word (e.g. 'ltr' from 'ltr holdings')
+            first_word = core.split()[0] if core.split() else ''
+            if first_word:
+                variants.add(first_word)
+
+    # Ampersand <-> 'and' swaps
+    extra = set()
+    for v in variants:
+        if '&' in v:
+            extra.add(re.sub(r'\s*&\s*', ' and ', v).strip())
+        if re.search(r'\s+and\s+', v):
+            extra.add(re.sub(r'\s+and\s+', ' & ', v).strip())
+    variants.update(extra)
+
+    # Clean up: collapse whitespace, drop empties
+    cleaned = set()
+    for v in variants:
+        v = re.sub(r'\s+', ' ', v).strip()
+        if v:
+            cleaned.add(v)
+
+    return list(cleaned)
+
+
 def _get_user_quote_subjects(db_session: Session, user_id: int) -> List[str]:
-    """Get all quote carrier names from submissions assigned to user"""
+    """Get insured-name search variants from submissions assigned to user.
+
+    Generates loose variants (entity suffix stripped, dba parts split out, etc.)
+    so emails with any common form of the name in the subject get matched.
+    """
     quote_subjects = []
     try:
-        # Get submissions assigned to this user
+        # Get submissions assigned to this user (any status)
         submissions = db_session.query(Submission).filter(
             Submission.assigned_to == user_id
         ).all()
-        
-        # Collect insured names from quotes
+
         names = set()
         for sub in submissions:
             if sub.insured_name:
-                names.add(sub.insured_name.strip().lower())
-        
+                for variant in _expand_insured_name_variants(sub.insured_name):
+                    names.add(variant)
+
         quote_subjects = list(names)
     except Exception as e:
         logger.warning(f"Failed to get quote subjects for user {user_id}: {e}")
@@ -2048,6 +2137,19 @@ def ingest_quote_stateless():
             
             if not created_quotes:
                 return jsonify({'success': False, 'error': 'Failed to process any quotes'}), 500
+            
+            # Move submission to quoting stage (IN_PROGRESS) if not already past it
+            previous_status = submission.status
+            if submission.status != SubmissionStatus.IN_PROGRESS:
+                submission.status = SubmissionStatus.IN_PROGRESS
+                db_session.add(AuditLog(
+                    entity_type='submission',
+                    entity_id=submission_id,
+                    submission_id=submission_id,
+                    action='status_changed',
+                    user=session.get('username'),
+                    details=f"Status changed from {previous_status.value if previous_status else 'unknown'} to In Progress (quote ingested from email)"
+                ))
             
             db_session.commit()
             

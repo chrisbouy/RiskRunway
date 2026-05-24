@@ -2131,12 +2131,7 @@
                 const data = await response.json();
                 
                 if (data.success && data.submissions) {
-                    const quotingSubmissions = data.submissions.filter(sub => {
-                        if (currentEmailAction === 'quote') {
-                            return sub.status === 'In Progress' || sub.status === 'in_progress' || sub.api_status === 'in_progress';
-                        }
-                        return true;
-                    });
+                    const quotingSubmissions = data.submissions;
                     
                     if (quotingSubmissions.length === 0) {
                         container.innerHTML = '<div class="text-gray-500 text-center py-4">No submissions available</div>';

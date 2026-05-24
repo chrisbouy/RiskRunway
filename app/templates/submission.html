@@ -1325,12 +1325,7 @@
                     </table>
                 </div>
             </div>
-            <div class="card" style="margin-bottom: 1rem;">
-                <div class="card-header">
-                    <h2 class="card-title">Bind Summary</h2>
-                </div>
-                <div id="bindStageInfo" class="stage-grid"></div>
-            </div>
+
             <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
                     <h2 class="card-title">Bind Actions</h2>
@@ -1339,17 +1334,21 @@
                     <!-- Row 1: Upload Binder, Upload Finance Agreement -->
                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center;">
                         <label style="font-size: 0.75rem; font-weight: 600; color: var(--color-neutral-600);">Upload Binder:</label>
-                        <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload insurance binder (proof of coverage)">
+                        <input type="file" id="binderDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload insurance binder (proof of coverage)" style="display: none;">
+                        <button type="button" onclick="document.getElementById('binderDocFile').click()" style="font-size: 0.688rem; padding: 0.25rem 0.5rem; background: var(--color-neutral-100, #f3f4f6); border: 1px solid var(--border-color, #d1d5db); border-radius: 0.25rem; cursor: pointer; color: var(--text-primary, #374151);">Choose File</button>
+                        <span id="binderFileName" style="font-size: 0.688rem; color: var(--color-neutral-500, #6b7280);"></span>
                         <span style="width: 1rem;"></span>
                         <label style="font-size: 0.75rem; font-weight: 600; color: var(--color-neutral-600);">Upload Finance Agreement:</label>
-                        <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload premium finance agreement">
+                        <input type="file" id="financeDocFile" accept=".pdf,.png,.jpg,.jpeg" title="Upload premium finance agreement" style="display: none;">
+                        <button type="button" onclick="document.getElementById('financeDocFile').click()" style="font-size: 0.688rem; padding: 0.25rem 0.5rem; background: var(--color-neutral-100, #f3f4f6); border: 1px solid var(--border-color, #d1d5db); border-radius: 0.25rem; cursor: pointer; color: var(--text-primary, #374151);">Choose File</button>
+                        <span id="financeFileName" style="font-size: 0.688rem; color: var(--color-neutral-500, #6b7280);"></span>
                     </div>
                     <!-- Row 2: Action buttons centered -->
-                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center;">
-                        <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;">Back to Quoting</button>
-                        <button id="markBoundBtn" style="background: #059669; color: white;">Mark as Bound</button>
-                        <button id="downloadCsvBtn" style="background: #2563eb; color: white;">📥 Download as CSV</button>
-                        <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled>☁️ Export to AMS</button>
+                    <div style="display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 0.875rem;">
+                        <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">◀️</span> Set Back to Quoting</button>
+                        <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Mark as Bound</button>
+                        <button id="downloadCsvBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
+                        <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🔗</span> Export to AMS</button>
                     </div>
                 </div>
             </div>
@@ -1372,6 +1371,7 @@
                     </div>
                 </div>
             </div>
+            <!-- Premium Finance Decision - commented out for now
             <div class="card">
                 <div class="card-header">
                     <h2 class="card-title">Premium Finance Decision</h2>
@@ -1381,6 +1381,7 @@
                     <label><input type="radio" name="pfDecision" value="no"> No - client paying in full</label>
                 </div>
             </div>
+            -->
         </div>
     </div>
 
@@ -2754,12 +2755,9 @@
         }
 
         function populateBindStage(allQuotes) {
-            const container = document.getElementById('bindStageInfo');
             const selectedQuoteBody = document.getElementById('bindSelectedQuoteBody');
-            if (!container) return;
 
             if (!allQuotes.length) {
-                container.innerHTML = stageField('Selected Quote', 'No quote available');
                 if (selectedQuoteBody) {
                     selectedQuoteBody.innerHTML = '<tr><td colspan="8">No quote available</td></tr>';
                 }
@@ -2800,13 +2798,6 @@
                 `;
             }
 
-            const grandTotalValue = total ? formatMoney(total) : 'null';
-            container.innerHTML = [
-                `<div class="stage-field" style="cursor: pointer;" onclick="copyToClipboard('${escapeHtml(grandTotalValue).replace(/'/g, "\\'")}', this.querySelector('.stage-field-value'))">
-                    <div class="stage-field-label">Grand Total</div>
-                    <div class="stage-field-value">${grandTotalValue}</div>
-                </div>`
-            ].join('');
         }
 
 
@@ -3406,7 +3397,7 @@ Thank you for your attention to this matter.`;
             if (status === 'SENT_TO_FINANCE') {
                 btn.textContent = 'Unbind';
                 btn.style.background = '#dc2626';
-                cards.forEach(card => { card.style.borderColor = '#059669'; });
+                cards.forEach(card => { card.style.borderColor = '#059669'; card.style.borderWidth = '3px'; });
                 // Enable Export to AMS
                 if (exportBtn) {
                     exportBtn.disabled = false;
@@ -3419,7 +3410,7 @@ Thank you for your attention to this matter.`;
             } else {
                 btn.textContent = 'Mark as Bound';
                 btn.style.background = '#059669';
-                cards.forEach(card => { card.style.borderColor = ''; });
+                cards.forEach(card => { card.style.borderColor = ''; card.style.borderWidth = ''; });
                 // Disable Export to AMS
                 if (exportBtn) {
                     exportBtn.disabled = true;
@@ -3498,9 +3489,12 @@ Thank you for your attention to this matter.`;
         document.getElementById('binderDocFile').addEventListener('change', async function() {
             const file = this.files[0];
             if (!file) return;
+            const nameSpan = document.getElementById('binderFileName');
+            if (nameSpan) nameSpan.textContent = file.name;
             try {
                 await uploadSubmissionDocument(file, 'BINDER', { term_key: submissionData?.effective_date });
                 this.value = '';
+                if (nameSpan) nameSpan.textContent = '';
                 await loadSubmission();
             } catch (error) {
                 alert(error.message);
@@ -3510,9 +3504,12 @@ Thank you for your attention to this matter.`;
         document.getElementById('financeDocFile').addEventListener('change', async function() {
             const file = this.files[0];
             if (!file) return;
+            const nameSpan = document.getElementById('financeFileName');
+            if (nameSpan) nameSpan.textContent = file.name;
             try {
                 await uploadSubmissionDocument(file, 'FINANCE_AGREEMENT', { term_key: submissionData?.effective_date });
                 this.value = '';
+                if (nameSpan) nameSpan.textContent = '';
                 await loadDocuments();
             } catch (error) {
                 alert(error.message);
@@ -3567,6 +3564,9 @@ Thank you for your attention to this matter.`;
                     const dot = bindStep.querySelector('.stage-dot');
                     if (dot) dot.textContent = '3';
                 }
+
+                // Scroll to top of page after stage transition
+                window.scrollTo(0, 0);
                 
             } catch (error) {
                 console.error('Error moving to bind:', error);

@@ -413,7 +413,8 @@ def pass1_extract_quote_layout(pdf_path):
     pages_data = []
 
     # First, find the last relevant page to avoid processing useless pages
-    last_page_to_process = _find_last_relevant_page(pdf_path)
+    # Cap at 5 pages max. To check all pages, remove the min() wrapper.
+    last_page_to_process = min(_find_last_relevant_page(pdf_path), 5)
 
     # Determine where to save page images (same directory as the PDF)
     pdf_dir = os.path.dirname(os.path.abspath(pdf_path))

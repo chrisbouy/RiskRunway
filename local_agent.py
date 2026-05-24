@@ -104,6 +104,141 @@ logger.info(
 job_queue: queue.Queue = queue.Queue()
 persistent_overlay = None  # Global persistent overlay widget
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# macOS Accessibility helpers — snap clicks to the nearest text field
+# ─────────────────────────────────────────────────────────────────────────────
+
+_AX_AVAILABLE = False
+if IS_MAC:
+    try:
+        from ApplicationServices import (
+            AXUIElementCopyElementAtPosition,
+            AXUIElementCreateSystemWide,
+            AXUIElementCopyAttributeValue,
+            AXUIElementSetAttributeValue,
+            AXUIElementPerformAction,
+            kAXErrorSuccess,
+        )
+        from CoreFoundation import CFEqual
+        _AX_SYSTEMWIDE = AXUIElementCreateSystemWide()
+        _AX_AVAILABLE = True
+    except ImportError as _ax_err:
+        logger.warning(f"Accessibility API not available: {_ax_err}")
+
+
+# Roles that accept text input
+_AX_TEXT_ROLES = {
+    "AXTextField", "AXTextArea", "AXSearchField", "AXComboBox",
+    "AXSecureTextField",
+}
+
+
+def ax_get(elem, attr: str):
+    """Safely read an accessibility attribute. Returns None on failure."""
+    try:
+        err, value = AXUIElementCopyAttributeValue(elem, attr, None)
+        if err == kAXErrorSuccess:
+            return value
+    except Exception:
+        pass
+    return None
+
+
+def ax_element_at(x: int, y: int):
+    """Get the AX element at screen position (x, y), or None."""
+    if not _AX_AVAILABLE:
+        return None
+    try:
+        err, elem = AXUIElementCopyElementAtPosition(_AX_SYSTEMWIDE, float(x), float(y), None)
+        if err == kAXErrorSuccess and elem is not None:
+            return elem
+    except Exception as e:
+        logger.debug(f"ax_element_at({x},{y}) failed: {e}")
+    return None
+
+
+def ax_role(elem) -> str:
+    """Get the AXRole of an element as a string, or empty string."""
+    role = ax_get(elem, "AXRole")
+    return str(role) if role else ""
+
+
+def ax_find_nearest_text_field(x: int, y: int, max_radius: int = 60):
+    """
+    Find the nearest text-input element to (x, y) by sampling points in a
+    spiral pattern. Returns the AXUIElement or None.
+    """
+    if not _AX_AVAILABLE:
+        return None
+
+    # Try the exact point first
+    elem = ax_element_at(x, y)
+    if elem is not None and ax_role(elem) in _AX_TEXT_ROLES:
+        return elem
+
+    # Sample points in expanding rings
+    for radius in (10, 20, 30, 40, max_radius):
+        for dx, dy in [(0, radius), (0, -radius), (radius, 0), (-radius, 0),
+                       (radius, radius), (-radius, -radius),
+                       (radius, -radius), (-radius, radius)]:
+            if abs(dx) > max_radius or abs(dy) > max_radius:
+                continue
+            elem = ax_element_at(x + dx, y + dy)
+            if elem is not None and ax_role(elem) in _AX_TEXT_ROLES:
+                logger.debug(f"  AX: found {ax_role(elem)} at offset ({dx},{dy})")
+                return elem
+    return None
+
+
+def ax_set_value(elem, value: str) -> bool:
+    """
+    Try to set the value of a text-input element directly via Accessibility.
+    Returns True on success, False otherwise.
+    """
+    if not _AX_AVAILABLE or elem is None:
+        return False
+    try:
+        # Focus it first so the user/system sees the change
+        AXUIElementSetAttributeValue(elem, "AXFocused", True)
+        err = AXUIElementSetAttributeValue(elem, "AXValue", value)
+        return err == kAXErrorSuccess
+    except Exception as e:
+        logger.debug(f"ax_set_value failed: {e}")
+        return False
+
+
+def ax_get_value(elem) -> str:
+    """Read the current value of a text-input element."""
+    if not _AX_AVAILABLE or elem is None:
+        return ""
+    val = ax_get(elem, "AXValue")
+    return str(val) if val is not None else ""
+
+
+def ax_fill_field(x: int, y: int, value: str) -> tuple[bool, str]:
+    """
+    Try to fill a text field near (x, y) using the Accessibility API.
+    Returns (success, info) where info describes what happened.
+    """
+    if not _AX_AVAILABLE:
+        return False, "ax_unavailable"
+
+    elem = ax_find_nearest_text_field(x, y)
+    if elem is None:
+        return False, "no_field_found"
+
+    role = ax_role(elem)
+    if ax_set_value(elem, value):
+        # Verify
+        readback = ax_get_value(elem)
+        if value in readback or readback == value:
+            return True, f"ax_success ({role})"
+        else:
+            return False, f"ax_set_but_readback_mismatch (role={role}, got={readback[:30]!r})"
+    return False, f"ax_set_failed (role={role})"
+
+
 def extract_json(text: str) -> dict:
     """
     Robustly pull a JSON object out of Claude's response.
@@ -425,7 +560,8 @@ def capture_miss_thumbnail(abs_x: int, abs_y: int, label: str, attempt: int, reg
     Capture a small screenshot (~200x120px) around the click point for debugging.
     Saved to the debug directory with field name and attempt number.
     """
-    thumb_w, thumb_h = 200, 120
+    # Wide thumbnail so the field's label (usually to the left) is visible
+    thumb_w, thumb_h = 420, 100
     # Center the thumbnail on the click point, but clamp to screen
     tx = abs_x - thumb_w // 2
     ty = abs_y - thumb_h // 2
@@ -534,16 +670,40 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
         base_y = int(info["y"] / scale) + region["y"]
 
         field_filled = False
-        for attempt in range(1, MAX_FIELD_RETRIES + 1):
-            # On retries, nudge the click slightly (down-right, then up-left)
-            if attempt == 1:
-                abs_x, abs_y = base_x, base_y
-            elif attempt == 2:
-                abs_x = base_x + RETRY_OFFSET_PX
-                abs_y = base_y + RETRY_OFFSET_PX
+
+        # ── ATTEMPT 0: Accessibility API (macOS) ─────────────────────────────
+        # Snap to the nearest text field and set its value directly.
+        if _AX_AVAILABLE:
+            ax_ok, ax_info = ax_fill_field(base_x, base_y, value)
+            if ax_ok:
+                logger.info(
+                    f"✓ FILLED '{label}' | via AX | {ax_info} | "
+                    f"value='{value}' | coords=({base_x},{base_y})"
+                )
+                click_log.append({
+                    "label": label, "abs_x": base_x, "abs_y": base_y,
+                    "status": "hit", "attempt": 0, "value": value, "method": "ax",
+                })
+                filled.add(label)
+                field_filled = True
             else:
-                abs_x = base_x - RETRY_OFFSET_PX
-                abs_y = base_y - RETRY_OFFSET_PX
+                logger.info(
+                    f"  AX did not succeed for '{label}' ({ax_info}) — falling back to click+paste"
+                )
+
+        # ── FALLBACK: click + Cmd+A + paste with retries ─────────────────────
+        # Retry offsets: try center, then below (labels usually above field),
+        # then above, then sideways. Larger offsets to actually land on the box.
+        retry_offsets = [(0, 0), (0, 18), (0, -18), (15, 0), (-15, 0)]
+
+        for attempt_idx, (dx, dy) in enumerate(retry_offsets):
+            if field_filled:
+                break
+            attempt = attempt_idx + 1
+            if attempt > MAX_FIELD_RETRIES:
+                break
+            abs_x = base_x + dx
+            abs_y = base_y + dy
 
             try:
                 pyautogui.click(abs_x, abs_y)
@@ -558,12 +718,12 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
 
                 if verdict == "hit":
                     logger.info(
-                        f"✓ FILLED '{label}' | attempt {attempt} | "
+                        f"✓ FILLED '{label}' | attempt {attempt} (offset {dx},{dy}) | "
                         f"value='{value}' | coords=({abs_x},{abs_y})"
                     )
                     click_log.append({
                         "label": label, "abs_x": abs_x, "abs_y": abs_y,
-                        "status": "hit", "attempt": attempt, "value": value,
+                        "status": "hit", "attempt": attempt, "value": value, "method": "click",
                     })
                     filled.add(label)
                     field_filled = True
@@ -573,7 +733,7 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
                     break
                 else:
                     logger.warning(
-                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} | "
+                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} (offset {dx},{dy}) | "
                         f"verdict={verdict} | value='{value}' | coords=({abs_x},{abs_y})"
                     )
                     # Capture a thumbnail of the miss area
@@ -595,7 +755,7 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
 
         if not field_filled:
             logger.error(
-                f"✗✗ FAILED '{label}' after {MAX_FIELD_RETRIES} attempts | "
+                f"✗✗ FAILED '{label}' after all attempts | "
                 f"value='{value}' | base_coords=({base_x},{base_y})"
             )
             click_log.append({
