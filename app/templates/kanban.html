@@ -552,6 +552,69 @@
         .submission-card.dragging {
             opacity: 0.55;
         }
+
+        /* Email correspondence body — visible scrollbar + fade hint when overflowing */
+        .corr-body-wrap {
+            position: relative;
+        }
+        .corr-body-wrap.has-overflow::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 14px; /* leave room for scrollbar */
+            bottom: 0;
+            height: 32px;
+            background: linear-gradient(to bottom, rgba(17, 24, 39, 0), rgba(17, 24, 39, 0.95));
+            pointer-events: none;
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+            transition: opacity 120ms ease;
+        }
+        .corr-body-wrap.has-overflow.scrolled-bottom::after {
+            opacity: 0;
+        }
+        .corr-scroll-hint {
+            display: none;
+        }
+        .corr-body-wrap.has-overflow .corr-scroll-hint {
+            display: block;
+            position: absolute;
+            left: 0;
+            right: 14px; /* leave room for scrollbar */
+            bottom: 4px;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #fbbf24;
+            pointer-events: none;
+            z-index: 2;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+            transition: opacity 120ms ease;
+        }
+        .corr-body-wrap.has-overflow.scrolled-bottom .corr-scroll-hint {
+            opacity: 0;
+        }
+        .corr-body {
+            scrollbar-width: thin;
+            scrollbar-color: #6b7280 #1f2937;
+        }
+        .corr-body::-webkit-scrollbar {
+            width: 10px;
+        }
+        .corr-body::-webkit-scrollbar-track {
+            background: #1f2937;
+            border-radius: 4px;
+        }
+        .corr-body::-webkit-scrollbar-thumb {
+            background: #6b7280;
+            border-radius: 4px;
+            border: 2px solid #1f2937;
+        }
+        .corr-body::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -875,33 +938,20 @@
 
     <!-- Correspondence Popup Modal -->
     <div id="correspondencePopupModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
-        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
+        <div class="bg-gray-800 rounded-lg p-6 w-[95vw] max-w-[1800px] max-h-[90vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-white">📧 Email Correspondence</h3>
+                <h3 id="correspondencePopupTitle" class="text-lg font-semibold text-white">📧 Email Correspondence</h3>
                 <button id="closeCorrespondencePopup" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
-            <div class="space-y-3">
-                <div>
-                    <span class="text-gray-400 text-sm">From:</span>
-                    <span id="correspondenceFrom" class="text-white ml-2"></span>
-                </div>
-                <div>
-                    <span class="text-gray-400 text-sm">Subject:</span>
-                    <span id="correspondenceSubject" class="text-white ml-2"></span>
-                </div>
-                <div>
-                    <span class="text-gray-400 text-sm">Date:</span>
-                    <span id="correspondenceDate" class="text-white ml-2"></span>
-                </div>
-                <hr class="border-gray-600">
-                <pre id="correspondenceBody" class="text-gray-200 text-sm whitespace-pre-wrap bg-gray-900 rounded p-4 max-h-80 overflow-y-auto"></pre>
+            <div id="correspondenceMessagesContainer" class="space-y-4">
+                <!-- Rendered messages go here -->
             </div>
         </div>
     </div>
 
     <!-- All Correspondence Popup Modal -->
     <div id="allCorrespondenceModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
-        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-5xl max-h-[85vh] overflow-y-auto border border-gray-700">
+        <div class="bg-gray-800 rounded-lg p-6 w-[95vw] max-w-[1800px] max-h-[90vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-white">📧 All Email Correspondence</h3>
                 <button id="closeAllCorrespondencePopup" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
@@ -1480,12 +1530,14 @@
                 return `<option value="${doc.id}" data-doc-type="${doc.document_type}">${escapeHtml(label)}</option>`;
             }).join('');
 
-            // Correspondence options in received order
+            // Correspondence options in received order: "Email N from <sender> - <topic>"
             const correspondenceCounts = {};
             const corrOptions = correspondenceDocs.map(doc => {
                 const sender = doc.carrier || 'unknown';
                 correspondenceCounts[sender] = (correspondenceCounts[sender] || 0) + 1;
-                const label = `📧 Email ${correspondenceCounts[sender]} from ${sender}`;
+                const topic = (doc.name || '').replace(/\.(json|txt)$/i, '').trim();
+                const base = `Email ${correspondenceCounts[sender]} from ${sender}`;
+                const label = topic ? `📧 ${base} - ${topic}` : `📧 ${base}`;
                 return `<option value="${doc.id}" data-doc-type="Correspondence">${escapeHtml(label)}</option>`;
             }).join('');
 
@@ -1493,16 +1545,12 @@
             const viewAllEmailsOption = correspondenceDocs.length > 1
                 ? `<option value="viewall:emails">📧 View All Emails</option>` : '';
 
-            // Notes section
+            // Notes section — single entry that opens the notes popup
             const notesObj = (submission.notes && typeof submission.notes === 'object') ? submission.notes : {};
             const stageOrder = ['submission', 'quoting', 'bind'];
-            const noteEntries = stageOrder.filter(k => notesObj[k] && notesObj[k].trim());
-            const noteOptions = noteEntries.map(k => {
-                const labels = { submission: 'Submission', quoting: 'Quoting', bind: 'Bind' };
-                return `<option value="note:${k}">📝 ${labels[k]} Note</option>`;
-            }).join('');
-            const viewAllNotesOption = noteEntries.length > 1
-                ? `<option value="note:all">📝 View All Notes</option>` : '';
+            const hasAnyNote = stageOrder.some(k => notesObj[k] && notesObj[k].trim());
+            const noteOptions = hasAnyNote ? `<option value="note:all">📝 Notes</option>` : '';
+            const viewAllNotesOption = '';
 
             // Assemble dropdown
             let selectOptions = '';
@@ -1585,7 +1633,9 @@
                         const selectedOption = this.options[this.selectedIndex];
                         const docType = selectedOption.dataset.docType;
                         if (docType === 'Correspondence') {
-                            openCorrespondencePopup(val);
+                            // Strip leading emoji + space from the option text for the popup title
+                            const label = (selectedOption.textContent || '').replace(/^📧\s*/, '').trim();
+                            openCorrespondencePopup(val, label);
                         } else {
                             window.open(`/api/documents/${val}/download`, '_blank');
                         }
@@ -2049,8 +2099,7 @@
                         </div>
                         ${attachmentsList ? `<div class="mb-2">${attachmentsList}</div>` : ''}
                         <div class="flex gap-2 mt-2">
-                            ${hasQuote ? `<button class="ingest-quote-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-message-id="${email.message_id}">📄 Ingest Quote</button>` : ''}
-                            <button class="save-correspondence-btn px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700" data-message-id="${email.message_id}">💬 Save as Correspondence</button>
+                            <button class="ingest-email-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-message-id="${email.message_id}">📥 Ingest</button>
                             <button class="dismiss-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-message-id="${email.message_id}">� Dismiss</button>
                         </div>
                     `;
@@ -2058,19 +2107,11 @@
                     container.appendChild(emailDiv);
                 }
                 
-                document.querySelectorAll('.ingest-quote-btn').forEach(btn => {
+                document.querySelectorAll('.ingest-email-btn').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const msgId = this.dataset.messageId;
                         const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData) openSubmissionSelector(emailData, 'quote');
-                    });
-                });
-                
-                document.querySelectorAll('.save-correspondence-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const msgId = this.dataset.messageId;
-                        const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData) openSubmissionSelector(emailData, 'correspondence');
+                        if (emailData) openSubmissionSelector(emailData, 'ingest');
                     });
                 });
                 
@@ -2098,16 +2139,8 @@
             const title = document.getElementById('selectSubmissionTitle');
             const description = document.getElementById('selectSubmissionDescription');
             
-            if (action === 'quote') {
-                title.textContent = 'Select Submission for Quote';
-                description.textContent = 'Select a submission to attach this quote to:';
-            } else if (action === 'correspondence') {
-                title.textContent = 'Save as Correspondence';
-                description.textContent = 'Select a submission to save this email to:';
-            } else {
-                title.textContent = 'Select Submission';
-                description.textContent = 'Select a submission:';
-            }
+            title.textContent = 'Select Submission to Ingest Into';
+            description.textContent = 'Pick a submission. The email body will be saved as correspondence (cleaned by AI) and any quote attachments will be parsed automatically.';
             
             document.getElementById('selectSubmissionModal').classList.remove('hidden');
             await loadSubmissionsForSelector();
@@ -2163,76 +2196,47 @@
             }
         }
 
-        // Handle email action — stateless, sends provider info directly
+        // Handle email action — unified ingest: cleans body via AI as
+        // correspondence and parses any quote attachments in one call.
         async function handleEmailAction(submissionId) {
             const loadingOverlay = document.getElementById('ocrLoadingOverlay');
             const selectSubmissionBtns = document.querySelectorAll('.select-submission-btn');
             const cancelBtn = document.getElementById('cancelSelectSubmission');
             const closeBtn = document.getElementById('closeSelectSubmissionModal');
-            
+
             try {
-                if (currentEmailAction === 'quote') {
-                    loadingOverlay.classList.remove('hidden');
-                    selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
-                    cancelBtn.disabled = true;
-                    closeBtn.disabled = true;
-                    
-                    const response = await fetch('/api/email/ingest_quote', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            submission_id: submissionId,
-                            message_id: currentEmailData.message_id,
-                            account_id: currentEmailData.account_id,
-                            provider: currentEmailData.provider,
-                            attachments: currentEmailData.attachments
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
-                        document.getElementById('newMessageCount').textContent = cachedEmails.length;
-                        document.getElementById('selectSubmissionModal').classList.add('hidden');
-                        document.getElementById('newMessagesModal').classList.add('hidden');
-                        window.location.href = `/submission/${submissionId}`;
-                    } else {
-                        alert('Error: ' + (data.error || 'Unknown error'));
-                    }
-                } else if (currentEmailAction === 'correspondence') {
-                    selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
-                    cancelBtn.disabled = true;
-                    closeBtn.disabled = true;
-                    
-                    const response = await fetch('/api/email/save_correspondence', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            submission_id: submissionId,
-                            message_id: currentEmailData.message_id,
-                            account_id: currentEmailData.account_id,
-                            provider: currentEmailData.provider,
-                            from_name: currentEmailData.from_name || '',
-                            from_email: currentEmailData.from_email || '',
-                            subject: currentEmailData.subject || '',
-                            body_text: currentEmailData.body_text || '',
-                            received_date: currentEmailData.received_date || ''
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        alert('Email saved as correspondence!');
-                        cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
-                        document.getElementById('newMessageCount').textContent = cachedEmails.length;
-                        document.getElementById('selectSubmissionModal').classList.add('hidden');
-                        document.getElementById('newMessagesModal').classList.add('hidden');
-                        await loadSubmissions();
-                    } else {
-                        alert('Error: ' + (data.error || 'Unknown error'));
-                    }
+                loadingOverlay.classList.remove('hidden');
+                selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
+                cancelBtn.disabled = true;
+                closeBtn.disabled = true;
+
+                const response = await fetch('/api/email/ingest_quote', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        submission_id: submissionId,
+                        message_id: currentEmailData.message_id,
+                        account_id: currentEmailData.account_id,
+                        provider: currentEmailData.provider,
+                        from_name: currentEmailData.from_name || '',
+                        from_email: currentEmailData.from_email || '',
+                        subject: currentEmailData.subject || '',
+                        body_text: currentEmailData.body_text || '',
+                        received_date: currentEmailData.received_date || '',
+                        attachments: currentEmailData.attachments || []
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
+                    document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                    document.getElementById('selectSubmissionModal').classList.add('hidden');
+                    document.getElementById('newMessagesModal').classList.add('hidden');
+                    window.location.href = `/submission/${submissionId}`;
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
                 console.error('Failed to process email action:', error);
@@ -2537,41 +2541,145 @@
         // CORRESPONDENCE POPUP
         // ============================================================================
 
-        async function openCorrespondencePopup(docId) {
-            try {
-                const response = await fetch(`/api/documents/${docId}/download`);
-                const text = await response.text();
-                
-                // Parse the email text format
-                const lines = text.split('\n');
-                let from = '', subject = '', date = '', body = '';
-                let bodyStarted = false;
-                
-                for (const line of lines) {
-                    if (bodyStarted) {
-                        body += line + '\n';
-                    } else if (line.startsWith('From: ')) {
-                        from = line.substring(6);
-                    } else if (line.startsWith('Subject: ')) {
-                        subject = line.substring(9);
-                    } else if (line.startsWith('Date: ')) {
-                        date = line.substring(6);
-                    } else if (line.trim() === '---') {
-                        bodyStarted = true;
-                    }
+        // Parse a correspondence document into a list of messages.
+        // New format: JSON {title, outer, messages: [{from,to,cc,subject,date,body}, ...]}
+        // Legacy format: plain text with "From: / Subject: / Date: / --- / body"
+        async function fetchCorrespondenceMessages(docId) {
+            const response = await fetch(`/api/documents/${docId}/download`);
+            const text = await response.text();
+            const trimmed = text.trim();
+            if (trimmed.startsWith('{')) {
+                try {
+                    const data = JSON.parse(trimmed);
+                    const msgs = Array.isArray(data.messages) ? data.messages : [];
+                    return {
+                        title: data.title || '',
+                        outer: data.outer || {},
+                        messages: msgs.length ? msgs : [{
+                            from: (data.outer && data.outer.from) || '',
+                            subject: (data.outer && data.outer.subject) || '',
+                            date: (data.outer && data.outer.date) || '',
+                            body: ''
+                        }]
+                    };
+                } catch (e) {
+                    // fall through to text parse
                 }
-                
-                const formattedDate = date ? new Date(date).toLocaleString() : '';
-                
-                const modal = document.getElementById('correspondencePopupModal');
-                document.getElementById('correspondenceFrom').textContent = from;
-                document.getElementById('correspondenceSubject').textContent = subject;
-                document.getElementById('correspondenceDate').textContent = formattedDate;
-                document.getElementById('correspondenceBody').textContent = body.trim() || '(No email body)';
-                modal.classList.remove('hidden');
+            }
+
+            // Legacy plain-text fallback
+            const lines = text.split('\n');
+            let from = '', subject = '', date = '', body = '';
+            let bodyStarted = false;
+            for (const line of lines) {
+                if (bodyStarted) {
+                    body += line + '\n';
+                } else if (line.startsWith('From: ')) {
+                    from = line.substring(6);
+                } else if (line.startsWith('Subject: ')) {
+                    subject = line.substring(9);
+                } else if (line.startsWith('Date: ')) {
+                    date = line.substring(6);
+                } else if (line.trim() === '---') {
+                    bodyStarted = true;
+                }
+            }
+            return {
+                title: subject,
+                outer: { from, subject, date },
+                messages: [{ from, to: '', cc: '', subject, date, body: body.trim() }]
+            };
+        }
+
+        function renderMessageRow(msg) {
+            const formattedDate = msg.date ? (() => {
+                const d = new Date(msg.date);
+                return isNaN(d.getTime()) ? msg.date : d.toLocaleString();
+            })() : '—';
+            const bodyText = (msg.body || '').trim();
+            // Skip messages with no real content
+            if (!bodyText) return '';
+            const fromEmail = extractEmailAddresses(msg.from);
+            const toEmail = extractEmailAddresses(msg.to);
+            return `
+                <div class="grid grid-cols-[300px_1fr] gap-4 border border-gray-600 rounded-lg p-3 bg-gray-900 bg-opacity-50">
+                    <div class="space-y-1 text-sm border-r border-gray-700 pr-3 min-w-0">
+                        <div class="flex gap-2 min-w-0"><span class="text-gray-500 text-xs uppercase shrink-0 w-12">From</span><span class="text-gray-200 truncate" title="${escapeHtml(fromEmail)}">${escapeHtml(fromEmail || '—')}</span></div>
+                        <div class="flex gap-2 min-w-0"><span class="text-gray-500 text-xs uppercase shrink-0 w-12">To</span><span class="text-gray-200 truncate" title="${escapeHtml(toEmail)}">${escapeHtml(toEmail || '—')}</span></div>
+                        <div class="flex gap-2 min-w-0"><span class="text-gray-500 text-xs uppercase shrink-0 w-12">Subj</span><span class="text-gray-200 truncate" title="${escapeHtml(msg.subject || '')}">${escapeHtml(msg.subject || '—')}</span></div>
+                        <div class="flex gap-2 min-w-0"><span class="text-gray-500 text-xs uppercase shrink-0 w-12">Date</span><span class="text-gray-200 truncate">${escapeHtml(formattedDate)}</span></div>
+                    </div>
+                    <div class="corr-body-wrap">
+                        <pre class="corr-body text-gray-300 text-sm whitespace-pre-wrap bg-gray-900 rounded p-3 max-h-32 overflow-y-auto m-0">${escapeHtml(bodyText)}</pre>
+                        <span class="corr-scroll-hint">scroll ▾</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // After messages are rendered, mark wrappers whose body overflows so
+        // the fade + "scroll" hint show up. Re-evaluate on scroll to hide hint
+        // when the user reaches the bottom.
+        function markCorrespondenceOverflow(rootEl) {
+            // Wait for layout so scrollHeight/clientHeight are accurate
+            requestAnimationFrame(() => {
+                const wraps = rootEl.querySelectorAll('.corr-body-wrap');
+                wraps.forEach(wrap => {
+                    const body = wrap.querySelector('.corr-body');
+                    if (!body) return;
+                    const hasOverflow = body.scrollHeight - body.clientHeight > 2;
+                    wrap.classList.toggle('has-overflow', hasOverflow);
+                    if (!hasOverflow) return;
+
+                    const update = () => {
+                        const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 2;
+                        wrap.classList.toggle('scrolled-bottom', atBottom);
+                    };
+                    body.addEventListener('scroll', update);
+                    update();
+                });
+            });
+        }
+
+        // Extract just email addresses from a "Name <email@x.com>" or list of them.
+        // Falls back to the original string if no <...> pattern is found.
+        function extractEmailAddresses(value) {
+            if (!value) return '';
+            const matches = value.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g);
+            if (matches && matches.length) {
+                return [...new Set(matches)].join('; ');
+            }
+            return value.trim();
+        }
+
+        async function openCorrespondencePopup(docId, label) {
+            const modal = document.getElementById('correspondencePopupModal');
+            const container = document.getElementById('correspondenceMessagesContainer');
+            const titleEl = document.getElementById('correspondencePopupTitle');
+            titleEl.textContent = label ? `📧 ${label}` : '📧 Email Correspondence';
+            container.innerHTML = '<p class="text-gray-400 text-center">Loading...</p>';
+            modal.classList.remove('hidden');
+            try {
+                const data = await fetchCorrespondenceMessages(docId);
+                const messages = (data.messages || []).slice();
+                // Sort chronologically (oldest first); messages without a
+                // parseable date keep insertion order at the end.
+                messages.sort((a, b) => {
+                    const da = a.date ? new Date(a.date) : null;
+                    const db = b.date ? new Date(b.date) : null;
+                    const va = da && !isNaN(da.getTime()) ? da.getTime() : Number.MAX_SAFE_INTEGER;
+                    const vb = db && !isNaN(db.getTime()) ? db.getTime() : Number.MAX_SAFE_INTEGER;
+                    return va - vb;
+                });
+                if (!messages.length) {
+                    container.innerHTML = '<p class="text-gray-500 text-center">(No messages)</p>';
+                    return;
+                }
+                container.innerHTML = messages.map(renderMessageRow).join('');
+                markCorrespondenceOverflow(container);
             } catch (error) {
                 console.error('Failed to load correspondence:', error);
-                alert('Failed to load email correspondence.');
+                container.innerHTML = '<p class="text-red-400 text-center">Failed to load email correspondence.</p>';
             }
         }
 
@@ -2592,62 +2700,41 @@
             // Get correspondence docs in received order (reversed from DB newest-first)
             const corrDocs = (submission.documents || [])
                 .filter(d => d.document_type === 'Correspondence')
+                .slice()
                 .reverse();
 
-            // Fetch all correspondence files in parallel
-            const emailResults = await Promise.all(corrDocs.map(async (doc) => {
+            // Fetch + parse each doc; flatten to one stream of messages
+            const docResults = await Promise.all(corrDocs.map(async (doc) => {
                 try {
-                    const response = await fetch(`/api/documents/${doc.id}/download`);
-                    const text = await response.text();
-                    const lines = text.split('\n');
-                    let from = '', subject = '', date = '', body = '';
-                    let bodyStarted = false;
-                    for (const line of lines) {
-                        if (bodyStarted) {
-                            body += line + '\n';
-                        } else if (line.startsWith('From: ')) {
-                            from = line.substring(6);
-                        } else if (line.startsWith('Subject: ')) {
-                            subject = line.substring(9);
-                        } else if (line.startsWith('Date: ')) {
-                            date = line.substring(6);
-                        } else if (line.trim() === '---') {
-                            bodyStarted = true;
-                        }
-                    }
-                    return { from, subject, date, body: body.trim(), rawDate: date };
+                    return await fetchCorrespondenceMessages(doc.id);
                 } catch (e) {
-                    return { from: '?', subject: '?', date: '', body: '(Failed to load)', rawDate: '' };
+                    return { title: '', outer: {}, messages: [] };
                 }
             }));
 
-            // Sort by received date (oldest first)
-            emailResults.sort((a, b) => {
-                const da = a.rawDate ? new Date(a.rawDate) : new Date(0);
-                const db = b.rawDate ? new Date(b.rawDate) : new Date(0);
-                return da - db;
+            const allMessages = [];
+            for (const docResult of docResults) {
+                for (const m of (docResult.messages || [])) {
+                    allMessages.push(m);
+                }
+            }
+
+            // Sort by date when parseable, otherwise keep insertion order
+            allMessages.sort((a, b) => {
+                const da = a.date ? new Date(a.date) : null;
+                const db_ = b.date ? new Date(b.date) : null;
+                const va = da && !isNaN(da.getTime()) ? da.getTime() : Number.MAX_SAFE_INTEGER;
+                const vb = db_ && !isNaN(db_.getTime()) ? db_.getTime() : Number.MAX_SAFE_INTEGER;
+                return va - vb;
             });
 
-            // Render 2-column layout: metadata left, body right
-            if (emailResults.length === 0) {
+            if (!allMessages.length) {
                 content.innerHTML = '<p class="text-gray-500 text-center">No correspondence emails found.</p>';
                 return;
             }
 
-            content.innerHTML = emailResults.map((email, i) => {
-                const formattedDate = email.rawDate ? new Date(email.rawDate).toLocaleString() : '—';
-                const bodyText = email.body || '(No email body)';
-                return `
-                    <div class="grid grid-cols-[220px_1fr] gap-4 border border-gray-600 rounded-lg p-4 bg-gray-900 bg-opacity-50">
-                        <div class="space-y-2 border-r border-gray-700 pr-4">
-                            <div><span class="text-gray-500 text-xs uppercase">From</span><div class="text-gray-200 text-sm">${escapeHtml(email.from)}</div></div>
-                            <div><span class="text-gray-500 text-xs uppercase">Subject</span><div class="text-gray-200 text-sm">${escapeHtml(email.subject)}</div></div>
-                            <div><span class="text-gray-500 text-xs uppercase">Received</span><div class="text-gray-200 text-sm">${escapeHtml(formattedDate)}</div></div>
-                        </div>
-                        <pre class="text-gray-300 text-sm whitespace-pre-wrap bg-gray-900 rounded p-3 max-h-60 overflow-y-auto m-0">${escapeHtml(bodyText)}</pre>
-                    </div>
-                `;
-            }).join('');
+            content.innerHTML = allMessages.map(renderMessageRow).join('');
+            markCorrespondenceOverflow(content);
         }
 
         document.getElementById('closeAllCorrespondencePopup').addEventListener('click', function() {

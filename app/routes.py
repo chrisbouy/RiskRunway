@@ -1953,17 +1953,27 @@ def ingest_quote_to_submission(email_id, submission_id):
 @login_required
 def ingest_quote_stateless():
     """
-    Ingest a quote from an email attachment directly via OAuth API.
-    No email data is stored in the database — attachment is fetched on-demand
-    from the provider and processed immediately.
-    
+    Unified email ingest endpoint.
+
+    Always saves the email body as a cleaned correspondence document on the
+    selected submission. If quote-style attachments (PDF/Excel/Word) are
+    present, also parses them and creates Quote records.
+
+    Body must be cleaned with AI to strip signatures, footers, and boilerplate
+    while preserving thread structure.
+
     Request body:
     {
         "submission_id": int,
-        "message_id": str,        # Gmail/Outlook message ID
+        "message_id": str,        # provider message ID
         "account_id": int,        # ConnectedAccount ID
         "provider": str,          # "gmail" or "outlook"
-        "attachments": [          # List of attachments to ingest
+        "from_name": str,
+        "from_email": str,
+        "subject": str,
+        "body_text": str,
+        "received_date": str,
+        "attachments": [
             {"attachment_id": str, "filename": str, "content_type": str, "size": int}
         ]
     }
@@ -1974,35 +1984,39 @@ def ingest_quote_stateless():
         message_id = data.get('message_id')
         account_id = data.get('account_id')
         provider = data.get('provider')
-        attachments_to_ingest = data.get('attachments', [])
-        
+        attachments_to_ingest = data.get('attachments', []) or []
+        from_name = data.get('from_name', '') or ''
+        from_email = data.get('from_email', '') or ''
+        subject = data.get('subject', '(No subject)') or '(No subject)'
+        body_text = data.get('body_text', '') or ''
+        received_date = data.get('received_date', '') or ''
+
         if not all([submission_id, message_id, account_id, provider]):
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
-        
-        # Filter to PDF attachments only
-        pdf_attachments = [a for a in attachments_to_ingest if a.get('filename', '').lower().endswith('.pdf')]
-        if not pdf_attachments:
-            return jsonify({'success': False, 'error': 'No PDF attachments found in this email'}), 400
-        
+
+        # Identify quote-style attachments (parser-eligible)
+        quote_extensions = ('.pdf', '.xlsx', '.xls', '.docx', '.doc')
+        quote_attachments = [a for a in attachments_to_ingest if (a.get('filename') or '').lower().endswith(quote_extensions)]
+
         db_session = get_session()
         try:
             # Verify submission exists
             submission = db_session.query(Submission).filter_by(id=submission_id).first()
             if not submission:
                 return jsonify({'success': False, 'error': 'Submission not found'}), 404
-            
+
             # Get connected account for OAuth credentials
             account = db_session.query(ConnectedAccount).filter_by(id=account_id).first()
             if not account:
                 return jsonify({'success': False, 'error': 'Connected account not found'}), 404
-            
+
             # Get OAuth service and access token
             from app.oauth_services import get_oauth_service
             oauth_service = get_oauth_service(provider, current_app.config)
-            
+
             tokens = account.get_decrypted_tokens()
             access_token = tokens.get('access_token')
-            
+
             # Auto-refresh if expired
             if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
                 from datetime import timedelta
@@ -2014,53 +2028,150 @@ def ingest_quote_stateless():
                 account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
                 db_session.commit()
                 access_token = new_tokens.get('access_token')
-            
+
+            insured_name = submission.insured_name or 'unknown_insured'
+            sender_label = from_name or from_email or 'unknown'
+
+            # ============================================================
+            # 1. Always save the email as cleaned correspondence
+            # ============================================================
+            ai_result = _clean_email_with_ai(
+                subject=subject,
+                from_label=sender_label,
+                received_date=received_date,
+                body_text=body_text
+            )
+            ai_messages = ai_result.get('messages') or []
+            ai_title = ai_result.get('title') or f"Email with {sender_label}"
+
+            # Drop messages with empty bodies — they would render as empty rows
+            # and have no informational value beyond the headers.
+            ai_messages = [m for m in ai_messages if (m.get('body') or '').strip()]
+
+            correspondence_doc_id = None
+            if not ai_messages:
+                # Email has no meaningful body content (e.g. cover note for a
+                # quote attachment). Skip creating a correspondence document.
+                logger.info(f"Skipping correspondence doc for message {message_id}: no substantive body content")
+            else:
+                try:
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    # Store as JSON so the UI can render each message in its own frame
+                    display_filename = f"{ai_title}.json"[:200]
+                    unique_filename = f"{timestamp}_correspondence_{submission_id}.json"
+                    filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+
+                    payload = {
+                        'title': ai_title,
+                        'outer': {
+                            'from': sender_label,
+                            'subject': subject,
+                            'date': received_date
+                        },
+                        'messages': ai_messages
+                    }
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+                    term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
+                    doc_key = _build_storage_key(
+                        submission_id, 'CORRESPONDENCE', unique_filename,
+                        session.get('user_id'), insured_name
+                    )
+                    storage_provider_val, storage_key = _storage_upload(filepath, doc_key, 'application/json')
+
+                    size_bytes = os.path.getsize(filepath) if os.path.exists(filepath) else None
+
+                    correspondence_doc = Document(
+                        submission_id=submission_id,
+                        quote_id=None,
+                        document_type=DocumentType.CORRESPONDENCE,
+                        carrier=sender_label,
+                        term_key=term_key,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider_val,
+                        storage_key=storage_key,
+                        original_filename=display_filename,
+                        content_type='application/json',
+                        size_bytes=size_bytes,
+                        uploaded_by=session.get('username')
+                    )
+                    db_session.add(correspondence_doc)
+                    db_session.flush()
+                    correspondence_doc_id = correspondence_doc.id
+
+                    db_session.add(AuditLog(
+                        entity_type='submission',
+                        entity_id=submission_id,
+                        action='email_correspondence_added',
+                        submission_id=submission_id,
+                        user=session.get('username'),
+                        details=json.dumps({
+                            'message_id': message_id,
+                            'subject': subject,
+                            'from': sender_label,
+                            'title': ai_title,
+                            'message_count': len(ai_messages)
+                        })
+                    ))
+
+                    # Clean up temp file
+                    try:
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                    except Exception as cleanup_err:
+                        logger.warning(f"Could not delete temp correspondence file: {cleanup_err}")
+                except Exception as corr_err:
+                    logger.error(f"Failed to save cleaned correspondence: {corr_err}", exc_info=True)
+
+            # ============================================================
+            # 2. If quote-style attachments are present, parse and ingest them
+            # ============================================================
             created_quotes = []
-            
-            for att in pdf_attachments:
+            for att in quote_attachments:
                 attachment_id = att.get('attachment_id')
                 filename = att.get('filename', 'attachment.pdf')
                 content_type = att.get('content_type', 'application/pdf')
                 size_bytes = att.get('size', 0)
-                
-                # Download attachment directly from provider API
+
+                # Currently only PDF parsing is implemented
+                if not filename.lower().endswith('.pdf'):
+                    continue
+
                 attachment_data = oauth_service.fetch_attachments(
                     access_token=access_token,
                     message_id=message_id,
                     attachment_id=attachment_id
                 )
-                
+
                 if not attachment_data:
                     logger.warning(f"Failed to download attachment {filename}, skipping")
                     continue
-                
-                # Write to temp file for processing
+
                 safe_filename = secure_filename(filename)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 unique_filename = f"{timestamp}_{safe_filename}"
                 filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                
+
                 with open(filepath, 'wb') as f:
                     f.write(attachment_data)
-                
-                # Process the quote (OCR)
+
                 try:
                     three_pass_result = process_quote_two_pass(filepath, [])
                     layout_data = three_pass_result['pass1_layout']
                     parsed_data = three_pass_result['pass2_normalized']
-                    
-                    # Extract key fields
+
                     carrier_name = None
                     effective_date = None
                     if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
                         first_policy = parsed_data['policies'][0]
                         carrier_name = first_policy.get('carrier')
                         effective_date = first_policy.get('effective_date')
-                    
+
                     if not effective_date:
                         effective_date = submission.effective_date
-                    
-                    # Create quote record
+
                     quote = Quote(
                         submission_id=submission_id,
                         carrier_name=carrier_name,
@@ -2072,7 +2183,7 @@ def ingest_quote_stateless():
                     db_session.add(quote)
                     db_session.flush()
                     quote_id = quote.id
-                    
+
                     db_session.add(AuditLog(
                         entity_type='quote',
                         entity_id=quote_id,
@@ -2082,8 +2193,7 @@ def ingest_quote_stateless():
                         user=session.get('username'),
                         details=f"Uploaded quote from {carrier_name or 'unknown carrier'}"
                     ))
-                    
-                    # Upload to storage
+
                     quote_doc_key = _build_storage_key(
                         submission_id,
                         DocumentType.QUOTE.name,
@@ -2108,13 +2218,13 @@ def ingest_quote_stateless():
                         uploaded_by=session.get('username')
                     )
                     db_session.add(doc)
-                    
+
                     created_quotes.append({
                         'quote_id': quote_id,
                         'filename': safe_filename,
                         'carrier': carrier_name
                     })
-                    
+
                     db_session.add(AuditLog(
                         entity_type='quote',
                         entity_id=quote_id,
@@ -2123,24 +2233,21 @@ def ingest_quote_stateless():
                         quote_id=quote_id,
                         details=json.dumps({'message_id': message_id, 'filename': safe_filename})
                     ))
-                    
                 except Exception as e:
-                    logger.error(f"Error processing quote {filename}: {e}")
+                    logger.error(f"Error processing quote {filename}: {e}", exc_info=True)
                     continue
                 finally:
-                    # Clean up temp file
                     try:
                         if os.path.exists(filepath):
                             os.remove(filepath)
                     except Exception:
                         pass
-            
-            if not created_quotes:
-                return jsonify({'success': False, 'error': 'Failed to process any quotes'}), 500
-            
-            # Move submission to quoting stage (IN_PROGRESS) if not already past it
-            previous_status = submission.status
-            if submission.status != SubmissionStatus.IN_PROGRESS:
+
+            # ============================================================
+            # 3. Move submission to quoting stage if a quote was ingested
+            # ============================================================
+            if created_quotes and submission.status != SubmissionStatus.IN_PROGRESS:
+                previous_status = submission.status
                 submission.status = SubmissionStatus.IN_PROGRESS
                 db_session.add(AuditLog(
                     entity_type='submission',
@@ -2150,25 +2257,173 @@ def ingest_quote_stateless():
                     user=session.get('username'),
                     details=f"Status changed from {previous_status.value if previous_status else 'unknown'} to In Progress (quote ingested from email)"
                 ))
-            
+
             db_session.commit()
-            
-            # Mark email as read in the provider (so it won't show up next time)
+
+            # Mark email as read in the provider
             try:
                 oauth_service.mark_as_read(access_token, message_id)
             except Exception as e:
                 logger.warning(f"Failed to mark email as read in provider: {e}")
-            
+
             return jsonify({
                 'success': True,
                 'quotes': created_quotes,
+                'correspondence_document_id': correspondence_doc_id,
+                'correspondence_title': ai_title,
                 'submission_id': submission_id
             })
         finally:
             db_session.close()
     except Exception as e:
-        logger.error(f"Stateless quote ingestion error: {e}", exc_info=True)
+        logger.error(f"Email ingest error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _clean_email_with_ai(subject: str, from_label: str, received_date: str, body_text: str) -> dict:
+    """
+    Use the configured LLM to:
+      1. Split a forwarded/replied email thread into individual messages.
+      2. Strip signatures, footers, image placeholders, and boilerplate from
+         each message body.
+      3. Generate a short title for the whole thread.
+
+    Returns:
+      {
+        "title": str,
+        "messages": [
+          {"from": str, "to": str, "cc": str, "subject": str, "date": str, "body": str},
+          ...
+        ]
+      }
+
+    On failure, returns a single-message structure with the raw body.
+    """
+    fallback_title = f"Email with {from_label}" if from_label else "Email correspondence"
+    fallback = {
+        'title': fallback_title,
+        'messages': [{
+            'from': from_label or '',
+            'to': '',
+            'cc': '',
+            'subject': subject or '',
+            'date': received_date or '',
+            'body': (body_text or '').strip()
+        }]
+    }
+    if not body_text or not body_text.strip():
+        return fallback
+
+    MAX_CHARS = 40000
+    truncated_body = body_text[:MAX_CHARS]
+
+    prompt = f"""You are processing an email thread for an insurance brokerage's correspondence log.
+
+Outer (most recent) message metadata:
+- Subject: {subject}
+- From: {from_label}
+- Received: {received_date}
+
+The body below may contain a forwarded/replied thread with multiple distinct messages. Each new message in the thread typically starts with a header like:
+  From: ...
+  Sent: ... (or Date: ...)
+  To: ...
+  Cc: ...
+  Subject: ...
+followed by that message's body.
+
+Your job:
+
+1. SPLIT the thread into individual messages. The OUTER (top, most recent) message uses the metadata above. Each subsequent message uses its own header.
+
+2. For EACH message body:
+   - Strip ALL signatures and contact blocks (phone, address, title, website, social links).
+   - Strip ALL boilerplate footers: confidentiality notices, virus disclaimers, "EXTERNAL EMAIL" warnings, Mimecast notices, "Sent from my iPhone", legal disclaimers.
+   - Strip image placeholders like <image001.png>, <~WRD123.jpg>, [cid:...], inline image references.
+   - Replace attachment references like <SomeFile.pdf> with [Attachment: SomeFile.pdf].
+   - Collapse runs of blank lines to a single blank line.
+   - Output plain text only — no markdown, no asterisks.
+   - Do NOT summarize. Keep the actual content as written.
+
+3. Order messages chronologically OLDEST FIRST.
+
+4. Generate a short TOPIC PHRASE (3-6 words) describing what the thread is ABOUT — the actual subject matter or action being discussed. Lowercase except proper nouns. No leading "Re:" or "Fwd:".
+
+   STRICT RULES — DO NOT include in the topic:
+   - The insured/client name (the user already knows which submission they are looking at).
+   - Person names (sender, recipient, anyone).
+   - Email addresses.
+   - The literal email subject line.
+   - Generic words like "email", "thread", "correspondence", "discussion", "regarding".
+
+   The topic should describe the topic, not name the parties or the insured.
+
+   Good examples:
+   - "finance agreement restructuring"
+   - "binding subjectivities outstanding"
+   - "loss runs requested"
+   - "premium amendment for auto"
+   - "revised auto quote"
+   - "down payment percentage change"
+
+   Bad examples (do NOT do these):
+   - "LTR Holdings Wolf Disposals finance agreement"   (includes insured name)
+   - "Mitzie requesting finance agreement"             (includes person name)
+   - "Re: LTR Holdings Proposals"                      (echoes subject line)
+   - "Email about finance agreement"                   (uses banned word "email")
+
+Return ONLY valid JSON in this exact shape:
+{{
+  "title": "short descriptive title",
+  "messages": [
+    {{
+      "from": "Name <email@example.com>",
+      "to": "recipients",
+      "cc": "cc list or empty string",
+      "subject": "subject line",
+      "date": "as written in the header",
+      "body": "the cleaned message body"
+    }}
+  ]
+}}
+
+If the thread contains only one message, return a single-element array.
+If you cannot identify clear message boundaries, return one message with the entire cleaned body.
+
+Email thread to process:
+---
+{truncated_body}
+---
+"""
+
+    try:
+        from app.parsers.two_pass_parser import get_llm_client
+        client = get_llm_client()
+        result = client.generate_json(prompt)
+        title = (result.get('title') or '').strip() or fallback_title
+        messages = result.get('messages') or []
+
+        # Sanitize each message
+        cleaned_messages = []
+        for m in messages:
+            if not isinstance(m, dict):
+                continue
+            cleaned_messages.append({
+                'from': (m.get('from') or '').strip(),
+                'to': (m.get('to') or '').strip(),
+                'cc': (m.get('cc') or '').strip(),
+                'subject': (m.get('subject') or '').strip(),
+                'date': (m.get('date') or '').strip(),
+                'body': (m.get('body') or '').strip()
+            })
+
+        if not cleaned_messages:
+            return fallback
+
+        return {'title': title, 'messages': cleaned_messages}
+    except Exception as e:
+        logger.warning(f"AI email cleaning failed, using raw body: {e}")
+        return fallback
 
 
 @bp.route('/api/email/<int:email_id>/add_correspondence/<int:submission_id>', methods=['POST'])
