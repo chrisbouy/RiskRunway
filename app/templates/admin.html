@@ -162,7 +162,7 @@
                     <select id="role" required
                             class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded focus:ring-2 focus:ring-blue-500">
                         <option value="ADMIN">Admin</option>
-                        <option value="VIEWER">Viewer</option>
+                        <option value="AGENT">Agent</option>
                     </select>
                 </div>
 
@@ -388,7 +388,7 @@
             document.getElementById('username').value = '';
             document.getElementById('username').disabled = false;
             document.getElementById('fullName').value = '';
-            document.getElementById('role').value = 'VIEWER';
+            document.getElementById('role').value = 'AGENT';
             document.getElementById('password').value = '';
             document.getElementById('password').required = true;
             document.getElementById('passwordOptional').classList.add('hidden');
@@ -470,7 +470,7 @@
                     document.getElementById('username').value = user.username;
                     document.getElementById('username').disabled = true;
                     document.getElementById('fullName').value = user.full_name;
-                    document.getElementById('role').value = user.role === 'Admin' ? 'ADMIN' : 'VIEWER';
+                    document.getElementById('role').value = user.role === 'Admin' ? 'ADMIN' : 'AGENT';
                     document.getElementById('password').value = '';
                     document.getElementById('password').required = false;
                     document.getElementById('passwordOptional').classList.remove('hidden');

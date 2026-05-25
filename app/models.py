@@ -12,7 +12,7 @@ Base = declarative_base()
 
 class UserRole(enum.Enum):
     ADMIN = "Admin"
-    VIEWER = "Viewer"
+    AGENT = "Agent"
 
 
 class SubmissionStatus(enum.Enum):

@@ -4552,7 +4552,7 @@ def get_ams_agent_setup_info():
                 if platform_key == 'macos':
                     urls['macos'] = {
                         'url': '/api/ams-agent/installer/macos',
-                        'filename': 'Install-RiskRunway.command'
+                        'filename': 'Install-RiskRunway.zip'
                     }
                 else:
                     urls['windows'] = {
@@ -4643,9 +4643,24 @@ echo "  (You can close this window)"
 echo ""
 '''
 
+    # Wrap the .command script in a zip so execute permissions are preserved
+    # (macOS auto-unzips downloads, and the .command inside retains +x)
+    import io
+    import zipfile
+    import stat
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        info = zipfile.ZipInfo('Install-RiskRunway.command')
+        # Set Unix permissions: rwxr-xr-x (0o755)
+        info.external_attr = (stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH) << 16
+        zf.writestr(info, script)
+
+    zip_buffer.seek(0)
+
     from flask import Response
-    response = Response(script, mimetype='application/octet-stream')
-    response.headers['Content-Disposition'] = 'attachment; filename="Install-RiskRunway.command"'
+    response = Response(zip_buffer.getvalue(), mimetype='application/zip')
+    response.headers['Content-Disposition'] = 'attachment; filename="Install-RiskRunway.zip"'
     return response
 
 
