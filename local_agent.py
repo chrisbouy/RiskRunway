@@ -37,6 +37,25 @@ if platform.system() == "Windows":
         except Exception:
             pass
 
+    # Minimize the console window so it's not visible while the agent runs
+    try:
+        _hwnd_console = ctypes.windll.kernel32.GetConsoleWindow()
+        if _hwnd_console:
+            ctypes.windll.user32.ShowWindow(_hwnd_console, 6)  # SW_MINIMIZE
+    except Exception:
+        pass
+
+
+def _close_console_window():
+    """Close (hide) the console window when the agent is done."""
+    if platform.system() == "Windows":
+        try:
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+        except Exception:
+            pass
+
 import re
 import sys
 import tempfile
@@ -795,7 +814,8 @@ class SelectionPopup:
         self.root.configure(bg="#1a1f2e")
         self.root.resizable(False, False)
 
-        w, h = 220, 250
+        w = 220
+        h = 270 if platform.system() == "Windows" else 250
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{w}x{h}+{screen_w - w - 20}+80")
 
@@ -1361,6 +1381,7 @@ def main():
         if persistent_overlay:
             persistent_overlay.destroy()
         print(f"\n✓ Job {args.job_id} complete. Exiting.")
+        _close_console_window()
         sys.exit(0)
     
     else:
@@ -1405,6 +1426,7 @@ def main():
         # Clean up
         if persistent_overlay:
             persistent_overlay.destroy()
+        _close_console_window()
         sys.exit(0)
 
 if __name__ == "__main__":
