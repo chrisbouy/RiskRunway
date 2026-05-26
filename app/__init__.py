@@ -13,6 +13,11 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    # Trust proxy headers (X-Forwarded-For, X-Forwarded-Proto, X-Forwarded-Host)
+    # Required when running behind CloudFront/ALB so Flask knows the real scheme is HTTPS
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
     # Enable CORS for all routes (needed for Chrome extension)
     CORS(app)
 
