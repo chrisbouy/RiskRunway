@@ -151,51 +151,60 @@ def _document_download_url(document_id):
 
 
 def _send_bug_report_email(subject, body_text, screenshot_bytes, screenshot_filename, screenshot_subtype='png'):
-    """Send bug report email with screenshot attachment using SendGrid HTTP API."""
+    """Send bug report email with screenshot attachment using Resend API."""
     import base64
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+    import requests as http_requests
 
-    api_key = current_app.config.get('SENDGRID_API_KEY')
-    sender = current_app.config.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
+    api_key = current_app.config.get('RESEND_API_KEY')
+    from_email = current_app.config.get('RESEND_FROM_EMAIL', 'noreply@risk-runway.com')
     recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
 
     # Debug logging
     print(f"[BUG REPORT EMAIL] Config:")
     print(f"  API Key: {'*' * 20 if api_key else 'NOT SET'}")
-    print(f"  Sender: {sender}")
+    print(f"  From: {from_email}")
     print(f"  Recipient: {recipient}")
 
     if not api_key:
-        error_msg = "SendGrid API key is not configured. Set SENDGRID_API_KEY environment variable."
+        error_msg = "RESEND_API_KEY is not configured. Set RESEND_API_KEY environment variable."
         print(f"[BUG REPORT EMAIL] ERROR: {error_msg}")
         raise ValueError(error_msg)
 
-    # Create the email message
-    message = Mail(
-        from_email=sender,
-        to_emails=recipient,
-        subject=subject,
-        plain_text_content=body_text
-    )
-
-    # Add screenshot attachment
+    # Encode screenshot as base64 for attachment
     encoded_file = base64.b64encode(screenshot_bytes).decode()
-    attached_file = Attachment(
-        FileContent(encoded_file),
-        FileName(screenshot_filename),
-        FileType(f'image/{screenshot_subtype}'),
-        Disposition('attachment')
-    )
-    message.attachment = attached_file
 
-    # Send via SendGrid HTTP API
-    print(f"[BUG REPORT EMAIL] Sending via SendGrid HTTP API...")
+    # Send via Resend API
+    print(f"[BUG REPORT EMAIL] Sending via Resend API...")
     try:
-        sg = SendGridAPIClient(api_key)
-        response = sg.send(message)
+        response = http_requests.post(
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'from': f'Risk Runway <{from_email}>',
+                'to': [recipient],
+                'subject': subject,
+                'text': body_text,
+                'attachments': [
+                    {
+                        'filename': screenshot_filename,
+                        'content': encoded_file,
+                        'content_type': f'image/{screenshot_subtype}'
+                    }
+                ]
+            }
+        )
+
+        if response.status_code not in (200, 201):
+            print(f"[BUG REPORT EMAIL] FAILED: Resend API error {response.status_code} - {response.text}")
+            raise ValueError(f"Failed to send email: {response.text}")
+
         print(f"[BUG REPORT EMAIL] Success! Status code: {response.status_code}")
         return response
+    except ValueError:
+        raise
     except Exception as e:
         print(f"[BUG REPORT EMAIL] FAILED: {type(e).__name__}: {str(e)}")
         raise
