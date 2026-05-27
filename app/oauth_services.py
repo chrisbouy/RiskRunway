@@ -498,25 +498,23 @@ class GmailOAuthService:
     def _extract_attachments(self, payload: Dict, message_id: str) -> List[Dict]:
         """
         Extract attachment metadata from message payload.
+        Gmail puts the filename directly on the part object (part['filename']),
+        and the attachmentId in part['body']['attachmentId'].
         """
         attachments = []
         
         def process_parts(parts):
             for part in parts:
-                content_disposition = part.get('headers', [])
-                is_attachment = False
-                filename = ''
+                # Gmail provides filename directly on the part object
+                filename = part.get('filename', '')
+                attachment_id = part.get('body', {}).get('attachmentId', '')
                 
-                for header in content_disposition:
-                    if header.get('name', '').lower() == 'content-disposition':
-                        is_attachment = 'attachment' in header.get('value', '').lower()
-                    if header.get('name', '').lower() == 'filename':
-                        filename = header.get('value', '')
-                
-                if is_attachment and filename:
+                # A part is an attachment if it has both a filename and an attachmentId
+                # (parts with inline body data have 'data' instead of 'attachmentId')
+                if filename and attachment_id:
                     attachments.append({
                         'message_id': message_id,
-                        'attachment_id': part.get('body', {}).get('attachmentId', ''),
+                        'attachment_id': attachment_id,
                         'filename': filename,
                         'content_type': part.get('mimeType', ''),
                         'size': part.get('body', {}).get('size', 0)
