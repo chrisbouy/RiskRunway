@@ -4791,16 +4791,62 @@ echo        Installing dependencies...
 "!PYTHON!" -m pip install --quiet pyautogui pyperclip mss Pillow requests pywin32 2>nul
 echo        Dependencies installed.
 
-REM Register protocol handler — launcher just passes the URL to Python which handles parsing
-echo @echo off> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo "!PYTHON!" "%%~dp0local_agent.py" "%%~1">> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
-echo pause>> "%INSTALL_DIR%\\RiskRunwayLauncher.bat"
+REM Register protocol handler using VBScript (no console window)
+REM Find pythonw.exe path for windowless execution
+set "PYTHONW="
+where pythonw.exe >nul 2>&1
+if !ERRORLEVEL! EQU 0 (
+    for /f "delims=" %%%%p in ('where pythonw.exe') do set "PYTHONW=%%%%p"
+)
+if "!PYTHONW!"=="" (
+    REM Fall back: pythonw.exe is usually next to python.exe
+    for /f "delims=" %%%%p in ('where !PYTHON!') do set "PYTHONW=%%%%~dpp\\pythonw.exe"
+)
+if not exist "!PYTHONW!" set "PYTHONW=pythonw.exe"
+
+REM Create VBScript launcher (runs Python with NO console window)
+(
+echo ' RiskRunwayLauncher.vbs - Protocol handler for riskrunway:// URLs
+echo Dim url, jobId, server, agentPath, cmd
+echo Dim fso, shell
+echo Set fso = CreateObject^("Scripting.FileSystemObject"^)
+echo Set shell = CreateObject^("WScript.Shell"^)
+echo If WScript.Arguments.Count = 0 Then WScript.Quit 1
+echo url = WScript.Arguments^(0^)
+echo Dim queryStr, params, i, pair
+echo If InStr^(url, "?"^) ^> 0 Then
+echo     queryStr = Mid^(url, InStr^(url, "?"^) + 1^)
+echo Else
+echo     WScript.Quit 1
+echo End If
+echo params = Split^(queryStr, "^&"^)
+echo jobId = ""
+echo server = ""
+echo For i = 0 To UBound^(params^)
+echo     pair = Split^(params^(i^), "=", 2^)
+echo     If UBound^(pair^) ^>= 1 Then
+echo         If LCase^(pair^(0^)^) = "job_id" Then jobId = pair^(1^)
+echo         If LCase^(pair^(0^)^) = "server" Then server = Unescape^(pair^(1^)^)
+echo     End If
+echo Next
+echo If jobId = "" Or server = "" Then WScript.Quit 1
+echo Dim scriptDir
+echo scriptDir = fso.GetParentFolderName^(WScript.ScriptFullName^)
+echo agentPath = scriptDir ^& "\local_agent.py"
+echo If Not fso.FileExists^(agentPath^) Then
+echo     MsgBox "Could not find local_agent.py", vbCritical, "RiskRunway"
+echo     WScript.Quit 1
+echo End If
+echo cmd = """!PYTHONW!""" ^& " """ ^& agentPath ^& """ --job-id " ^& jobId ^& " --server " ^& server
+echo shell.Run cmd, 0, False
+echo WScript.Quit 0
+) > "%INSTALL_DIR%\\RiskRunwayLauncher.vbs"
 
 reg add "HKCU\\Software\\Classes\\riskrunway" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway" /ve /t REG_SZ /d "URL:RiskRunway Protocol" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway" /v "URL Protocol" /t REG_SZ /d "" /f >nul 2>&1
 reg add "HKCU\\Software\\Classes\\riskrunway\\shell\\open\\command" /f >nul 2>&1
-reg add "HKCU\\Software\\Classes\\riskrunway\\shell\\open\\command" /ve /t REG_SZ /d "\\"%INSTALL_DIR%\\RiskRunwayLauncher.bat\\" \\"%%1\\"" /f >nul 2>&1
+reg add "HKCU\\Software\\Classes\\riskrunway\\shell\\open\\command" /ve /t REG_SZ /d "wscript.exe \\"%INSTALL_DIR%\\RiskRunwayLauncher.vbs\\" \\"%%1\\"" /f >nul 2>&1
 
 REM Cleanup
 rmdir /s /q "%TMPDIR%" 2>nul
