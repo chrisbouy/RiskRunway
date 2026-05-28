@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request, jsonify, current_app, session, redirect, url_for, send_file
 import os
 import json
+import re
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
@@ -3543,6 +3544,23 @@ def update_submission_status_label(submission_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _sanitize_notes_html(html_str):
+    """Sanitize notes HTML to only allow safe formatting tags."""
+    if not html_str:
+        return html_str
+    # Allow only safe inline formatting tags
+    allowed_tags = {'b', 'i', 'u', 'strong', 'em', 'br', 'p', 'div', 'span', 'ul', 'ol', 'li'}
+    # Remove any tags not in the allowlist
+    def replace_tag(match):
+        tag_content = match.group(1)
+        # Extract tag name (handle closing tags and attributes)
+        tag_name = re.match(r'/?(\w+)', tag_content)
+        if tag_name and tag_name.group(1).lower() in allowed_tags:
+            return match.group(0)
+        return ''
+    return re.sub(r'<([^>]+)>', replace_tag, html_str)
+
+
 @bp.route('/api/submission/<int:submission_id>/notes', methods=['PUT'])
 @login_required
 def update_submission_notes(submission_id):
@@ -3550,7 +3568,7 @@ def update_submission_notes(submission_id):
     try:
         data = request.get_json() or {}
         stage = data.get('stage', 'submission')
-        note_text = (data.get('notes') or '').strip()
+        note_text = _sanitize_notes_html((data.get('notes') or '').strip())
 
         db_session = get_session()
         try:

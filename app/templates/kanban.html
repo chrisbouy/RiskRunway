@@ -2761,12 +2761,12 @@
 
             content.innerHTML = stages.map((stage, i) => {
                 const text = notesObj[stage.key] || '';
-                const displayText = text ? escapeHtml(text) : '<span style="color:#6b7280; font-style:italic;">No notes</span>';
+                const displayText = text ? text : '<span style="color:#6b7280; font-style:italic;">No notes</span>';
                 const divider = i < stages.length - 1 ? '<div style="border-bottom: 1px solid #374151; margin: 0.5rem 0;"></div>' : '';
                 return `
                     <div>
                         <div style="font-size: 0.688rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 0.25rem;">${stage.label}</div>
-                        <div style="font-size: 0.813rem; color: #e5e7eb; white-space: pre-wrap; line-height: 1.5; padding: 0.25rem 0;">${displayText}</div>
+                        <div style="font-size: 0.813rem; color: #e5e7eb; line-height: 1.5; padding: 0.25rem 0;">${displayText}</div>
                     </div>
                     ${divider}
                 `;
