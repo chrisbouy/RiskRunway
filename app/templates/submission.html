@@ -1044,22 +1044,28 @@
             display: grid;
             gap: 0.375rem;
             padding: 0.75rem;
+            max-width: 420px;
         }
 
         .doc-item {
-            border: 1px solid var(--color-neutral-200);
+            border: none;
             border-radius: 0.375rem;
             padding: 0.5rem 0.625rem;
             font-size: 0.75rem;
             display: flex;
-            justify-content: space-between;
-            gap: 0.75rem;
             align-items: center;
+        }
+
+        .doc-item > div {
+            flex: 1;
+            min-width: 0;
         }
 
         .doc-item a {
             color: var(--color-primary);
             text-decoration: none;
+            margin-left: 5rem;
+            flex-shrink: 0;
         }
 
         .doc-item a:hover {
@@ -1170,6 +1176,32 @@
             </div>
             <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
+                    <h2 class="card-title">Submission Documents</h2>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 60px;">
+                    <!-- Document List (left) -->
+                    <div style="padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: center;">
+                        <div id="stage1DocsList" class="doc-list"></div>
+                    </div>
+                    <!-- Upload Area (right) -->
+                    <div style="padding: 0.75rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.375rem;">
+                        <div style="font-size: 0.688rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-neutral-500); text-align: center;">Upload Additional Documents</div>
+                        <div style="display: flex; gap: 1rem; align-items: center;">
+                            <select id="stage1DocType" style="font-size: 0.688rem; padding: 0.2rem 1.2rem 0.2rem 0.4rem; color: var(--text-primary, #e5e5e5); background: var(--color-neutral-100, #2a2a2a); border: 1px solid var(--border-color, #d1d5db); border-radius: 0.25rem; min-width: 0; width: auto; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path fill=%22%23999%22 d=%22M0 0l5 6 5-6z%22/></svg>'); background-repeat: no-repeat; background-position: right 0.4rem center; padding-right: 1.4rem;">
+                                <option value="" disabled selected style="color: var(--text-primary, #e5e5e5);">Doc Type</option>
+                                <option value="APPLICATION">Application</option>
+                                <option value="SOV">SOV</option>
+                                <option value="LOSS_RUN">Loss Run</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                            <input type="file" id="stage1DocFile" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+                            <button type="button" id="stage1DocFileBtn" onclick="document.getElementById('stage1DocFile').click()" style="font-size: 0.688rem; padding: 0.25rem 0.5rem; background: var(--color-neutral-100, #f3f4f6); border: 1px solid var(--border-color, #d1d5db); border-radius: 0.25rem; cursor: pointer; color: var(--text-primary, #374151);">Choose File</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
                     <h2 class="card-title">Notes</h2>
                 </div>
                 <div style="padding: 0.75rem;">
@@ -1178,32 +1210,6 @@
                         placeholder="Add notes about this submission..."></textarea>
                     <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 0.375rem; gap: 0.5rem;">
                         <span class="notes-save-status" data-stage="submission" style="font-size: 0.688rem; color: var(--color-neutral-500);"></span>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title">Submission Documents</h2>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr auto; gap: 0; min-height: 60px;">
-                    <!-- Document List (left) -->
-                    <div style="padding: 0.5rem 0.75rem;">
-                        <div id="stage1DocsList" class="doc-list"></div>
-                    </div>
-                    <!-- Upload Area (right) -->
-                    <div style="padding: 0.75rem; border-left: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 0.375rem;">
-                        <div style="font-size: 0.688rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-neutral-500);">Upload Document</div>
-                        <div style="display: flex; gap: 0.5rem; align-items: center;">
-                            <select id="stage1DocType" style="font-size: 0.75rem; padding: 0.25rem 1.5rem 0.25rem 0.5rem;">
-                                <option value="" disabled selected>Doc Type</option>
-                                <option value="APPLICATION">Application</option>
-                                <option value="SOV">SOV</option>
-                                <option value="LOSS_RUN">Loss Run</option>
-                                <option value="OTHER">Other</option>
-                            </select>
-                            <input type="file" id="stage1DocFile" accept=".pdf,.png,.jpg,.jpeg" style="font-size: 0.75rem; max-width: 200px;">
-                            <button id="uploadStage1DocBtn" style="background: var(--color-primary); color: white; font-size: 0.75rem; padding: 0.3rem 0.75rem; border-radius: var(--button-border-radius); white-space: nowrap;">Upload</button>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -3469,17 +3475,19 @@ Thank you for your attention to this matter.`;
             });
         })();
 
-        document.getElementById('uploadStage1DocBtn').addEventListener('click', async function() {
-            const fileInput = document.getElementById('stage1DocFile');
+        document.getElementById('stage1DocFile').addEventListener('change', async function() {
+            const file = this.files[0];
+            if (!file) return;
             const docType = document.getElementById('stage1DocType').value;
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Select a document file.');
+            if (!docType) {
+                alert('Select a document type first.');
+                this.value = '';
                 return;
             }
             try {
                 await uploadSubmissionDocument(file, docType, { term_key: submissionData?.effective_date });
-                fileInput.value = '';
+                this.value = '';
+                document.getElementById('stage1DocType').selectedIndex = 0;
                 await loadDocuments();
             } catch (error) {
                 alert(error.message);
