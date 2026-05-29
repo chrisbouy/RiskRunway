@@ -105,6 +105,10 @@ PASTE_HOTKEY  = ("command", "v") if IS_MAC else ("ctrl", "v")
 SELECT_HOTKEY = ("command", "a") if IS_MAC else ("ctrl", "a")
 COPY_HOTKEY   = ("command", "c") if IS_MAC else ("ctrl", "c")
 
+# Remote mode: use typewrite instead of clipboard paste, skip verification
+REMOTE_MODE = False
+TYPEWRITE_INTERVAL = 0.02  # seconds between keystrokes in remote mode
+
 # Debug output directory for fill verification screenshots
 DEBUG_FILL_DIR = Path(__file__).parent / "logs" / "fill_screenshots"
 DEBUG_FILL_DIR.mkdir(parents=True, exist_ok=True)
@@ -728,9 +732,30 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
                 pyautogui.click(abs_x, abs_y)
                 time.sleep(CLICK_DELAY)
                 pyautogui.hotkey(*SELECT_HOTKEY)
-                pyperclip.copy(value)
-                pyautogui.hotkey(*PASTE_HOTKEY)
+
+                if REMOTE_MODE:
+                    # Remote mode: typewrite keystrokes (no clipboard access)
+                    pyautogui.typewrite(value, interval=TYPEWRITE_INTERVAL)
+                else:
+                    pyperclip.copy(value)
+                    pyautogui.hotkey(*PASTE_HOTKEY)
                 time.sleep(FILL_DELAY)
+
+                if REMOTE_MODE:
+                    # Skip verification in remote mode — clipboard isn't shared
+                    logger.info(
+                        f"✓ FILLED '{label}' (remote, unverified) | attempt {attempt} (offset {dx},{dy}) | "
+                        f"value='{value}' | coords=({abs_x},{abs_y})"
+                    )
+                    click_log.append({
+                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                        "status": "hit", "attempt": attempt, "value": value, "method": "typewrite",
+                    })
+                    filled.add(label)
+                    field_filled = True
+                    pyautogui.click(safe_x, safe_y)
+                    time.sleep(0.03)
+                    break
 
                 # Verify the paste landed
                 verdict = verify_field_filled(value)
@@ -811,11 +836,11 @@ class SelectionPopup:
         self.root.attributes("-topmost", True)
         self.root.overrideredirect(True)
         self.root.attributes("-alpha", 0.95)
-        self.root.configure(bg="#1a1f2e")
+        self.root.configure(bg="#0f1219")
         self.root.resizable(False, False)
 
-        w = 220
-        h = 270 if platform.system() == "Windows" else 250
+        w = 260
+        h = 195
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{w}x{h}+{screen_w - w - 20}+80")
 
@@ -830,53 +855,86 @@ class SelectionPopup:
 
     def _build_ui(self):
         # Header / drag handle
-        hdr = self.tk.Frame(self.root, bg="#141824", cursor="fleur")
+        hdr = self.tk.Frame(self.root, bg="#0f1219", cursor="fleur")
         hdr.pack(fill="x")
         hdr.bind("<ButtonPress-1>", self._drag_start)
         hdr.bind("<B1-Motion>", self._drag_move)
 
-        inner = self.tk.Frame(hdr, bg="#141824")
-        inner.pack(fill="x", padx=12, pady=8)
+        inner = self.tk.Frame(hdr, bg="#0f1219")
+        inner.pack(fill="x", padx=14, pady=(10, 4))
         inner.bind("<ButtonPress-1>", self._drag_start)
         inner.bind("<B1-Motion>", self._drag_move)
 
-        title = self.tk.Label(inner, text="AMS Agent", font=("Courier", 11, "bold"),
-                              fg="#4f8ef7", bg="#141824")
+        title = self.tk.Label(inner, text="RiskRunway", font=("Segoe UI", 10, "bold"),
+                              fg="#c8cfe0", bg="#0f1219")
         title.pack(side="left")
         title.bind("<ButtonPress-1>", self._drag_start)
         title.bind("<B1-Motion>", self._drag_move)
 
+        subtitle = self.tk.Label(inner, text="export agent",
+                                 font=("Segoe UI", 8), fg="#4a5270", bg="#0f1219")
+        subtitle.pack(side="left", padx=(6, 0))
+        subtitle.bind("<ButtonPress-1>", self._drag_start)
+        subtitle.bind("<B1-Motion>", self._drag_move)
+
+        # Separator
+        self.tk.Frame(self.root, bg="#1e2538", height=1).pack(fill="x", padx=14)
+
         # Body
-        body = self.tk.Frame(self.root, bg="#1a1f2e")
-        body.pack(fill="both", expand=True, padx=12, pady=6)
+        body = self.tk.Frame(self.root, bg="#0f1219")
+        body.pack(fill="both", expand=True, padx=14, pady=(10, 10))
 
+        # Instruction
         self.tk.Label(
-            body, text="Drag onto AMS window\nthen click below.",
-            font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
-            justify="center", wraplength=180,
-        ).pack(pady=(2, 6))
+            body, text="Drag onto target window",
+            font=("Segoe UI", 8), fg="#6b7394", bg="#0f1219",
+        ).pack(anchor="w", pady=(0, 6))
 
+        # Main button
         self.tk.Button(
             body, text="Push Data Here",
-            font=("Helvetica", 11, "bold"), fg="#ffffff", bg="#4f8ef7",
-            activebackground="#3a7ee8", activeforeground="#ffffff",
-            relief="flat", cursor="hand2", padx=10, pady=8,
+            font=("Segoe UI", 9, "bold"), fg="#0f1219", bg="#c8cfe0",
+            activebackground="#a8b4cc", activeforeground="#0f1219",
+            relief="flat", cursor="hand2", pady=6,
             command=self._on_push,
         ).pack(fill="x")
 
-        cancel = self.tk.Label(body, text="close",
-                               font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2")
-        cancel.pack(pady=(2, 0))
-        cancel.bind("<Button-1>", lambda e: self._on_close())
+        # Bottom row: 2 columns — disclaimer left, buttons right
+        bottom = self.tk.Frame(body, bg="#0f1219")
+        bottom.pack(fill="x", pady=(6, 0))
 
+        # Left column: disclaimer
         self.tk.Label(
-            body,
-            text="RiskRunway is assisting with data entry. Please verify all values before saving.",
-            font=("Helvetica", 7), fg="#5a6180", bg="#1a1f2e",
-            justify="center", wraplength=196,
-        ).pack(pady=(2, 0))
+            bottom, text="Verify all values\nbefore saving.",
+            font=("Segoe UI", 7), fg="#6b7394", bg="#0f1219",
+            justify="center",
+        ).pack(side="left", anchor="s")
 
-        self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
+        # Right column: remote push + close stacked
+        right_col = self.tk.Frame(bottom, bg="#0f1219")
+        right_col.pack(side="right", anchor="se")
+
+        remote_link = self.tk.Label(
+            right_col, text="remote push",
+            font=("Segoe UI", 8), fg="#4f8ef7", bg="#0f1219",
+            cursor="hand2",
+        )
+        remote_link.pack(anchor="e")
+        remote_link.bind("<Button-1>", lambda e: self._on_remote_push())
+        remote_link.bind("<Enter>", lambda e: remote_link.config(fg="#7aabff"))
+        remote_link.bind("<Leave>", lambda e: remote_link.config(fg="#4f8ef7"))
+
+        close_link = self.tk.Label(
+            right_col, text="close",
+            font=("Segoe UI", 8), fg="#c0392b", bg="#0f1219",
+            cursor="hand2",
+        )
+        close_link.pack(anchor="e", pady=(2, 0))
+        close_link.bind("<Button-1>", lambda e: self._on_close())
+        close_link.bind("<Enter>", lambda e: close_link.config(fg="#e74c3c"))
+        close_link.bind("<Leave>", lambda e: close_link.config(fg="#c0392b"))
+
+        self.root.configure(highlightbackground="#1e2538", highlightthickness=1)
 
     def _drag_start(self, e):
         self.drag["x"] = e.x_root - self.root.winfo_x()
@@ -890,6 +948,14 @@ class SelectionPopup:
         cy = self.root.winfo_y() + self.root.winfo_height() // 2
         self.position_result = (cx, cy)
         logger.info(f"User clicked Push Data Here at ({cx}, {cy})")
+
+    def _on_remote_push(self):
+        global REMOTE_MODE
+        REMOTE_MODE = True
+        cx = self.root.winfo_x() + self.root.winfo_width() // 2
+        cy = self.root.winfo_y() + self.root.winfo_height() // 2
+        self.position_result = (cx, cy)
+        logger.info(f"User clicked Remote Push at ({cx}, {cy}) — remote mode enabled")
 
     def _on_close(self):
         self.should_close = True
@@ -1235,7 +1301,10 @@ def update_job_status(server_url: str, job_id: int, status: str, message: str = 
         logger.error(f"Status update failed for job {job_id}: {e}")
 
 def run_job(job: dict, server_url: str):
-    global persistent_overlay
+    global persistent_overlay, REMOTE_MODE
+
+    # Reset remote mode for each job — user picks per-job via button
+    REMOTE_MODE = False
 
     job_id    = job["id"]
     json_data = job.get("json_data") or {}
@@ -1354,7 +1423,7 @@ def main():
   Server   : {server_url}
   Mode     : {'Single-shot (Job #' + str(args.job_id) + ')' if is_single_shot else 'Daemon (continuous polling)'}
   OS       : {platform.system()}
-  Paste    : {'+'.join(PASTE_HOTKEY)}
+  Input    : Choose in popup — 'Push Data Here' (paste) or 'Remote Push' (typewrite)
     """)
 
     if is_single_shot:
