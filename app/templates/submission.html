@@ -1959,7 +1959,8 @@
                 container.innerHTML = '<div class="doc-item"><span>No documents</span></div>';
                 return;
             }
-            container.innerHTML = docs.map((doc) => `
+
+            const renderItem = (doc) => `
                 <div class="doc-item">
                     <div>
                         <div><strong>${doc.document_type}</strong> - ${doc.name || doc.original_filename || 'file'}</div>
@@ -1969,8 +1970,21 @@
                         <a href="${doc.download_url}" target="_blank" rel="noopener">Open</a>
                         <button type="button" onclick="removeDocument(${doc.id}, '${(doc.name || doc.original_filename || 'file').replace(/'/g, "\\'")}')" style="background:none; border:none; color:var(--color-danger, #ef4444); cursor:pointer; font-size:0.75rem; padding:0.2rem 0.4rem; border-radius:0.25rem; font-weight:600;" title="Remove document">✕</button>
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+
+            if (docs.length <= 3) {
+                container.innerHTML = docs.map(renderItem).join('');
+            } else {
+                // 2 columns: left gets ceil, right gets floor
+                const leftCount = Math.ceil(docs.length / 2);
+                const leftDocs = docs.slice(0, leftCount);
+                const rightDocs = docs.slice(leftCount);
+                container.innerHTML = `
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; width:100%;">
+                        <div>${leftDocs.map(renderItem).join('')}</div>
+                        <div>${rightDocs.map(renderItem).join('')}</div>
+                    </div>`;
+            }
         }
         function renderStageDocumentLists() { 
             const stage1Docs = submissionDocuments.filter((d) =>
@@ -3002,6 +3016,45 @@
         let submitToMarketBrokerEntries = [];
 
         document.getElementById('submitToMarketBtn').addEventListener('click', async function() {
+            // Check for connected email account before opening the modal
+            try {
+                const accountsResp = await fetch('/api/oauth/accounts');
+                const accountsData = await accountsResp.json();
+                if (!accountsData.success || !accountsData.accounts || accountsData.accounts.length === 0) {
+                    // No connected account — prompt user to connect
+                    const email = prompt('No email account connected. Enter your email address to connect (e.g. you@outlook.com):');
+                    if (!email || !email.trim()) return;
+                    const emailLower = email.trim().toLowerCase();
+                    const provider = emailLower.includes('gmail') || emailLower.includes('google') ? 'gmail' : 'outlook';
+                    const returnUrl = encodeURIComponent(window.location.href);
+                    console.log('[Submit to Market] No account found, connecting via', provider);
+                    const oauthResp = await fetch(`/api/oauth/connect/${provider}?return_url=${returnUrl}&login_hint=${encodeURIComponent(emailLower)}`);
+                    const oauthData = await oauthResp.json();
+                    console.log('[Submit to Market] OAuth response:', oauthData);
+                    if (oauthData.success && oauthData.authorization_url) {
+                        console.log('[Submit to Market] Redirecting to:', oauthData.authorization_url);
+                        window.location.href = oauthData.authorization_url;
+                        return;
+                    } else {
+                        alert('Failed to start email connection: ' + (oauthData.error || JSON.stringify(oauthData)));
+                        return;
+                    }
+                }
+                // Check if any account is active (status is lowercase from enum)
+                const activeAccount = accountsData.accounts.find(a =>
+                    (a.status || '').toLowerCase() === 'active'
+                );
+                if (!activeAccount) {
+                    // Account exists but needs re-auth
+                    const provider = accountsData.accounts[0].provider || 'outlook';
+                    await handleNeedsReauth(provider);
+                    return;
+                }
+            } catch (err) {
+                console.error('Failed to check connected accounts:', err);
+                // Proceed anyway — the send will fail with a clear error if no account
+            }
+
             document.getElementById('submitToMarketInsuredName').textContent = submissionData?.insured_name || 'Unknown';
             await loadSubmitToMarketBrokers();
             loadSubmitToMarketSignature();
@@ -4380,6 +4433,20 @@ Thank you for your attention to this matter.`;
 
         // Load submission data on page load
         loadSubmission();
+
+        // Auto-open Submit to Market modal if returning from OAuth connect
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('oauth_success')) {
+                // Clean the URL
+                window.history.replaceState({}, '', window.location.pathname);
+                // Wait for submission data to load, then auto-click Submit to Market
+                setTimeout(() => {
+                    const btn = document.getElementById('submitToMarketBtn');
+                    if (btn) btn.click();
+                }, 500);
+            }
+        })();
     </script>
 <!-- Loading Overlay for Quote Processing - placed outside all containers to avoid transform containment issues -->
 <div id="quoteLoadingOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:10000;display:none;">
