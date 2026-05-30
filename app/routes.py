@@ -1153,6 +1153,24 @@ def upload_submission_document(submission_id):
 
             db_session.commit()
 
+            # Capture doc data while session is still open
+            doc_id = doc.id
+            doc_dict = {
+                'id': doc_id,
+                'submission_id': submission_id,
+                'quote_id': quote_id,
+                'document_type': document_type.value if hasattr(document_type, 'value') else document_type.name,
+                'carrier': carrier,
+                'term_key': term_key,
+                'version': next_version,
+                'is_active': True,
+                'original_filename': filename,
+                'content_type': file.content_type,
+                'uploaded_by': session.get('username'),
+                'storage_provider': storage_provider,
+                'storage_key': storage_key
+            }
+
             log_action(
                 entity_type='submission',
                 entity_id=submission_id,
@@ -1161,7 +1179,7 @@ def upload_submission_document(submission_id):
                 submission_id=submission_id,
                 quote_id=quote_id,
                 details=json.dumps({
-                    'document_id': doc.id,
+                    'document_id': doc_id,
                     'document_type': document_type.name,
                     'carrier': carrier,
                     'term_key': term_key,
@@ -1169,9 +1187,8 @@ def upload_submission_document(submission_id):
                 })
             )
 
-            item = doc.to_dict()
-            item['download_url'] = _document_download_url(doc.id)
-            return jsonify({'success': True, 'document': item})
+            doc_dict['download_url'] = _document_download_url(doc_id)
+            return jsonify({'success': True, 'document': doc_dict})
         finally:
             db_session.close()
             # Clean up temp file after processing
@@ -1226,6 +1243,69 @@ def download_document(document_id):
             return "Document file missing", 404
 
         return send_file(local_path, as_attachment=False, download_name=doc.original_filename, mimetype=doc.content_type)
+    finally:
+        db_session.close()
+
+
+@bp.route('/api/documents/<int:document_id>', methods=['DELETE'])
+@login_required
+def delete_document(document_id):
+    """Delete a document by ID, removing the stored file and DB record."""
+    db_session = get_session()
+    try:
+        doc = db_session.query(Document).filter_by(id=document_id).first()
+        if not doc:
+            return jsonify({'success': False, 'error': 'Document not found'}), 404
+
+        submission_id = doc.submission_id
+        doc_type = doc.document_type.value if doc.document_type else None
+        doc_name = doc.original_filename
+
+        # Remove stored file
+        if doc.storage_provider == 's3':
+            try:
+                import boto3
+                bucket = current_app.config.get('S3_BUCKET')
+                client = boto3.client(
+                    's3',
+                    region_name=current_app.config.get('S3_REGION') or None,
+                    endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                )
+                client.delete_object(Bucket=bucket, Key=doc.storage_key)
+            except Exception as err:
+                print(f"[DOC DELETE] S3 delete failed: {err}")
+        else:
+            local_root = current_app.config.get('DOCUMENTS_LOCAL_FOLDER', current_app.config['UPLOAD_FOLDER'])
+            if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
+                local_path = doc.storage_key
+            else:
+                local_path = os.path.join(local_root, doc.storage_key)
+            try:
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+            except Exception as err:
+                print(f"[DOC DELETE] Local file delete failed: {err}")
+
+        db_session.delete(doc)
+        db_session.commit()
+
+        log_action(
+            entity_type='submission',
+            entity_id=submission_id,
+            action='document_deleted',
+            user=session.get('username'),
+            submission_id=submission_id,
+            details=json.dumps({
+                'document_id': document_id,
+                'document_type': doc_type,
+                'filename': doc_name
+            })
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         db_session.close()
 

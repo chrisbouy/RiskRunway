@@ -1936,6 +1936,22 @@
             }
         }
 
+        async function removeDocument(docId, docName) {
+            if (!confirm(`Remove "${docName}"?`)) return;
+            try {
+                const response = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    await loadDocuments();
+                } else {
+                    alert('Error removing document: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error removing document:', error);
+                alert('Failed to remove document.');
+            }
+        }
+
         function renderDocList(containerId, docs) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -1949,7 +1965,10 @@
                         <div><strong>${doc.document_type}</strong> - ${doc.name || doc.original_filename || 'file'}</div>
                         <div style="color:#64748b;">v${doc.version}${doc.carrier ? ` • ${doc.carrier}` : ''}${doc.term_key ? ` • ${doc.term_key}` : ''}</div>
                     </div>
-                    <a href="${doc.download_url}" target="_blank" rel="noopener">Open</a>
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <a href="${doc.download_url}" target="_blank" rel="noopener">Open</a>
+                        <button type="button" onclick="removeDocument(${doc.id}, '${(doc.name || doc.original_filename || 'file').replace(/'/g, "\\'")}')" style="background:none; border:none; color:var(--color-danger, #ef4444); cursor:pointer; font-size:0.75rem; padding:0.2rem 0.4rem; border-radius:0.25rem; font-weight:600;" title="Remove document">✕</button>
+                    </div>
                 </div>
             `).join('');
         }

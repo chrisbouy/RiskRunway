@@ -528,6 +528,87 @@
         .card-control:hover, .card-control:focus { border-color: var(--border); outline: none; }
         .card-control option { font-size: 11px; }
 
+        /* Custom documents dropdown */
+        .docs-dropdown {
+            position: relative;
+            min-width: 100px;
+            width: 100%;
+        }
+        .docs-dropdown-toggle {
+            font-size: 10px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            color: var(--text-muted, #a0a0a0);
+            background: var(--surface, #1a1a1a);
+            border: 1px solid var(--text-muted, #a0a0a0);
+            border-radius: 3px;
+            padding: 2px 18px 2px 5px;
+            line-height: 1.3;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            transition: border-color 0.15s;
+            position: relative;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 5px center;
+        }
+        .docs-dropdown-toggle:hover { border-color: var(--text, #e5e5e5); }
+        .docs-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 999;
+            background: var(--bg, #1a1a1a);
+            border: 1px solid var(--border, #333);
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            min-width: 180px;
+            max-height: 240px;
+            overflow-y: auto;
+            margin-top: 2px;
+        }
+        .docs-dropdown.open .docs-dropdown-menu { display: block; }
+        .docs-dropdown-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            color: var(--text, #e5e5e5);
+            cursor: pointer;
+            transition: background 0.1s;
+            gap: 4px;
+        }
+        .docs-dropdown-item:hover { background: var(--border, #333); }
+        .docs-dropdown-item.separator {
+            padding: 0;
+            margin: 2px 4px;
+            border-top: 1px solid var(--border, #333);
+            cursor: default;
+            pointer-events: none;
+        }
+        .docs-dropdown-item .doc-trash-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 0 2px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .docs-dropdown-item:hover .doc-trash-btn { display: inline-block; }
+        .docs-dropdown-item .doc-item-label {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         .renewal-meta {
             font-size: 9px;
             font-family: 'IBM Plex Mono', monospace;
@@ -1021,6 +1102,13 @@
                     changeTheme(e.target.value);
                 });
             }
+
+            // Close custom docs dropdowns when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.docs-dropdown')) {
+                    document.querySelectorAll('.docs-dropdown.open').forEach(dd => dd.classList.remove('open'));
+                }
+            });
         });
 
         Dropzone.autoDiscover = false;
@@ -1517,7 +1605,7 @@
                 status = renewalCountdown || 'Bound';
             }
 
-            // Build doc options: non-correspondence first, then correspondence in received order
+            // Build doc items: non-correspondence first, then correspondence in received order
             const allDocs = submission.documents || [];
             const nonCorrespondenceDocs = allDocs.filter(d => d.document_type !== 'Correspondence');
             // Correspondence docs come from DB newest-first; reverse for received (oldest-first) order
@@ -1525,53 +1613,66 @@
                 .filter(d => d.document_type === 'Correspondence')
                 .reverse();
 
-            // Non-correspondence options (apps, quotes, etc.)
-            const nonCorrOptions = nonCorrespondenceDocs.map(doc => {
+            // Non-correspondence items (apps, quotes, etc.)
+            const nonCorrItems = nonCorrespondenceDocs.map(doc => {
                 const label = `${doc.document_type}: ${doc.name}`;
-                return `<option value="${doc.id}" data-doc-type="${doc.document_type}">${escapeHtml(label)}</option>`;
-            }).join('');
+                return { id: doc.id, label, docType: doc.document_type, deletable: true };
+            });
 
-            // Correspondence options in received order: "Email N from <sender> - <topic>"
+            // Correspondence items in received order
             const correspondenceCounts = {};
-            const corrOptions = correspondenceDocs.map(doc => {
+            const corrItems = correspondenceDocs.map(doc => {
                 const sender = doc.carrier || 'unknown';
                 correspondenceCounts[sender] = (correspondenceCounts[sender] || 0) + 1;
                 const topic = (doc.name || '').replace(/\.(json|txt)$/i, '').trim();
                 const base = `Email ${correspondenceCounts[sender]} from ${sender}`;
                 const label = topic ? `📧 ${base} - ${topic}` : `📧 ${base}`;
-                return `<option value="${doc.id}" data-doc-type="Correspondence">${escapeHtml(label)}</option>`;
-            }).join('');
+                return { id: doc.id, label, docType: 'Correspondence', deletable: true };
+            });
 
-            // "View All Emails" option (only if more than one correspondence)
-            const viewAllEmailsOption = correspondenceDocs.length > 1
-                ? `<option value="viewall:emails">📧 View All Emails</option>` : '';
+            // "View All Emails" action (only if more than one correspondence)
+            const viewAllEmailsItem = correspondenceDocs.length > 1
+                ? [{ id: 'viewall:emails', label: '📧 View All Emails', docType: null, deletable: false }] : [];
 
-            // Notes section — single entry that opens the notes popup
+            // Notes section
             const notesObj = (submission.notes && typeof submission.notes === 'object') ? submission.notes : {};
             const stageOrder = ['submission', 'quoting', 'bind'];
             const hasAnyNote = stageOrder.some(k => notesObj[k] && notesObj[k].trim());
-            const noteOptions = hasAnyNote ? `<option value="note:all">📝 Notes</option>` : '';
-            const viewAllNotesOption = '';
+            const noteItems = hasAnyNote ? [{ id: 'note:all', label: '📝 Notes', docType: null, deletable: false }] : [];
 
-            // Assemble dropdown
-            let selectOptions = '';
-            if (nonCorrOptions) selectOptions += nonCorrOptions;
-            if (corrOptions) {
-                if (selectOptions) selectOptions += '<option disabled>───</option>';
-                selectOptions += corrOptions;
-                if (viewAllEmailsOption) selectOptions += viewAllEmailsOption;
+            // Assemble dropdown items
+            let dropdownItems = [];
+            if (nonCorrItems.length) dropdownItems = dropdownItems.concat(nonCorrItems);
+            if (corrItems.length) {
+                if (dropdownItems.length) dropdownItems.push({ separator: true });
+                dropdownItems = dropdownItems.concat(corrItems);
+                dropdownItems = dropdownItems.concat(viewAllEmailsItem);
             }
-            if (noteOptions) {
-                if (selectOptions) selectOptions += '<option disabled>───</option>';
-                selectOptions += noteOptions;
-                if (viewAllNotesOption) selectOptions += viewAllNotesOption;
+            if (noteItems.length) {
+                if (dropdownItems.length) dropdownItems.push({ separator: true });
+                dropdownItems = dropdownItems.concat(noteItems);
+            }
+
+            // Build custom dropdown HTML
+            let docsDropdownHtml = '';
+            if (dropdownItems.length) {
+                const itemsHtml = dropdownItems.map(item => {
+                    if (item.separator) return '<div class="docs-dropdown-item separator"></div>';
+                    const trashBtn = item.deletable ? `<span class="doc-trash-btn" data-doc-id="${item.id}" title="Remove">🗑</span>` : '';
+                    return `<div class="docs-dropdown-item" data-value="${item.id}" data-doc-type="${item.docType || ''}"><span class="doc-item-label">${escapeHtml(item.label)}</span>${trashBtn}</div>`;
+                }).join('');
+                docsDropdownHtml = `
+                    <div class="docs-dropdown" data-submission-id="${submission.id}">
+                        <button type="button" class="docs-dropdown-toggle">Docs</button>
+                        <div class="docs-dropdown-menu">${itemsHtml}</div>
+                    </div>`;
             }
 
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
                 <div class="card-row">
                     <div class="card-left">
-                        ${selectOptions ? `<select class="documents-select card-control" data-submission-id="${submission.id}"><option value="" hidden>Docs</option>${selectOptions}</select>` : ''}
+                        ${docsDropdownHtml}
                     </div>
                     <div class="card-right">
                         <div class="card-status">${escapeHtml(status)}</div>
@@ -1612,36 +1713,70 @@
                 document.querySelectorAll('.runway-lane.drag-over').forEach((lane) => lane.classList.remove('drag-over'));
             });
 
-            const stopPropagationControls = card.querySelectorAll('input, select');
+            const stopPropagationControls = card.querySelectorAll('input, select, .docs-dropdown');
             stopPropagationControls.forEach((el) => {
                 el.addEventListener('click', (e) => e.stopPropagation());
             });
 
-            const docSelect = card.querySelector('.documents-select');
-            if (docSelect) {
-                docSelect.addEventListener('change', async function(e) {
-                    e.stopPropagation();
-                    const val = this.value;
-                    if (!val) return;
+            // Custom docs dropdown logic
+            const docsDropdown = card.querySelector('.docs-dropdown');
+            if (docsDropdown) {
+                const toggle = docsDropdown.querySelector('.docs-dropdown-toggle');
+                const menu = docsDropdown.querySelector('.docs-dropdown-menu');
 
-                    if (val === 'viewall:emails') {
-                        openAllCorrespondencePopup(submission);
-                    } else if (val === 'note:all') {
-                        openNotesPopup(submission);
-                    } else if (val.startsWith('note:')) {
-                        openNotesPopup(submission);
-                    } else {
-                        const selectedOption = this.options[this.selectedIndex];
-                        const docType = selectedOption.dataset.docType;
-                        if (docType === 'Correspondence') {
-                            // Strip leading emoji + space from the option text for the popup title
-                            const label = (selectedOption.textContent || '').replace(/^📧\s*/, '').trim();
+                toggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    // Close any other open dropdowns
+                    document.querySelectorAll('.docs-dropdown.open').forEach(dd => {
+                        if (dd !== docsDropdown) dd.classList.remove('open');
+                    });
+                    docsDropdown.classList.toggle('open');
+                });
+
+                // Handle item clicks
+                menu.querySelectorAll('.docs-dropdown-item:not(.separator)').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        // If trash button was clicked, handle delete
+                        if (e.target.closest('.doc-trash-btn')) return;
+
+                        const val = item.dataset.value;
+                        const docType = item.dataset.docType;
+                        docsDropdown.classList.remove('open');
+
+                        if (val === 'viewall:emails') {
+                            openAllCorrespondencePopup(submission);
+                        } else if (val === 'note:all' || (val && val.startsWith('note:'))) {
+                            openNotesPopup(submission);
+                        } else if (docType === 'Correspondence') {
+                            const label = (item.querySelector('.doc-item-label')?.textContent || '').replace(/^📧\s*/, '').trim();
                             openCorrespondencePopup(val, label);
                         } else {
                             window.open(`/api/documents/${val}/download`, '_blank');
                         }
-                    }
-                    this.value = '';
+                    });
+                });
+
+                // Handle trash button clicks
+                menu.querySelectorAll('.doc-trash-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const docId = btn.dataset.docId;
+                        if (!confirm('Remove this document?')) return;
+                        try {
+                            const resp = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+                            const data = await resp.json();
+                            if (data.success) {
+                                docsDropdown.classList.remove('open');
+                                await loadSubmissions();
+                            } else {
+                                alert('Error: ' + (data.error || 'Unknown error'));
+                            }
+                        } catch (err) {
+                            console.error('Delete document error:', err);
+                            alert('Failed to remove document.');
+                        }
+                    });
                 });
             }
 
