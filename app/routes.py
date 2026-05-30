@@ -1671,6 +1671,22 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
                 'new_emails': 0,
                 'emails': []
             }
+
+        # Exclude emails sent from the user's own address (Graph API ne filter
+        # doesn't work on nested from/emailAddress/address, so filter client-side)
+        own_email = (account.email_address or '').strip().lower()
+        if own_email:
+            before_count = len(unified_emails)
+            unified_emails = [e for e in unified_emails if (e.from_email or '').strip().lower() != own_email]
+            print(f"[EMAIL] Excluded {before_count - len(unified_emails)} emails from self ({own_email}). Senders were: {[(e.from_email or '').strip().lower() for e in unified_emails]}")
+
+        if not unified_emails:
+            return {
+                'success': True,
+                'processed': 0,
+                'new_emails': 0,
+                'emails': []
+            }
         
         # Build email list for frontend (no DB writes)
         email_list = []
@@ -1879,6 +1895,184 @@ def dismiss_email():
             db_session.close()
     except Exception as e:
         logger.error(f"Email dismiss error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/process_attachment', methods=['POST'])
+@login_required
+def process_single_attachment():
+    """
+    Process a single email attachment — either parse as quote or save as document.
+
+    Request body:
+    {
+        "submission_id": int,
+        "message_id": str,
+        "account_id": int,
+        "provider": str,
+        "attachment_id": str,
+        "filename": str,
+        "action_type": "parse" | "save"
+    }
+    """
+    try:
+        data = request.get_json()
+        submission_id = data.get('submission_id')
+        message_id = data.get('message_id')
+        account_id = data.get('account_id')
+        provider = data.get('provider')
+        attachment_id = data.get('attachment_id')
+        filename = data.get('filename', 'attachment.pdf')
+        action_type = data.get('action_type', 'parse')
+
+        if not all([submission_id, message_id, account_id, provider, attachment_id]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            account = db_session.query(ConnectedAccount).filter_by(id=account_id).first()
+            if not account:
+                return jsonify({'success': False, 'error': 'Connected account not found'}), 404
+
+            from app.oauth_services import get_oauth_service
+            oauth_service = get_oauth_service(provider, current_app.config)
+
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+
+            # Auto-refresh if expired
+            if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                refresh_token = tokens.get('refresh_token')
+                if not refresh_token:
+                    return jsonify({'success': False, 'error': 'Token expired, please reconnect email'}), 401
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
+                db_session.commit()
+                access_token = new_tokens.get('access_token')
+
+            # Download the attachment
+            attachment_data = oauth_service.fetch_attachments(
+                access_token=access_token,
+                message_id=message_id,
+                attachment_id=attachment_id
+            )
+
+            if not attachment_data:
+                return jsonify({'success': False, 'error': f'Failed to download attachment: {filename}'}), 500
+
+            safe_filename = secure_filename(filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_filename = f"{timestamp}_{safe_filename}"
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+
+            with open(filepath, 'wb') as f:
+                f.write(attachment_data)
+
+            insured_name = submission.insured_name or 'unknown_insured'
+
+            if action_type == 'parse':
+                # Parse as quote
+                try:
+                    three_pass_result = process_quote_two_pass(filepath, [])
+                    layout_data = three_pass_result['pass1_layout']
+                    parsed_data = three_pass_result['pass2_normalized']
+
+                    carrier_name = None
+                    effective_date = None
+                    if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
+                        first_policy = parsed_data['policies'][0]
+                        carrier_name = first_policy.get('carrier')
+                        effective_date = first_policy.get('effective_date')
+
+                    if not effective_date:
+                        effective_date = submission.effective_date
+
+                    quote = Quote(
+                        submission_id=submission_id,
+                        carrier_name=carrier_name,
+                        raw_document_path=filepath,
+                        extracted_json=json.dumps(parsed_data),
+                        pass1_layout_json=json.dumps(layout_data),
+                        status=QuoteStatus.RECEIVED
+                    )
+                    db_session.add(quote)
+                    db_session.flush()
+                    quote_id = quote.id
+
+                    # Save to documents table
+                    content_type = 'application/pdf'
+                    quote_doc_key = _build_storage_key(
+                        submission_id, DocumentType.QUOTE.name, safe_filename,
+                        session.get('user_id'), insured_name
+                    )
+                    storage_provider_val, storage_key = _storage_upload(filepath, quote_doc_key, content_type)
+                    doc = Document(
+                        submission_id=submission_id,
+                        quote_id=quote_id,
+                        document_type=DocumentType.QUOTE,
+                        carrier=carrier_name,
+                        term_key=effective_date,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider_val,
+                        storage_key=storage_key,
+                        original_filename=safe_filename,
+                        content_type=content_type,
+                        size_bytes=len(attachment_data),
+                        uploaded_by=session.get('username')
+                    )
+                    db_session.add(doc)
+                    db_session.commit()
+
+                    return jsonify({'success': True, 'message': f'Quote parsed from "{filename}" and added to submission.'})
+                except Exception as parse_err:
+                    logger.error(f"Failed to parse attachment as quote: {parse_err}", exc_info=True)
+                    return jsonify({'success': False, 'error': f'Failed to parse quote: {str(parse_err)}'}), 500
+
+            else:
+                # Save as document (no parsing)
+                content_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'application/octet-stream'
+                doc_key = _build_storage_key(
+                    submission_id, DocumentType.OTHER.name, safe_filename,
+                    session.get('user_id'), insured_name
+                )
+                storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
+                doc = Document(
+                    submission_id=submission_id,
+                    quote_id=None,
+                    document_type=DocumentType.OTHER,
+                    carrier=None,
+                    term_key=submission.effective_date,
+                    version=1,
+                    is_active=True,
+                    storage_provider=storage_provider_val,
+                    storage_key=storage_key,
+                    original_filename=safe_filename,
+                    content_type=content_type,
+                    size_bytes=len(attachment_data),
+                    uploaded_by=session.get('username')
+                )
+                db_session.add(doc)
+                db_session.commit()
+
+                return jsonify({'success': True, 'message': f'"{filename}" saved to submission documents.'})
+
+        finally:
+            db_session.close()
+            # Clean up temp file
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.error(f"Process attachment error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

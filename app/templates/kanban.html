@@ -404,9 +404,9 @@
         }
 
         /* Lane tints when active */
-        .runway-lane.active-sub  { background: rgba(74, 158, 255, 0.08); }
-        .runway-lane.active-quot { background: rgba(255, 159, 64, 0.08); }
-        .runway-lane.active-bind { background: rgba(74, 222, 128, 0.08); }
+        .runway-lane.active-sub  { background: rgba(74, 158, 255, 0.15); }
+        .runway-lane.active-quot { background: rgba(255, 159, 64, 0.15); }
+        .runway-lane.active-bind { background: rgba(74, 222, 128, 0.15); }
 
         /* ── SUBMISSION CARD ── */
         .submission-card {
@@ -634,6 +634,63 @@
         .submission-card.dragging {
             opacity: 0.55;
         }
+
+        /* Email attachment hover actions */
+        .email-attachments-col {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .email-attachment-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            position: relative;
+        }
+
+        .email-attachment-name {
+            font-size: 0.875rem;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 220px;
+        }
+
+        .email-attachment-actions {
+            display: none;
+            gap: 0.375rem;
+            flex-shrink: 0;
+        }
+
+        .email-attachment-item:hover .email-attachment-actions {
+            display: flex;
+        }
+
+        .email-attachment-actions button {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 0.25rem;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+
+        .att-parse-btn {
+            background: #059669;
+            color: white;
+        }
+        .att-parse-btn:hover { background: #047857; }
+
+        .att-save-btn {
+            background: #2563eb;
+            color: white;
+        }
+        .att-save-btn:hover { background: #1d4ed8; }
 
         /* Email correspondence body — visible scrollbar + fade hint when overflowing */
         .corr-body-wrap {
@@ -968,7 +1025,7 @@
 
     <!-- New Messages Modal -->
     <div id="newMessagesModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
-        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto border border-gray-700">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-5xl max-h-[80vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-2xl font-bold text-white">📬 New Messages</h2>
                 <button id="closeNewMessagesModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
@@ -2190,6 +2247,7 @@
 
         let currentEmailData = null;
         let currentEmailAction = null;
+        let currentAttachmentAction = null;
 
         // Open new messages modal
         document.getElementById('newMessagesBtn').addEventListener('click', function() {
@@ -2217,46 +2275,100 @@
                 
                 for (const email of cachedEmails) {
                     const emailDiv = document.createElement('div');
-                    emailDiv.className = 'border border-gray-600 rounded-lg p-4 bg-gray-700';
+                    emailDiv.className = 'border border-gray-600 rounded-lg p-3 bg-gray-700';
                     
-                    const hasQuote = email.attachments && email.attachments.some(a => a.filename.toLowerCase().endsWith('.pdf'));
-                    const attachmentsList = email.attachments ? email.attachments.map(a => 
-                        `<span class="inline-block bg-gray-600 text-gray-200 text-xs px-2 py-1 rounded mr-1 mb-1">${escapeHtml(a.filename)}</span>`
-                    ).join('') : '';
+                    const receivedDate = email.received_date ? new Date(email.received_date).toLocaleString() : '';
                     
-                    const receivedDate = email.received_date ? new Date(email.received_date).toLocaleString() : 'Unknown';
+                    const attachmentsHtml = (email.attachments || []).map(a => `
+                        <div class="email-attachment-item" data-message-id="${email.message_id}" data-attachment-id="${escapeHtml(a.attachment_id || '')}" data-filename="${escapeHtml(a.filename || '')}">
+                            <span class="email-attachment-name">${escapeHtml(a.filename || 'file')}</span>
+                            <span class="email-attachment-actions">
+                                <button class="att-parse-btn" title="Process as Quote">📄 Parse</button>
+                                <button class="att-save-btn" title="Save to Docs">💾 Save</button>
+                            </span>
+                        </div>
+                    `).join('');
                     
                     emailDiv.innerHTML = `
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <div class="font-semibold text-white">${escapeHtml(email.subject || '(No Subject)')}</div>
-                                <div class="text-sm text-gray-400">From: ${escapeHtml(email.from_name || email.from_email)} &bull; ${receivedDate}</div>
+                        <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center;">
+                            <div style="display: flex; gap: 0.375rem; align-items: center;">
+                                <button class="read-email-btn px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" data-message-id="${email.message_id}">👁 Read</button>
+                                <button class="save-corr-btn px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700" data-message-id="${email.message_id}">💬 Save</button>
+                                <button class="dismiss-email-btn px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700" data-message-id="${email.message_id}">🗑 Dismiss</button>
                             </div>
-                        </div>
-                        ${attachmentsList ? `<div class="mb-2">${attachmentsList}</div>` : ''}
-                        <div class="flex gap-2 mt-2">
-                            <button class="ingest-email-btn px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700" data-message-id="${email.message_id}">📥 Ingest</button>
-                            <button class="dismiss-email-btn px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700" data-message-id="${email.message_id}">� Dismiss</button>
+                            <div>
+                                <div class="font-semibold text-white text-sm">${escapeHtml(email.subject || '(No Subject)')}</div>
+                                <div class="text-xs text-gray-400">From: ${escapeHtml(email.from_name || email.from_email)}${receivedDate ? ' • ' + receivedDate : ''}</div>
+                            </div>
+                            <div class="email-attachments-col">
+                                ${attachmentsHtml || '<span class="text-xs text-gray-500 italic">No attachments</span>'}
+                            </div>
                         </div>
                     `;
                     
                     container.appendChild(emailDiv);
                 }
                 
-                document.querySelectorAll('.ingest-email-btn').forEach(btn => {
+                // Read button handlers
+                document.querySelectorAll('.read-email-btn').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const msgId = this.dataset.messageId;
                         const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData) openSubmissionSelector(emailData, 'ingest');
+                        if (emailData) openReadEmailPopup(emailData);
                     });
                 });
-                
+
+                // Dismiss button handlers
                 document.querySelectorAll('.dismiss-email-btn').forEach(btn => {
                     btn.addEventListener('click', async function() {
                         const msgId = this.dataset.messageId;
                         const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData && confirm('Mark this email as read? It won\'t appear here again unless you mark it unread in your inbox.')) {
+                        if (emailData) {
                             await dismissEmail(emailData);
+                        }
+                    });
+                });
+
+                // Save as Correspondence button handlers
+                document.querySelectorAll('.save-corr-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const msgId = this.dataset.messageId;
+                        const emailData = cachedEmails.find(e => e.message_id === msgId);
+                        if (emailData) {
+                            currentEmailData = emailData;
+                            openSubmissionSelector(emailData, 'save_correspondence');
+                        }
+                    });
+                });
+
+                // Attachment Parse button handlers
+                document.querySelectorAll('.att-parse-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const item = this.closest('.email-attachment-item');
+                        const msgId = item.dataset.messageId;
+                        const attachmentId = item.dataset.attachmentId;
+                        const filename = item.dataset.filename;
+                        const emailData = cachedEmails.find(e => e.message_id === msgId);
+                        if (emailData) {
+                            currentEmailData = emailData;
+                            currentAttachmentAction = { type: 'parse', attachmentId, filename };
+                            openSubmissionSelectorForAttachment(emailData, attachmentId, filename, 'parse');
+                        }
+                    });
+                });
+
+                // Attachment Save button handlers
+                document.querySelectorAll('.att-save-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const item = this.closest('.email-attachment-item');
+                        const msgId = item.dataset.messageId;
+                        const attachmentId = item.dataset.attachmentId;
+                        const filename = item.dataset.filename;
+                        const emailData = cachedEmails.find(e => e.message_id === msgId);
+                        if (emailData) {
+                            currentEmailData = emailData;
+                            currentAttachmentAction = { type: 'save', attachmentId, filename };
+                            openSubmissionSelectorForAttachment(emailData, attachmentId, filename, 'save');
                         }
                     });
                 });
@@ -2275,8 +2387,13 @@
             const title = document.getElementById('selectSubmissionTitle');
             const description = document.getElementById('selectSubmissionDescription');
             
-            title.textContent = 'Select Submission to Ingest Into';
-            description.textContent = 'Pick a submission. The email body will be saved as correspondence (cleaned by AI) and any quote attachments will be parsed automatically.';
+            if (action === 'save_correspondence') {
+                title.textContent = 'Select Submission to Save Correspondence To';
+                description.textContent = 'The email body will be cleaned by AI and saved as correspondence on the selected submission.';
+            } else {
+                title.textContent = 'Select Submission to Ingest Into';
+                description.textContent = 'Pick a submission. The email body will be saved as correspondence (cleaned by AI) and any quote attachments will be parsed automatically.';
+            }
             
             document.getElementById('selectSubmissionModal').classList.remove('hidden');
             await loadSubmissionsForSelector();
@@ -2332,8 +2449,7 @@
             }
         }
 
-        // Handle email action — unified ingest: cleans body via AI as
-        // correspondence and parses any quote attachments in one call.
+        // Handle email action — unified ingest or save correspondence only.
         async function handleEmailAction(submissionId) {
             const loadingOverlay = document.getElementById('ocrLoadingOverlay');
             const selectSubmissionBtns = document.querySelectorAll('.select-submission-btn');
@@ -2346,10 +2462,24 @@
                 cancelBtn.disabled = true;
                 closeBtn.disabled = true;
 
-                const response = await fetch('/api/email/ingest_quote', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
+                let endpoint, payload;
+
+                if (currentEmailAction === 'save_correspondence') {
+                    endpoint = '/api/email/save_correspondence';
+                    payload = {
+                        submission_id: submissionId,
+                        message_id: currentEmailData.message_id,
+                        account_id: currentEmailData.account_id,
+                        provider: currentEmailData.provider,
+                        from_name: currentEmailData.from_name || '',
+                        from_email: currentEmailData.from_email || '',
+                        subject: currentEmailData.subject || '',
+                        body_text: currentEmailData.body_text || '',
+                        received_date: currentEmailData.received_date || ''
+                    };
+                } else {
+                    endpoint = '/api/email/ingest_quote';
+                    payload = {
                         submission_id: submissionId,
                         message_id: currentEmailData.message_id,
                         account_id: currentEmailData.account_id,
@@ -2360,17 +2490,28 @@
                         body_text: currentEmailData.body_text || '',
                         received_date: currentEmailData.received_date || '',
                         attachments: currentEmailData.attachments || []
-                    })
+                    };
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
-                    document.getElementById('newMessageCount').textContent = cachedEmails.length;
                     document.getElementById('selectSubmissionModal').classList.add('hidden');
-                    document.getElementById('newMessagesModal').classList.add('hidden');
-                    window.location.href = `/submission/${submissionId}`;
+                    if (currentEmailAction === 'save_correspondence') {
+                        alert(data.message || 'Email saved as correspondence.');
+                        renderEmailList();
+                    } else {
+                        cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
+                        document.getElementById('newMessageCount').textContent = cachedEmails.length;
+                        document.getElementById('newMessagesModal').classList.add('hidden');
+                        window.location.href = `/submission/${submissionId}`;
+                    }
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
@@ -2382,6 +2523,108 @@
                 selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'auto');
                 cancelBtn.disabled = false;
                 closeBtn.disabled = false;
+            }
+        }
+
+        // Open submission selector for a single attachment action
+        async function openSubmissionSelectorForAttachment(emailData, attachmentId, filename, actionType) {
+            currentEmailData = emailData;
+            currentAttachmentAction = { type: actionType, attachmentId, filename };
+
+            const title = document.getElementById('selectSubmissionTitle');
+            const description = document.getElementById('selectSubmissionDescription');
+
+            if (actionType === 'parse') {
+                title.textContent = 'Select Submission to Parse Quote Into';
+                description.textContent = `Attachment "${filename}" will be parsed as a quote document.`;
+            } else {
+                title.textContent = 'Select Submission to Save Document To';
+                description.textContent = `Attachment "${filename}" will be saved to the submission's documents list.`;
+            }
+
+            document.getElementById('selectSubmissionModal').classList.remove('hidden');
+
+            // Load submissions and override click handler for attachment action
+            const container = document.getElementById('submissionsList');
+            try {
+                const response = await fetch('/api/submissions');
+                const data = await response.json();
+
+                if (data.success && data.submissions) {
+                    if (data.submissions.length === 0) {
+                        container.innerHTML = '<div class="text-gray-500 text-center py-4">No submissions available</div>';
+                        return;
+                    }
+
+                    container.innerHTML = data.submissions.map(sub => `
+                        <div class="flex items-center justify-between p-3 border border-gray-600 rounded bg-gray-700 hover:bg-gray-600 cursor-pointer select-submission-btn-att" data-submission-id="${sub.id}">
+                            <div>
+                                <div class="font-semibold text-white">${escapeHtml(sub.insured_name)}</div>
+                                <div class="text-sm text-gray-400">Effective: ${sub.effective_date || 'N/A'} &bull; Status: ${sub.status}</div>
+                            </div>
+                            <div class="text-gray-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    document.querySelectorAll('.select-submission-btn-att').forEach(btn => {
+                        btn.addEventListener('click', async function() {
+                            const submissionId = parseInt(this.dataset.submissionId);
+                            await handleAttachmentAction(submissionId);
+                        });
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load submissions:', error);
+                container.innerHTML = '<div class="text-red-500">Failed to load submissions</div>';
+            }
+        }
+
+        // Handle single attachment action (parse or save)
+        async function handleAttachmentAction(submissionId) {
+            const loadingOverlay = document.getElementById('ocrLoadingOverlay');
+            const cancelBtn = document.getElementById('cancelSelectSubmission');
+            const closeBtn = document.getElementById('closeSelectSubmissionModal');
+
+            try {
+                loadingOverlay.classList.remove('hidden');
+                cancelBtn.disabled = true;
+                closeBtn.disabled = true;
+
+                const action = currentAttachmentAction;
+                const response = await fetch('/api/email/process_attachment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        submission_id: submissionId,
+                        message_id: currentEmailData.message_id,
+                        account_id: currentEmailData.account_id,
+                        provider: currentEmailData.provider,
+                        attachment_id: action.attachmentId,
+                        filename: action.filename,
+                        action_type: action.type  // 'parse' or 'save'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('selectSubmissionModal').classList.add('hidden');
+                    // Don't remove email from list — user may want to process other attachments
+                    renderEmailList();
+                    alert(data.message || 'Done!');
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to process attachment:', error);
+                alert('Failed to process attachment. Check console for details.');
+            } finally {
+                loadingOverlay.classList.add('hidden');
+                cancelBtn.disabled = false;
+                closeBtn.disabled = false;
+                currentAttachmentAction = null;
             }
         }
 
@@ -2822,6 +3065,48 @@
         document.getElementById('closeCorrespondencePopup').addEventListener('click', function() {
             document.getElementById('correspondencePopupModal').classList.add('hidden');
         });
+
+        // Read email popup — displays email body in the correspondence popup
+        function openReadEmailPopup(emailData) {
+            const modal = document.getElementById('correspondencePopupModal');
+            const container = document.getElementById('correspondenceMessagesContainer');
+            const titleEl = document.getElementById('correspondencePopupTitle');
+
+            const subject = emailData.subject || '(No Subject)';
+            const from = emailData.from_name || emailData.from_email || 'Unknown';
+            const date = emailData.received_date ? new Date(emailData.received_date).toLocaleString() : '';
+            const bodyText = emailData.body_text || '(No content)';
+
+            titleEl.textContent = `📧 ${subject}`;
+            container.innerHTML = `
+                <div class="border border-gray-600 rounded-lg p-4 bg-gray-700">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <div class="text-sm text-gray-300"><strong>From:</strong> ${escapeHtml(from)}</div>
+                            <div class="text-sm text-gray-300"><strong>Subject:</strong> ${escapeHtml(subject)}</div>
+                        </div>
+                        <div class="text-xs text-gray-400">${escapeHtml(date)}</div>
+                    </div>
+                    <div style="white-space: pre-wrap; font-size: 0.813rem; color: #e5e7eb; line-height: 1.6; max-height: 60vh; overflow-y: auto;">${escapeHtml(bodyText)}</div>
+                    <div class="flex gap-3 mt-4 pt-3 border-t border-gray-600">
+                        <button id="readPopupIngestBtn" class="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700">📥 Save as Correspondence</button>
+                        <button id="readPopupDismissBtn" class="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700">🗑 Dismiss</button>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('readPopupIngestBtn').addEventListener('click', function() {
+                modal.classList.add('hidden');
+                openSubmissionSelector(emailData, 'ingest');
+            });
+
+            document.getElementById('readPopupDismissBtn').addEventListener('click', async function() {
+                await dismissEmail(emailData);
+                modal.classList.add('hidden');
+            });
+
+            modal.classList.remove('hidden');
+        }
 
         // ============================================================================
         // ALL CORRESPONDENCE POPUP
