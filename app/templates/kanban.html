@@ -1101,6 +1101,42 @@
         </div>
     </div>
 
+    <!-- Reply Email Modal -->
+    <div id="replyEmailModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-white">↩️ Reply</h3>
+                <button id="closeReplyEmailModal" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-gray-400 text-sm">To:</label>
+                    <input id="replyTo" type="text" class="w-full mt-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" readonly />
+                </div>
+                <div>
+                    <label class="text-gray-400 text-sm">Subject:</label>
+                    <input id="replySubject" type="text" class="w-full mt-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" readonly />
+                </div>
+                <div>
+                    <label class="text-gray-400 text-sm">Body:</label>
+                    <textarea id="replyBody" rows="10" class="w-full mt-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Drafting reply..."></textarea>
+                </div>
+                <div>
+                    <label class="text-gray-400 text-sm">Attachments:</label>
+                    <div id="replyAttachmentsList" class="mt-1 space-y-1"></div>
+                    <label class="inline-flex items-center gap-2 mt-2 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-gray-300 text-sm cursor-pointer hover:bg-gray-600">
+                        📎 Add Attachment
+                        <input type="file" id="replyAttachmentInput" multiple class="hidden" />
+                    </label>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button id="cancelReplyEmail" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
+                    <button id="sendReplyEmail" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Notes Popup Modal -->
     <div id="notesPopupModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
         <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
@@ -1672,7 +1708,7 @@
 
             // Non-correspondence items (apps, quotes, etc.)
             const nonCorrItems = nonCorrespondenceDocs.map(doc => {
-                const label = `${doc.document_type}: ${doc.name}`;
+                const label = doc.name || 'file';
                 return { id: doc.id, label, docType: doc.document_type, deletable: true };
             });
 
@@ -2390,6 +2426,9 @@
             if (action === 'save_correspondence') {
                 title.textContent = 'Select Submission to Save Correspondence To';
                 description.textContent = 'The email body will be cleaned by AI and saved as correspondence on the selected submission.';
+            } else if (action === 'save_attachments') {
+                title.textContent = 'Save Attachments to Submission';
+                description.textContent = 'Select a submission to save the attached file(s) to.';
             } else {
                 title.textContent = 'Select Submission to Ingest Into';
                 description.textContent = 'Pick a submission. The email body will be saved as correspondence (cleaned by AI) and any quote attachments will be parsed automatically.';
@@ -2464,7 +2503,19 @@
 
                 let endpoint, payload;
 
-                if (currentEmailAction === 'save_correspondence') {
+                if (currentEmailAction === 'save_attachments') {
+                    // Save outgoing reply attachments to the selected submission
+                    const attachments = window._pendingSaveAttachments || [];
+                    if (!attachments.length) {
+                        document.getElementById('selectSubmissionModal').classList.add('hidden');
+                        return;
+                    }
+                    endpoint = '/api/email/save_reply_attachments';
+                    payload = {
+                        submission_id: submissionId,
+                        attachments: attachments
+                    };
+                } else if (currentEmailAction === 'save_correspondence') {
                     endpoint = '/api/email/save_correspondence';
                     payload = {
                         submission_id: submissionId,
@@ -2503,7 +2554,14 @@
 
                 if (data.success) {
                     document.getElementById('selectSubmissionModal').classList.add('hidden');
-                    if (currentEmailAction === 'save_correspondence') {
+                    if (currentEmailAction === 'save_attachments') {
+                        window._pendingSaveAttachments = null;
+                        // Dismiss the original email
+                        if (replyEmailData) {
+                            await dismissEmail(replyEmailData);
+                        }
+                        await loadSubmissions();
+                    } else if (currentEmailAction === 'save_correspondence') {
                         alert(data.message || 'Email saved as correspondence.');
                         renderEmailList();
                     } else {
@@ -3089,11 +3147,17 @@
                     </div>
                     <div style="white-space: pre-wrap; font-size: 0.813rem; color: #e5e7eb; line-height: 1.6; max-height: 60vh; overflow-y: auto;">${escapeHtml(bodyText)}</div>
                     <div class="flex gap-3 mt-4 pt-3 border-t border-gray-600">
+                        <button id="readPopupReplyBtn" class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">↩️ Reply</button>
                         <button id="readPopupIngestBtn" class="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700">📥 Save as Correspondence</button>
                         <button id="readPopupDismissBtn" class="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700">🗑 Dismiss</button>
                     </div>
                 </div>
             `;
+
+            document.getElementById('readPopupReplyBtn').addEventListener('click', function() {
+                modal.classList.add('hidden');
+                openReplyModal(emailData);
+            });
 
             document.getElementById('readPopupIngestBtn').addEventListener('click', function() {
                 modal.classList.add('hidden');
@@ -3108,7 +3172,161 @@
             modal.classList.remove('hidden');
         }
 
-        // ============================================================================
+        // ============================================================
+        // REPLY EMAIL MODAL
+        // ============================================================
+
+        let replyEmailData = null;
+        let replyAttachments = []; // {file: File, name: str}
+
+        async function openReplyModal(emailData) {
+            replyEmailData = emailData;
+            replyAttachments = [];
+            const replyTo = emailData.from_email || '';
+            const originalSubject = emailData.subject || '';
+            const replySubject = originalSubject.toLowerCase().startsWith('re:') ? originalSubject : `Re: ${originalSubject}`;
+
+            document.getElementById('replyTo').value = replyTo;
+            document.getElementById('replySubject').value = replySubject;
+            document.getElementById('replyBody').value = '';
+            document.getElementById('replyAttachmentsList').innerHTML = '';
+            document.getElementById('replyEmailModal').classList.remove('hidden');
+
+            // AI-draft the reply body
+            document.getElementById('replyBody').placeholder = 'AI is drafting a reply...';
+            try {
+                const response = await fetch('/api/email/draft_reply', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        from_email: emailData.from_email || '',
+                        from_name: emailData.from_name || '',
+                        subject: originalSubject,
+                        body_text: emailData.body_text || ''
+                    })
+                });
+                const data = await response.json();
+                if (data.success && data.draft_body) {
+                    document.getElementById('replyBody').value = data.draft_body;
+                } else {
+                    document.getElementById('replyBody').placeholder = 'Type your reply...';
+                }
+            } catch (err) {
+                console.error('Failed to draft reply:', err);
+                document.getElementById('replyBody').placeholder = 'Type your reply...';
+            }
+        }
+
+        // Attachment file input handler
+        document.getElementById('replyAttachmentInput').addEventListener('change', function() {
+            for (const file of this.files) {
+                replyAttachments.push({ file, name: file.name });
+            }
+            renderReplyAttachments();
+            this.value = '';
+        });
+
+        function renderReplyAttachments() {
+            const container = document.getElementById('replyAttachmentsList');
+            if (!replyAttachments.length) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = replyAttachments.map((att, i) => `
+                <div class="flex items-center gap-2 text-sm text-gray-300">
+                    <span>📎 ${escapeHtml(att.name)}</span>
+                    <button class="text-red-400 hover:text-red-300 text-xs" onclick="replyAttachments.splice(${i},1);renderReplyAttachments();">✕</button>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('closeReplyEmailModal').addEventListener('click', function() {
+            document.getElementById('replyEmailModal').classList.add('hidden');
+        });
+
+        document.getElementById('cancelReplyEmail').addEventListener('click', function() {
+            document.getElementById('replyEmailModal').classList.add('hidden');
+        });
+
+        document.getElementById('sendReplyEmail').addEventListener('click', async function() {
+            const btn = this;
+            const toEmail = document.getElementById('replyTo').value.trim();
+            const subject = document.getElementById('replySubject').value.trim();
+            const body = document.getElementById('replyBody').value.trim();
+
+            if (!body) {
+                alert('Please enter a reply body.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+
+            try {
+                // Encode attachments as base64
+                const attachmentPayloads = [];
+                for (const att of replyAttachments) {
+                    const base64 = await fileToBase64(att.file);
+                    attachmentPayloads.push({
+                        filename: att.name,
+                        content_base64: base64,
+                        content_type: att.file.type || 'application/octet-stream'
+                    });
+                }
+
+                const response = await fetch('/api/email/send_reply', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        to_email: toEmail,
+                        subject: subject,
+                        body: body,
+                        attachments: attachmentPayloads.length ? attachmentPayloads : null
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('replyEmailModal').classList.add('hidden');
+
+                    // If we had attachments, ask to save them to a submission
+                    if (replyAttachments.length > 0) {
+                        const save = confirm(`Reply sent! You attached ${replyAttachments.length} file(s). Save to a submission?`);
+                        if (save) {
+                            // Store attachments for the save flow, then open submission selector
+                            window._pendingSaveAttachments = attachmentPayloads;
+                            openSubmissionSelector(replyEmailData || {}, 'save_attachments');
+                            return; // Don't dismiss yet — let the save flow handle it
+                        }
+                    }
+
+                    // Dismiss the original email after replying
+                    if (replyEmailData) {
+                        await dismissEmail(replyEmailData);
+                    }
+                } else {
+                    alert('Failed to send: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Send failed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send';
+            }
+        });
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result;
+                    // Strip the data:...;base64, prefix
+                    const base64 = result.split(',')[1] || result;
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
         // ALL CORRESPONDENCE POPUP
         // ============================================================================
 

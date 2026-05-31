@@ -1898,6 +1898,220 @@ def dismiss_email():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/api/email/draft_reply', methods=['POST'])
+@login_required
+def draft_reply():
+    """
+    Use AI to draft a reply to an email based on what the sender asked for.
+
+    Request body:
+    {
+        "from_email": str,
+        "from_name": str,
+        "subject": str,
+        "body_text": str
+    }
+    """
+    try:
+        data = request.get_json()
+        from_name = data.get('from_name', '') or ''
+        subject = data.get('subject', '') or ''
+        body_text = data.get('body_text', '') or ''
+
+        if not body_text.strip():
+            return jsonify({'success': True, 'draft_body': ''})
+
+        # Get user's signature
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(id=session.get('user_id')).first()
+            signature = (user.signature or '').strip() if user else ''
+        finally:
+            db_session.close()
+
+        # Cap input
+        truncated = body_text[:20000]
+        sender = from_name or data.get('from_email', 'the sender')
+
+        prompt = f"""You are drafting a brief, professional email reply for an insurance brokerage employee.
+
+The sender ({sender}) wrote the following email:
+Subject: {subject}
+
+Body:
+{truncated}
+
+Write a short, helpful reply that:
+- Addresses what the sender asked for or mentioned
+- Is professional but not overly formal
+- Does NOT include a greeting line (no "Hi Robert,") — the user will add their own
+- Does NOT include a sign-off or signature — that will be appended automatically
+- Is 1-4 sentences max
+- IMPORTANT: Assume the user IS attaching the requested documents to this reply RIGHT NOW. Do NOT say "I'll get those over shortly" or "I'll send those soon." Instead say "please see attached" or "attached as requested" or similar. The documents are being sent with this email.
+
+Return ONLY the reply body text. No JSON, no quotes, no markdown.
+"""
+
+        try:
+            from app.parsers.two_pass_parser import get_llm_client
+            client = get_llm_client()
+            # Use generate_json but we just want raw text — wrap/unwrap
+            response = client.generate_json(f'{prompt}\n\nReturn as JSON: {{"reply": "your reply text"}}')
+            draft = (response.get('reply') or '').strip()
+        except Exception as e:
+            logger.warning(f"AI draft reply failed: {e}")
+            draft = ''
+
+        # Append signature if available
+        if draft and signature:
+            draft = f"{draft}\n\n{signature}"
+
+        return jsonify({'success': True, 'draft_body': draft})
+    except Exception as e:
+        logger.error(f"Draft reply error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/send_reply', methods=['POST'])
+@login_required
+def send_reply():
+    """
+    Send a reply email via OAuth, optionally with attachments.
+
+    Request body:
+    {
+        "to_email": str,
+        "subject": str,
+        "body": str,
+        "attachments": [{"filename": str, "content_base64": str, "content_type": str}, ...]
+    }
+    """
+    try:
+        data = request.get_json()
+        to_email = data.get('to_email', '').strip()
+        subject = data.get('subject', '').strip()
+        body = data.get('body', '').strip()
+        attachments = data.get('attachments') or None
+
+        if not to_email or not body:
+            return jsonify({'success': False, 'error': 'Recipient and body are required'}), 400
+
+        _send_email_via_oauth(
+            to_email=to_email,
+            subject=subject,
+            body=body,
+            documents=None,
+            raw_attachments=attachments
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Send reply error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/save_reply_attachments', methods=['POST'])
+@login_required
+def save_reply_attachments():
+    """
+    Save outgoing reply attachments as documents on a submission.
+
+    Request body:
+    {
+        "submission_id": int,
+        "attachments": [{"filename": str, "content_base64": str, "content_type": str}, ...]
+    }
+    """
+    try:
+        data = request.get_json()
+        submission_id = data.get('submission_id')
+        attachments = data.get('attachments', [])
+
+        if not submission_id or not attachments:
+            return jsonify({'success': False, 'error': 'submission_id and attachments required'}), 400
+
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            insured_name = submission.insured_name or 'unknown_insured'
+            saved = []
+
+            for att in attachments:
+                filename = att.get('filename', 'attachment')
+                content_base64 = att.get('content_base64', '')
+                content_type = att.get('content_type', 'application/octet-stream')
+
+                if not content_base64:
+                    continue
+
+                import base64 as b64mod
+                file_data = b64mod.b64decode(content_base64)
+
+                safe_filename = secure_filename(filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unique_filename = f"{timestamp}_{safe_filename}"
+                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+
+                with open(filepath, 'wb') as f:
+                    f.write(file_data)
+
+                # Determine document type from extension
+                ext = os.path.splitext(filename)[1].lower()
+                if ext == '.pdf':
+                    doc_type = DocumentType.APPLICATION
+                elif ext in ('.xlsx', '.xls'):
+                    doc_type = DocumentType.SOV
+                else:
+                    doc_type = DocumentType.APPLICATION
+
+                doc_key = _build_storage_key(
+                    submission_id, doc_type.name, unique_filename,
+                    session.get('user_id'), insured_name
+                )
+                storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
+
+                doc = Document(
+                    submission_id=submission_id,
+                    quote_id=None,
+                    document_type=doc_type,
+                    carrier=session.get('username', 'user'),
+                    term_key=submission.effective_date or datetime.now().strftime('%Y-%m-%d'),
+                    version=1,
+                    is_active=True,
+                    storage_provider=storage_provider_val,
+                    storage_key=storage_key,
+                    original_filename=safe_filename,
+                    content_type=content_type,
+                    size_bytes=len(file_data),
+                    uploaded_by=session.get('username')
+                )
+                db_session.add(doc)
+                saved.append(safe_filename)
+
+                # Clean up temp file
+                try:
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                except Exception:
+                    pass
+
+            db_session.commit()
+
+            return jsonify({
+                'success': True,
+                'message': f'Saved {len(saved)} attachment(s) to submission.',
+                'saved_files': saved
+            })
+        finally:
+            db_session.close()
+    except Exception as e:
+        logger.error(f"Save reply attachments error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bp.route('/api/email/process_attachment', methods=['POST'])
 @login_required
 def process_single_attachment():
@@ -4475,11 +4689,16 @@ def submit_to_market(submission_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _send_email_via_oauth(to_email, subject, body, documents=None):
+def _send_email_via_oauth(to_email, subject, body, documents=None, raw_attachments=None):
     """
     Send email via OAuth (Outlook Graph API) using the user's connected account.
     Automatically refreshes tokens if expired.
     Falls back to error if no connected account is available.
+
+    Args:
+        documents: list of Document ORM objects to attach (reads from storage).
+        raw_attachments: list of dicts [{filename, content_base64, content_type}]
+                         already encoded — used for reply attachments.
     """
     import base64
     import mimetypes
@@ -4566,6 +4785,17 @@ def _send_email_via_oauth(to_email, subject, body, documents=None):
                             'content_base64': base64.b64encode(file_data).decode(),
                             'content_type': mime_type
                         })
+
+            # Append raw attachments (from reply flow — already base64-encoded)
+            if raw_attachments:
+                if not attachment_list:
+                    attachment_list = []
+                for att in raw_attachments:
+                    attachment_list.append({
+                        'filename': att.get('filename', 'attachment'),
+                        'content_base64': att.get('content_base64', ''),
+                        'content_type': att.get('content_type', 'application/octet-stream')
+                    })
 
             # Send via OAuth
             if provider_str == 'outlook':
