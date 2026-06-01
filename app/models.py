@@ -42,6 +42,17 @@ class ConnectedAccountStatus(enum.Enum):
 
 
 class DocumentType(enum.Enum):
+    """
+    Document classification types for storage/backend logic.
+
+    NOTE (2026-06): On the frontend, all documents are currently saved as
+    DocumentType.APPLICATION regardless of their actual content type. The enum
+    values are still used internally for backend logic (e.g., detecting BINDER
+    documents to mark a submission as bound), but the user-facing UI no longer
+    exposes document type selection. The LLM triage system classifies documents
+    for routing purposes (application → app parser, quote → quote parser) but
+    stores everything under APPLICATION type in the documents table.
+    """
     APPLICATION = "Application"
     SOV = "SOV"
     LOSS_RUN = "Loss Run"

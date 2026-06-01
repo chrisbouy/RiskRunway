@@ -280,7 +280,8 @@ class GmailOAuthService:
         query: str = None,
         since_date: datetime = None,
         broker_emails: list = None,
-        quote_subjects: list = None
+        quote_subjects: list = None,
+        require_attachments: bool = None
     ) -> List[UnifiedEmail]:
         """
         Fetch recent emails from Gmail.
@@ -310,9 +311,13 @@ class GmailOAuthService:
         if all_filters:
             query_parts.append(f"({' OR '.join(all_filters)})")
 
-        # Default to attachments if no other filters
-        if not query_parts:
+        # Handle attachments filter
+        if require_attachments is True:
             query_parts.append('has:attachment')
+        elif require_attachments is None and not all_filters:
+            # Default: only add has:attachment when no other filters provided
+            query_parts.append('has:attachment')
+        # If require_attachments is False, don't add attachment filter
 
         # Only fetch unread emails (replaces DB-based deduplication)
         query_parts.append('is:unread')
@@ -700,11 +705,18 @@ class OutlookOAuthService:
         query: str = None,
         since_date: datetime = None,
         broker_emails: list = None,
-        quote_subjects: list = None
+        quote_subjects: list = None,
+        require_attachments: bool = None
     ) -> List[UnifiedEmail]:
         """
         Fetch recent emails from Outlook/Graph API.
         Filters by broker senders and/or quote subjects if provided.
+
+        Args:
+            require_attachments: If True, only fetch emails with attachments.
+                If False, explicitly do NOT filter by attachments.
+                If None (default), apply hasAttachments filter only when no other
+                sender/subject filters are provided.
         """
         # Build query filters
         filters = []
@@ -726,9 +738,13 @@ class OutlookOAuthService:
         if query_parts:
             filters.append(f"({' or '.join(query_parts)})")
 
-        # If no filters provided, default to checking for attachments
-        if not filters:
+        # Handle attachments filter
+        if require_attachments is True:
             filters.append('hasAttachments eq true')
+        elif require_attachments is None and not filters:
+            # Default: only add hasAttachments when no other filters provided
+            filters.append('hasAttachments eq true')
+        # If require_attachments is False, don't add any attachment filter
 
         # Only fetch unread emails (replaces DB-based deduplication)
         filters.append('isRead eq false')

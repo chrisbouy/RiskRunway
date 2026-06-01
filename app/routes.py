@@ -3148,6 +3148,637 @@ def save_email_correspondence_stateless():
 
 
 # ============================================================================
+# FILTERED EMAIL SEARCH & SMART TRIAGE
+# ============================================================================
+
+@bp.route('/api/email/search', methods=['POST'])
+@login_required
+def filtered_email_search():
+    """
+    Search emails with user-configurable filters via MS Graph API (or Gmail).
+
+    Default filters are the user's brokers and insured names.
+    User can adjust: brokers, extra addresses, insured names, subjects,
+    has_attachments, and how far back to look.
+
+    Request body:
+    {
+        "broker_emails": [str] | null,       # null = use all user brokers
+        "extra_addresses": [str],            # additional from-addresses to include
+        "insured_names": [str] | null,       # null = use all user insured names
+        "subjects": [str],                   # additional subject keywords
+        "has_attachments": bool,             # default true
+        "days_back": int,                    # how far back to look (default 24)
+        "remove_all_filters": bool           # if true, fetch all unread emails
+    }
+    """
+    try:
+        if not current_app.config.get('EMAIL_SCRAPING_ENABLED', False):
+            return jsonify({'success': False, 'error': 'Email scraping is disabled'}), 400
+
+        user_id = session.get('user_id')
+        data = request.get_json() or {}
+
+        db_session = get_session()
+        try:
+            # Get connected OAuth account
+            account = db_session.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+            ).first()
+
+            if not account:
+                return jsonify({'success': False, 'needs_connect': True,
+                                'error': 'No email account connected.'}), 400
+
+            # Get tokens, auto-refresh if needed
+            from app.oauth_services import get_oauth_service
+            provider_str = account.provider.value.lower()
+            oauth_service = get_oauth_service(provider_str, current_app.config)
+
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+
+            if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                refresh_token = tokens.get('refresh_token')
+                if not refresh_token:
+                    return jsonify({'success': False, 'needs_reauth': True,
+                                    'provider': provider_str}), 401
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
+                db_session.commit()
+                access_token = new_tokens.get('access_token')
+
+            # Build filter lists
+            remove_all = data.get('remove_all_filters', False)
+
+            if remove_all:
+                broker_emails = []
+                quote_subjects = []
+            else:
+                # Broker emails: use provided list or default to user's brokers
+                if data.get('broker_emails') is not None:
+                    broker_emails = [e.strip().lower() for e in data['broker_emails'] if e.strip()]
+                else:
+                    broker_emails = _get_user_broker_emails(db_session, user_id)
+
+                # Extra addresses to include in from-filter
+                extra_addresses = [e.strip().lower() for e in data.get('extra_addresses', []) if e.strip()]
+                broker_emails.extend(extra_addresses)
+
+                # Insured names for subject search
+                if data.get('insured_names') is not None:
+                    # User provided specific names — expand variants
+                    quote_subjects = []
+                    for name in data['insured_names']:
+                        if name.strip():
+                            quote_subjects.extend(_expand_insured_name_variants(name.strip()))
+                else:
+                    quote_subjects = _get_user_quote_subjects(db_session, user_id)
+
+                # Extra subject keywords
+                extra_subjects = [s.strip() for s in data.get('subjects', []) if s.strip()]
+                quote_subjects.extend(extra_subjects)
+
+            # Date range
+            days_back = data.get('days_back', 24)
+            since_date = datetime.now() - timedelta(days=days_back)
+
+            # Has attachments filter
+            has_attachments = data.get('has_attachments', True)
+
+            # Fetch emails via OAuth service
+            # Pass require_attachments explicitly so the API knows whether to filter
+            unified_emails = oauth_service.fetch_emails(
+                access_token=access_token,
+                max_results=100,
+                since_date=since_date,
+                broker_emails=broker_emails if broker_emails else None,
+                quote_subjects=quote_subjects if quote_subjects else None,
+                require_attachments=has_attachments if has_attachments else False
+            )
+
+            if not unified_emails:
+                unified_emails = []
+
+            # Filter out self-sent emails
+            own_email = (account.email_address or '').strip().lower()
+            if own_email:
+                unified_emails = [e for e in unified_emails if (e.from_email or '').strip().lower() != own_email]
+
+            # Build response
+            email_list = []
+            for unified_email in unified_emails:
+                email_data = {
+                    'message_id': unified_email.message_id,
+                    'from_email': unified_email.from_email,
+                    'from_name': unified_email.from_name,
+                    'subject': unified_email.subject or '(No subject)',
+                    'body_text': unified_email.body_text or '',
+                    'received_date': unified_email.date.isoformat() if unified_email.date else None,
+                    'has_attachments': len(unified_email.attachments) > 0,
+                    'attachment_count': len(unified_email.attachments),
+                    'provider': provider_str,
+                    'account_id': account.id,
+                    'attachments': [
+                        {
+                            'attachment_id': att.get('attachment_id', ''),
+                            'filename': att.get('filename', ''),
+                            'content_type': att.get('content_type', ''),
+                            'size': att.get('size', 0)
+                        }
+                        for att in unified_email.attachments
+                    ]
+                }
+                email_list.append(email_data)
+
+            return jsonify({
+                'success': True,
+                'emails': email_list,
+                'count': len(email_list),
+                'filters_applied': {
+                    'broker_emails': broker_emails,
+                    'insured_names': quote_subjects[:10] if quote_subjects else [],
+                    'has_attachments': has_attachments,
+                    'days_back': days_back,
+                    'remove_all_filters': remove_all
+                }
+            })
+
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        logger.error(f"Filtered email search error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/email/triage_attachment', methods=['POST'])
+@login_required
+def triage_attachment():
+    """
+    Smart triage: Download an email attachment, use LLM to classify it
+    (application, quote, or other), extract insured name, then route it
+    to the appropriate parser and submission.
+
+    Flow:
+    1. Download attachment via OAuth
+    2. LLM classifies document type + extracts insured name
+    3. Based on classification:
+       - Application → process_application_two_pass → create new card in Submission stage
+       - Quote → process_quote_two_pass → match to existing card or create new in Quoting
+       - Other → save document to matched card or create new in Submission stage
+    4. If insured name matches multiple submissions → return choices for user to pick
+    5. If no insured name found → return error
+
+    Request body:
+    {
+        "message_id": str,
+        "account_id": int,
+        "provider": str,
+        "attachment_id": str,
+        "filename": str,
+        "submission_id": int | null,   # If user already picked a submission (from picker)
+        "force_type": str | null       # If user wants to override classification
+    }
+    """
+    try:
+        data = request.get_json()
+        message_id = data.get('message_id')
+        account_id = data.get('account_id')
+        provider = data.get('provider')
+        attachment_id = data.get('attachment_id')
+        filename = data.get('filename', 'attachment.pdf')
+        user_submission_id = data.get('submission_id')  # User pre-selected
+        force_type = data.get('force_type')  # User override
+
+        if not all([message_id, account_id, provider, attachment_id]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+
+        db_session = get_session()
+        try:
+            account = db_session.query(ConnectedAccount).filter_by(id=account_id).first()
+            if not account:
+                return jsonify({'success': False, 'error': 'Connected account not found'}), 404
+
+            # Get access token (with auto-refresh)
+            from app.oauth_services import get_oauth_service
+            oauth_service = get_oauth_service(provider, current_app.config)
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+
+            if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+                refresh_token = tokens.get('refresh_token')
+                if not refresh_token:
+                    return jsonify({'success': False, 'error': 'Token expired, please reconnect email'}), 401
+                new_tokens = oauth_service.refresh_access_token(refresh_token)
+                account.set_encrypted_tokens(new_tokens)
+                account.expires_at = datetime.utcnow() + timedelta(seconds=new_tokens.get('expires_in', 3600))
+                db_session.commit()
+                access_token = new_tokens.get('access_token')
+
+            # Download the attachment
+            attachment_data = oauth_service.fetch_attachments(
+                access_token=access_token,
+                message_id=message_id,
+                attachment_id=attachment_id
+            )
+
+            if not attachment_data:
+                return jsonify({'success': False, 'error': f'Failed to download attachment: {filename}'}), 500
+
+            # Save to temp file
+            safe_filename = secure_filename(filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_filename = f"{timestamp}_{safe_filename}"
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+
+            with open(filepath, 'wb') as f:
+                f.write(attachment_data)
+
+            try:
+                # Step 1: LLM Triage — classify document and extract insured name
+                doc_type = force_type
+                insured_name = None
+                triage_result = None
+
+                if not doc_type:
+                    triage_result = _triage_document(filepath)
+                    doc_type = triage_result.get('document_type', 'other')
+                    insured_name = triage_result.get('insured_name')
+                else:
+                    # If force_type provided, still need insured name
+                    triage_result = _triage_document(filepath)
+                    insured_name = triage_result.get('insured_name')
+
+                if not insured_name:
+                    return jsonify({
+                        'success': False,
+                        'error': 'no_insured',
+                        'message': 'Could not determine insured name from this document.',
+                        'triage': triage_result
+                    }), 400
+
+                # Step 2: Find or create submission
+                submission_id = user_submission_id
+                is_new_submission = False
+                is_renewal = False
+
+                if not submission_id:
+                    # Try to match to existing submission by insured name
+                    matches = _find_matching_submissions(db_session, insured_name, session.get('user_id'))
+
+                    if len(matches) == 0:
+                        # No match — create new submission
+                        submission_id = create_submission(
+                            insured_name=insured_name,
+                            effective_date=datetime.now().strftime('%Y-%m-%d'),
+                            state=triage_result.get('state') if triage_result else None,
+                            user=session.get('username'),
+                            assigned_to=session.get('user_id')
+                        )
+                        is_new_submission = True
+
+                    elif len(matches) == 1:
+                        submission_id = matches[0]['id']
+
+                    else:
+                        # Multiple matches — return picker data
+                        return jsonify({
+                            'success': False,
+                            'error': 'multiple_matches',
+                            'message': f'Found {len(matches)} submissions for "{insured_name}". Please select one.',
+                            'matches': matches,
+                            'triage': {
+                                'document_type': doc_type,
+                                'insured_name': insured_name
+                            },
+                            # Pass back attachment info so frontend can re-call with submission_id
+                            'attachment_info': {
+                                'message_id': message_id,
+                                'account_id': account_id,
+                                'provider': provider,
+                                'attachment_id': attachment_id,
+                                'filename': filename
+                            }
+                        })
+
+                # Step 3: Route based on document type
+                submission = db_session.query(Submission).filter_by(id=submission_id).first()
+                if not submission:
+                    return jsonify({'success': False, 'error': 'Submission not found after creation'}), 500
+
+                result_data = {
+                    'success': True,
+                    'submission_id': submission_id,
+                    'insured_name': submission.insured_name,
+                    'document_type': doc_type,
+                    'is_new_submission': is_new_submission,
+                    'is_renewal': is_renewal
+                }
+
+                if doc_type == 'application':
+                    # Parse as application
+                    application_result = process_application_two_pass(filepath)
+                    parsed_data = application_result['pass2_normalized']
+
+                    # Update submission with parsed data if new
+                    if is_new_submission:
+                        submission_fields = parsed_data.get('submission') or {}
+                        eff_date = submission_fields.get('effective_date')
+                        if eff_date:
+                            submission.effective_date = eff_date
+                        state_val = (parsed_data.get('insured') or {}).get('address', {}).get('state')
+                        if state_val:
+                            submission.state = state_val
+                        db_session.commit()
+
+                    # Save document
+                    content_type = 'application/pdf'
+                    doc_key = _build_storage_key(
+                        submission_id, DocumentType.APPLICATION.name, safe_filename,
+                        session.get('user_id'), submission.insured_name
+                    )
+                    storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
+                    doc = Document(
+                        submission_id=submission_id,
+                        quote_id=None,
+                        document_type=DocumentType.APPLICATION,
+                        carrier=None,
+                        term_key=submission.effective_date,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider_val,
+                        storage_key=storage_key,
+                        original_filename=safe_filename,
+                        content_type=content_type,
+                        size_bytes=len(attachment_data),
+                        uploaded_by=session.get('username')
+                    )
+                    db_session.add(doc)
+
+                    # Log intake
+                    intake_data = {
+                        'source': 'email_triage',
+                        'application_filename': filename,
+                        'insured': parsed_data.get('insured'),
+                        'coverage_types': (parsed_data.get('submission') or {}).get('coverage_types_needed', []),
+                        'effective_date': submission.effective_date
+                    }
+                    log_action(
+                        entity_type='submission',
+                        entity_id=submission_id,
+                        action='submission_intake_parsed',
+                        user=session.get('username'),
+                        submission_id=submission_id,
+                        details=json.dumps(intake_data)
+                    )
+                    db_session.commit()
+
+                    result_data['stage'] = 'submission'
+                    result_data['message'] = f'Application parsed and {"new submission created" if is_new_submission else "added to existing submission"}.'
+
+                elif doc_type == 'quote':
+                    # Parse as quote
+                    three_pass_result = process_quote_two_pass(filepath, [])
+                    parsed_data = three_pass_result['pass2_normalized']
+                    layout_data = three_pass_result['pass1_layout']
+
+                    carrier_name = None
+                    effective_date = None
+                    expiration_date = None
+                    if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
+                        first_policy = parsed_data['policies'][0]
+                        carrier_name = first_policy.get('carrier')
+                        effective_date = first_policy.get('effective_date')
+                        expiration_date = first_policy.get('expiration_date')
+
+                    # Check for renewal: if submission exists in submission stage
+                    # and new expiration date is later than existing effective date
+                    if not is_new_submission and expiration_date and submission.effective_date:
+                        try:
+                            new_exp = datetime.strptime(expiration_date[:10], '%Y-%m-%d').date()
+                            old_eff = datetime.strptime(submission.effective_date[:10], '%Y-%m-%d').date()
+                            if new_exp > old_eff and submission.status == SubmissionStatus.RECEIVED:
+                                submission.is_renewal = True
+                                is_renewal = True
+                                result_data['is_renewal'] = True
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Move to quoting stage
+                    if submission.status == SubmissionStatus.RECEIVED:
+                        submission.status = SubmissionStatus.IN_PROGRESS
+
+                    # Create quote record
+                    quote = Quote(
+                        submission_id=submission_id,
+                        carrier_name=carrier_name,
+                        raw_document_path=filepath,
+                        extracted_json=json.dumps(parsed_data),
+                        pass1_layout_json=json.dumps(layout_data),
+                        status=QuoteStatus.RECEIVED
+                    )
+                    db_session.add(quote)
+                    db_session.flush()
+                    quote_id = quote.id
+
+                    # Save document
+                    content_type = 'application/pdf'
+                    doc_key = _build_storage_key(
+                        submission_id, DocumentType.APPLICATION.name, safe_filename,
+                        session.get('user_id'), submission.insured_name
+                    )
+                    storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
+                    doc = Document(
+                        submission_id=submission_id,
+                        quote_id=quote_id,
+                        document_type=DocumentType.APPLICATION,
+                        carrier=carrier_name,
+                        term_key=effective_date or submission.effective_date,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider_val,
+                        storage_key=storage_key,
+                        original_filename=safe_filename,
+                        content_type=content_type,
+                        size_bytes=len(attachment_data),
+                        uploaded_by=session.get('username')
+                    )
+                    db_session.add(doc)
+                    db_session.commit()
+
+                    result_data['stage'] = 'quoting'
+                    result_data['quote_id'] = quote_id
+                    result_data['carrier_name'] = carrier_name
+                    result_data['message'] = f'Quote from {carrier_name or "unknown carrier"} parsed and {"new submission created in Quoting" if is_new_submission else "added to submission (moved to Quoting)"}.'
+                    if is_renewal:
+                        result_data['message'] += ' Flagged as renewal.'
+
+                else:
+                    # Other document — just save to submission
+                    content_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'application/octet-stream'
+                    doc_key = _build_storage_key(
+                        submission_id, DocumentType.APPLICATION.name, safe_filename,
+                        session.get('user_id'), submission.insured_name
+                    )
+                    storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
+                    doc = Document(
+                        submission_id=submission_id,
+                        quote_id=None,
+                        document_type=DocumentType.APPLICATION,
+                        carrier=None,
+                        term_key=submission.effective_date,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider_val,
+                        storage_key=storage_key,
+                        original_filename=safe_filename,
+                        content_type=content_type,
+                        size_bytes=len(attachment_data),
+                        uploaded_by=session.get('username')
+                    )
+                    db_session.add(doc)
+                    db_session.commit()
+
+                    result_data['stage'] = 'submission'
+                    result_data['message'] = f'Document saved to {"new" if is_new_submission else "existing"} submission.'
+
+                return jsonify(result_data)
+
+            finally:
+                # Clean up temp file
+                try:
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                except Exception:
+                    pass
+
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        logger.error(f"Triage attachment error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _triage_document(filepath: str) -> dict:
+    """
+    Use LLM to classify a document and extract the insured name.
+
+    Returns:
+    {
+        "document_type": "application" | "quote" | "other",
+        "insured_name": str | None,
+        "state": str | None,
+        "confidence": "high" | "medium" | "low"
+    }
+    """
+    import pdfplumber
+    from textwrap import dedent
+
+    # Extract first 2 pages of text for classification
+    text_content = ""
+    try:
+        with pdfplumber.open(filepath) as pdf:
+            for i, page in enumerate(pdf.pages[:2]):
+                page_text = page.extract_text()
+                if page_text:
+                    text_content += page_text + "\n\n"
+    except Exception as e:
+        logger.warning(f"Failed to extract text from {filepath}: {e}")
+        return {'document_type': 'other', 'insured_name': None, 'confidence': 'low'}
+
+    if not text_content.strip():
+        return {'document_type': 'other', 'insured_name': None, 'confidence': 'low'}
+
+    # Truncate to avoid token limits
+    text_content = text_content[:4000]
+
+    prompt = dedent(f"""
+    You are classifying an insurance document. Based on the text below, determine:
+    1. Document type: Is this an APPLICATION (new business submission form, ACORD 125, etc.),
+       a QUOTE (pricing proposal from a carrier with premiums/coverages), or OTHER
+       (correspondence, loss run, binder, SOV, etc.)?
+    2. The insured name (the business or person being insured).
+    3. The state (if visible).
+
+    RULES:
+    - An APPLICATION typically has fields like "Applicant", "Named Insured", coverage types requested,
+      and is a form being filled out to request insurance.
+    - A QUOTE typically has carrier name, premium amounts, coverage limits, effective/expiration dates,
+      and is a pricing proposal.
+    - If it's neither clearly an application nor a quote, classify as "other".
+    - For insured name: look for "Named Insured", "Applicant", "Insured", "Account Name".
+    - Do NOT confuse agent/broker name with insured name.
+
+    Return ONLY valid JSON:
+    {{
+        "document_type": "application" | "quote" | "other",
+        "insured_name": "string or null",
+        "state": "two-letter state code or null",
+        "confidence": "high" | "medium" | "low"
+    }}
+
+    DOCUMENT TEXT:
+    {text_content}
+    """)
+
+    try:
+        from app.parsers.application_parser import _get_llm_client
+        client = _get_llm_client()
+        result = client.generate_json(prompt)
+        return {
+            'document_type': (result.get('document_type') or 'other').lower(),
+            'insured_name': result.get('insured_name'),
+            'state': result.get('state'),
+            'confidence': result.get('confidence', 'medium')
+        }
+    except Exception as e:
+        logger.error(f"LLM triage failed: {e}")
+        return {'document_type': 'other', 'insured_name': None, 'confidence': 'low'}
+
+
+def _find_matching_submissions(db_session, insured_name: str, user_id: int = None) -> list:
+    """
+    Find existing submissions that match the given insured name.
+    Uses fuzzy matching (case-insensitive contains).
+
+    Returns list of dicts with submission details for the picker UI.
+    """
+    if not insured_name:
+        return []
+
+    # Normalize for comparison
+    name_lower = insured_name.strip().lower()
+
+    # Query submissions — filter by assigned user if provided
+    query = db_session.query(Submission)
+    if user_id:
+        query = query.filter(Submission.assigned_to == user_id)
+
+    submissions = query.all()
+
+    matches = []
+    for sub in submissions:
+        sub_name = (sub.insured_name or '').strip().lower()
+        # Match if names are similar (contains or contained-in)
+        if name_lower in sub_name or sub_name in name_lower:
+            matches.append({
+                'id': sub.id,
+                'insured_name': sub.insured_name,
+                'effective_date': sub.effective_date,
+                'state': sub.state,
+                'status': sub.status.value if sub.status else None,
+                'quote_count': len(sub.quotes) if sub.quotes else 0,
+                'created_at': sub.created_at.isoformat() if sub.created_at else None
+            })
+
+    return matches
+
+
+# ============================================================================
 # OAUTH EMAIL CONNECTIONS
 # ============================================================================
 
