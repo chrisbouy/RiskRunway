@@ -1954,8 +1954,21 @@
 
             ['submission', 'quoting', 'bind'].forEach((laneKey) => {
                 const lane = document.createElement('div');
-                const tint = laneKey === 'submission' ? 'active-sub' : laneKey === 'quoting' ? 'active-quot' : 'active-bind';
-                lane.className = 'runway-lane' + (laneKey === stageKey ? ' ' + tint : '');
+                let tint = laneKey === 'submission' ? 'active-sub' : laneKey === 'quoting' ? 'active-quot' : 'active-bind';
+
+                // Dynamic bind lane tint based on renewal countdown
+                if (laneKey === 'bind' && stageKey === 'bind') {
+                    const daysUntil = getDaysUntilRenewal(submission.effective_date);
+                    if (daysUntil !== null && daysUntil <= 30) {
+                        tint = '';
+                        lane.style.background = 'rgba(239, 68, 68, 0.15)';
+                    } else if (daysUntil !== null && daysUntil <= 60) {
+                        tint = '';
+                        lane.style.background = 'rgba(255, 159, 64, 0.15)';
+                    }
+                }
+
+                lane.className = 'runway-lane' + (laneKey === stageKey ? (tint ? ' ' + tint : '') : '');
                 lane.dataset.lane = laneKey;
                 lane.dataset.apiStatus = STAGE_BY_KEY[laneKey].apiStatus;
 
