@@ -127,6 +127,7 @@ class Submission(Base):
     status_label = Column(String(255), nullable=True)
     appetite_score = Column(Integer, nullable=True)  # PF appetite score 0-100
     assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)  # User assignment
+    is_renewal = Column(Boolean, default=False, nullable=False)  # True when policy is being renewed
     notes = Column(Text, nullable=True)  # JSON object with stage-keyed notes
 
     # Relationships
@@ -163,6 +164,7 @@ class Submission(Base):
             'appetite_score': self.appetite_score,
             'assigned_to': self.assigned_to,
             'assigned_user': self.assigned_user.to_dict() if self.assigned_user else None,
+            'is_renewal': self.is_renewal,
             'notes': self._parse_notes()
         }
 

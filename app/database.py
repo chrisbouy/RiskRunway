@@ -253,6 +253,7 @@ def _add_missing_columns(engine, inspector):
     if 'submissions' in table_names:
         _safe_add_column('submissions', 'status_label', 'VARCHAR(255)')
         _safe_add_column('submissions', 'notes', 'TEXT')
+        _safe_add_column('submissions', 'is_renewal', 'BOOLEAN DEFAULT FALSE NOT NULL')
 
     # users
     if 'users' in table_names:

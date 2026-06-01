@@ -618,6 +618,35 @@
             padding: 0 2px;
         }
 
+        .countdown-normal {
+            color: var(--text-muted);
+        }
+        .countdown-warning {
+            color: #facc15;
+            font-weight: 600;
+        }
+        .countdown-critical {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        .countdown-lapsed {
+            color: #ef4444;
+            font-weight: 700;
+        }
+
+        .renewal-badge {
+            display: inline-block;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            background: rgba(96, 165, 250, 0.25);
+            color: #93c5fd;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-top: 2px;
+        }
+
         .quote-meta {
             font-size: 9px;
             font-family: 'IBM Plex Mono', monospace;
@@ -769,7 +798,7 @@
             <span id="count-bind" class="stage-count">Bound: 0</span>
             <div class="left-divider"></div>
 
-            <button id="newSubmissionBtn" class="left-btn btn-new">+ New Submission</button>
+            <button id="newSubmissionBtn" class="left-btn btn-new">+ New Risk(s)</button>
 
             <!-- Email Scraping Section -->
             <div class="left-divider" style="margin-top: 8px;"></div>
@@ -859,6 +888,13 @@
             <h2 class="text-2xl font-bold mb-2 text-white">Create Submission</h2>
             <p class="text-gray-400 mb-5">This will not submit to markets.</p>
 
+            <!-- Created submissions list -->
+            <div id="createdSubmissionsList" class="mb-4 hidden">
+                <div class="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Created</div>
+                <div id="createdSubmissionsItems" class="space-y-1 max-h-32 overflow-y-auto"></div>
+                <div class="border-t border-gray-700 mt-3 mb-3"></div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div class="border border-gray-700 rounded-lg p-4 bg-gray-900 bg-opacity-40">
                     <h3 class="text-sm font-bold uppercase tracking-wide text-gray-200 mb-4">Option 1: Manually Add</h3>
@@ -907,6 +943,13 @@
                     </form>
                     <p id="applicationUploadStatus" class="mt-3 text-sm text-blue-300 min-h-[20px]"></p>
                 </div>
+            </div>
+
+            <!-- Done button (appears after first creation) -->
+            <div id="doneButtonRow" class="hidden flex justify-end mt-4">
+                <button id="doneCreatingBtn" class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold text-sm">
+                    Done
+                </button>
             </div>
         </div>
     </div>
@@ -1167,6 +1210,47 @@
         </div>
     </div>
 
+    <!-- Renewal Confirmation Modal -->
+    <div id="renewalConfirmModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+            <div class="flex items-center gap-3 mb-4">
+                <span style="font-size: 1.5rem;">🔄</span>
+                <h2 class="text-xl font-bold text-white">Renewal?</h2>
+            </div>
+            <p class="text-gray-300 mb-5 text-sm leading-relaxed">Are we renewing this policy?</p>
+            <div class="flex justify-end gap-3">
+                <button id="renewalConfirmNo" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm font-medium">No</button>
+                <button id="renewalConfirmYes" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Yes, Renewal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Renewal Requests Modal -->
+    <div id="renewalRequestsModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-white">🔄 Send Renewal Requests</h2>
+                <button id="closeRenewalRequestsModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <p class="text-sm text-gray-400 mb-4">Sending renewal requests for <strong id="renewalRequestsInsuredName" class="text-white"></strong></p>
+
+            <!-- Broker List -->
+            <div id="renewalBrokersList" class="mb-4 space-y-3">
+                <!-- Broker entries will be rendered here -->
+            </div>
+
+            <div id="noRenewalBrokersMessage" class="text-gray-400 text-sm mb-4" style="display:none;">
+                No email brokers configured.
+            </div>
+
+            <!-- Send All Button Row -->
+            <div class="flex justify-end gap-2 pt-3 border-t border-gray-700">
+                <button id="skipRenewalRequestsBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm">Skip</button>
+                <button id="sendAllRenewalRequestsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Send All</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script>
         // Theme Management
@@ -1397,6 +1481,284 @@
             document.getElementById('duplicateCoverageModal').classList.add('hidden');
         });
 
+        // Renewal confirmation modal logic
+        let pendingRenewalSubmissionId = null;
+        let pendingRenewalTargetStatus = null;
+
+        function showRenewalConfirmModal(submissionId, targetStatus) {
+            pendingRenewalSubmissionId = submissionId;
+            pendingRenewalTargetStatus = targetStatus;
+            document.getElementById('renewalConfirmModal').classList.remove('hidden');
+        }
+
+        document.getElementById('renewalConfirmYes').addEventListener('click', async () => {
+            document.getElementById('renewalConfirmModal').classList.add('hidden');
+            if (!pendingRenewalSubmissionId) return;
+
+            // Move the card to quoting with is_renewal=true first
+            try {
+                const response = await fetch(`/api/submission/${pendingRenewalSubmissionId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: pendingRenewalTargetStatus, is_renewal: true })
+                });
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'Failed to update stage');
+            } catch (error) {
+                console.error('Error updating status:', error);
+                alert('Failed to move submission.');
+                pendingRenewalSubmissionId = null;
+                pendingRenewalTargetStatus = null;
+                return;
+            }
+
+            // Now show the "Send Renewal Requests" modal
+            openRenewalRequestsModal(pendingRenewalSubmissionId);
+        });
+
+        document.getElementById('renewalConfirmNo').addEventListener('click', async () => {
+            document.getElementById('renewalConfirmModal').classList.add('hidden');
+            if (!pendingRenewalSubmissionId) return;
+            try {
+                const response = await fetch(`/api/submission/${pendingRenewalSubmissionId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: pendingRenewalTargetStatus, is_renewal: false })
+                });
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'Failed to update stage');
+                await loadSubmissions();
+            } catch (error) {
+                console.error('Error updating status:', error);
+                alert('Failed to move submission.');
+            }
+            pendingRenewalSubmissionId = null;
+            pendingRenewalTargetStatus = null;
+        });
+
+        // ============================================================================
+        // SEND RENEWAL REQUESTS MODAL
+        // ============================================================================
+
+        let renewalBrokerEntries = [];
+        let renewalSubmissionId = null;
+
+        async function openRenewalRequestsModal(submissionId) {
+            renewalSubmissionId = submissionId;
+
+            // Get submission name
+            const sub = submissions.find(s => s.id === submissionId);
+            document.getElementById('renewalRequestsInsuredName').textContent = sub ? sub.insured_name : 'Unknown';
+
+            document.getElementById('renewalRequestsModal').classList.remove('hidden');
+            await loadRenewalBrokers(submissionId);
+        }
+
+        function closeRenewalRequestsModal() {
+            document.getElementById('renewalRequestsModal').classList.add('hidden');
+            renewalSubmissionId = null;
+            renewalBrokerEntries = [];
+            // Reload board to reflect the move
+            loadSubmissions();
+            pendingRenewalSubmissionId = null;
+            pendingRenewalTargetStatus = null;
+        }
+
+        document.getElementById('closeRenewalRequestsModal').addEventListener('click', closeRenewalRequestsModal);
+        document.getElementById('skipRenewalRequestsBtn').addEventListener('click', closeRenewalRequestsModal);
+
+        async function loadRenewalBrokers(submissionId) {
+            const list = document.getElementById('renewalBrokersList');
+            const noBrokersMsg = document.getElementById('noRenewalBrokersMessage');
+            const sendAllBtn = document.getElementById('sendAllRenewalRequestsBtn');
+
+            list.innerHTML = '<div class="text-gray-400 text-sm">Loading brokers...</div>';
+
+            try {
+                // Load brokers
+                const brokersResp = await fetch('/api/brokers');
+                const brokersData = await brokersResp.json();
+                const brokers = brokersData.success ? brokersData.brokers : [];
+
+                // Load documents for this submission
+                const docsResp = await fetch(`/api/submission/${submissionId}/documents`);
+                const docsData = await docsResp.json();
+                const docs = docsData.success ? (docsData.documents || []) : [];
+                const attachableDocs = docs.filter(d => ['Application', 'SOV', 'Loss Run'].includes(d.document_type));
+
+                const emailBrokers = brokers.filter(b => !b.is_portal && b.email && b.is_enabled);
+
+                if (emailBrokers.length === 0) {
+                    list.innerHTML = '';
+                    noBrokersMsg.style.display = 'block';
+                    sendAllBtn.disabled = true;
+                    return;
+                }
+
+                noBrokersMsg.style.display = 'none';
+                sendAllBtn.disabled = false;
+
+                const sub = submissions.find(s => s.id === submissionId);
+                const insuredName = sub ? sub.insured_name : 'the insured';
+                const effectiveDate = sub ? sub.effective_date : 'N/A';
+
+                renewalBrokerEntries = emailBrokers.map(broker => ({
+                    id: broker.id,
+                    checked: true,
+                    body: getDefaultRenewalBody(broker.name || broker.email, insuredName, effectiveDate),
+                    document_ids: attachableDocs.map(d => d.id)
+                }));
+
+                list.innerHTML = emailBrokers.map((broker, index) => {
+                    const entry = renewalBrokerEntries[index];
+                    const safeName = escapeHtml(broker.name || broker.email);
+                    const safeEmail = escapeHtml(broker.email);
+                    const docsHtml = attachableDocs.map(doc => `
+                        <label class="flex items-center gap-1 text-xs text-gray-400">
+                            <input type="checkbox" class="renewal-doc-checkbox" data-index="${index}" data-doc-id="${doc.id}" checked>
+                            ${escapeHtml(doc.original_filename || doc.name || 'file')}
+                        </label>
+                    `).join('');
+
+                    return `
+                        <div class="border border-gray-600 rounded-lg p-3 bg-gray-700">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" class="renewal-broker-checkbox" data-index="${index}" ${entry.checked ? 'checked' : ''}>
+                                    <span class="font-semibold text-sm text-white">${safeName}</span>
+                                    <span class="text-xs text-gray-400">(${safeEmail})</span>
+                                </label>
+                                <button class="renewal-send-single px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700" data-index="${index}">Send</button>
+                            </div>
+                            <textarea class="renewal-body w-full border border-gray-600 rounded px-3 py-2 text-sm text-white bg-gray-800 mb-2" data-index="${index}" rows="4">${escapeHtml(entry.body)}</textarea>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <span class="text-xs font-semibold text-gray-400">Attachments:</span>
+                                ${docsHtml || '<span class="text-xs text-gray-500 italic">No documents</span>'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Wire up per-broker send buttons
+                document.querySelectorAll('.renewal-send-single').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const index = parseInt(this.dataset.index);
+                        sendRenewalSingle(index);
+                    });
+                });
+
+                // Wire up checkbox changes
+                document.querySelectorAll('.renewal-broker-checkbox').forEach(cb => {
+                    cb.addEventListener('change', function() {
+                        const index = parseInt(this.dataset.index);
+                        if (renewalBrokerEntries[index]) {
+                            renewalBrokerEntries[index].checked = this.checked;
+                        }
+                    });
+                });
+
+                // Wire up body text changes
+                document.querySelectorAll('.renewal-body').forEach(ta => {
+                    ta.addEventListener('input', function() {
+                        const index = parseInt(this.dataset.index);
+                        if (renewalBrokerEntries[index]) {
+                            renewalBrokerEntries[index].body = this.value;
+                        }
+                    });
+                });
+
+                // Wire up document checkboxes
+                document.querySelectorAll('.renewal-doc-checkbox').forEach(cb => {
+                    cb.addEventListener('change', function() {
+                        const index = parseInt(this.dataset.index);
+                        const docId = parseInt(this.dataset.docId);
+                        if (renewalBrokerEntries[index]) {
+                            const ids = renewalBrokerEntries[index].document_ids;
+                            if (this.checked && !ids.includes(docId)) {
+                                ids.push(docId);
+                            } else if (!this.checked) {
+                                renewalBrokerEntries[index].document_ids = ids.filter(id => id !== docId);
+                            }
+                        }
+                    });
+                });
+
+            } catch (error) {
+                console.error('Error loading renewal brokers:', error);
+                list.innerHTML = '<div class="text-red-400 text-sm">Failed to load brokers</div>';
+            }
+        }
+
+        function getDefaultRenewalBody(brokerName, insuredName, effectiveDate) {
+            return `Dear ${brokerName},\n\nWe would like to request a renewal quote for ${insuredName} (current policy effective ${effectiveDate}). Please find the attached documents for your review.\n\nPlease let us know if you need any additional information to proceed with the renewal.\n\nThank you.`;
+        }
+
+        async function sendRenewalSingle(index) {
+            const entry = renewalBrokerEntries[index];
+            if (!entry) return;
+
+            const btn = document.querySelector(`.renewal-send-single[data-index="${index}"]`);
+            const originalText = btn ? btn.textContent : 'Send';
+            if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+
+            try {
+                const result = await sendRenewalApi([entry]);
+                if (result.success) {
+                    alert('Renewal request sent!');
+                } else if (result.needs_reauth) {
+                    alert('Authentication expired. Please re-connect your email account.');
+                } else {
+                    alert('Failed to send: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error sending renewal request: ' + error.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = originalText; }
+            }
+        }
+
+        document.getElementById('sendAllRenewalRequestsBtn').addEventListener('click', async function() {
+            const checkedEntries = renewalBrokerEntries.filter(e => e.checked);
+            if (checkedEntries.length === 0) {
+                alert('No brokers selected. Check at least one broker.');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Sending...';
+
+            try {
+                const result = await sendRenewalApi(checkedEntries);
+                if (result.success) {
+                    const sent = result.results?.sent?.length || 0;
+                    const failed = result.results?.failed?.length || 0;
+                    alert(`Renewal requests sent to ${sent} broker(s).${failed ? ` ${failed} failed.` : ''}`);
+                    closeRenewalRequestsModal();
+                } else if (result.needs_reauth) {
+                    alert('Authentication expired. Please re-connect your email account.');
+                } else {
+                    alert('Failed to send: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error sending renewal requests: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+
+        async function sendRenewalApi(entries) {
+            const brokerEntries = entries.map(e => ({ id: e.id, body: e.body, document_ids: e.document_ids }));
+            const response = await fetch(`/api/submission/${renewalSubmissionId}/send_follow_up`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ broker_entries: brokerEntries })
+            });
+            return await response.json();
+        }
+
         async function updateSubmissionStatusLabel(submissionId, statusLabel) {
             const response = await fetch(`/api/submission/${submissionId}/status_label`, {
                 method: 'PUT',
@@ -1459,11 +1821,15 @@
             // If no renewal date, don't show anything
             if (daysUntilRenewal === null) return '';
 
-            // Show renewal countdown for all bound submissions
+            // Color-code based on days remaining
             if (daysUntilRenewal < 0) {
-                return 'Countdown: lapsed';
+                return '<span class="countdown-lapsed">Countdown: lapsed</span>';
+            } else if (daysUntilRenewal <= 30) {
+                return `<span class="countdown-critical">Countdown: T-${daysUntilRenewal}d</span>`;
+            } else if (daysUntilRenewal <= 60) {
+                return `<span class="countdown-warning">Countdown: T-${daysUntilRenewal}d</span>`;
             }
-            return `Countdown: T-${daysUntilRenewal}d`;
+            return `<span class="countdown-normal">Countdown: T-${daysUntilRenewal}d</span>`;
         }
 
         // ============================================================================
@@ -1626,6 +1992,13 @@
                         return; // Same lane, no API call needed
                     }
 
+                    // If dragging from bind to quoting, show renewal confirmation
+                    if (laneKey === 'quoting' && (currentApiStatus === 'CHOSEN' || currentApiStatus === 'SENT_TO_FINANCE')) {
+                        const submissionId = draggedSubmissionId;
+                        showRenewalConfirmModal(submissionId, lane.dataset.apiStatus);
+                        return;
+                    }
+
                     // If dragging to bind lane, use the drag_to_bind endpoint
                     // which validates coverage types and sets all quotes to WON
                     if (laneKey === 'bind') {
@@ -1698,6 +2071,11 @@
                 status = renewalCountdown || 'Bound';
             }
 
+            // Renewal badge for quoting stage
+            const renewalBadgeHtml = (submission.is_renewal && stageKey === 'quoting')
+                ? '<span class="renewal-badge">🔄 Renewal</span>'
+                : '';
+
             // Build doc items: non-correspondence first, then correspondence in received order
             const allDocs = submission.documents || [];
             const nonCorrespondenceDocs = allDocs.filter(d => d.document_type !== 'Correspondence');
@@ -1763,12 +2141,13 @@
 
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
+                ${renewalBadgeHtml}
                 <div class="card-row">
                     <div class="card-left">
                         ${docsDropdownHtml}
                     </div>
                     <div class="card-right">
-                        <div class="card-status">${escapeHtml(status)}</div>
+                        <div class="card-status">${stageKey === 'bind' ? status : escapeHtml(status)}</div>
                     </div>
                 </div>
                 <div class="card-row">
@@ -1920,17 +2299,94 @@
         let isCreatingSubmission = false;
         const applicationUploadStatus = document.getElementById('applicationUploadStatus');
 
+        // Track created submissions in this session
+        let createdSubmissions = [];
+
+        function resetNewSubmissionModal() {
+            createdSubmissions = [];
+            document.getElementById('insuredNameInput').value = '';
+            // Reset coverage types to single empty row
+            const container = document.getElementById('coverageTypesContainer');
+            container.innerHTML = `
+                <div class="coverage-type-row flex items-center gap-2 mb-2">
+                    <input type="text"
+                           class="coverage-type-input w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white"
+                           placeholder="e.g. General Liability">
+                    <button type="button" class="remove-coverage-btn px-2 py-1 text-red-400 hover:text-red-300 text-lg font-bold hidden" title="Remove">&times;</button>
+                </div>`;
+            applicationUploadStatus.textContent = '';
+            newSubmissionDropzone.removeAllFiles(true);
+            document.getElementById('createdSubmissionsList').classList.add('hidden');
+            document.getElementById('createdSubmissionsItems').innerHTML = '';
+            document.getElementById('doneButtonRow').classList.add('hidden');
+            document.getElementById('cancelNewSubmission').classList.remove('hidden');
+            document.getElementById('createSubmissionBtn').textContent = 'Create Submission';
+        }
+
+        function updateCreatedList() {
+            const listContainer = document.getElementById('createdSubmissionsList');
+            const itemsContainer = document.getElementById('createdSubmissionsItems');
+            const doneRow = document.getElementById('doneButtonRow');
+            const cancelBtn = document.getElementById('cancelNewSubmission');
+            const createBtn = document.getElementById('createSubmissionBtn');
+
+            if (createdSubmissions.length === 0) {
+                listContainer.classList.add('hidden');
+                doneRow.classList.add('hidden');
+                cancelBtn.classList.remove('hidden');
+                createBtn.textContent = 'Create Submission';
+                return;
+            }
+
+            listContainer.classList.remove('hidden');
+            doneRow.classList.remove('hidden');
+            cancelBtn.classList.add('hidden');
+            createBtn.textContent = 'Create Another';
+
+            // Update Done button text
+            document.getElementById('doneCreatingBtn').textContent = `Done (${createdSubmissions.length} created)`;
+
+            itemsContainer.innerHTML = createdSubmissions.map((sub, idx) => `
+                <div class="flex items-center justify-between py-1 px-2 rounded bg-gray-700 bg-opacity-50">
+                    <div class="flex items-center gap-2">
+                        <span class="text-green-400 text-sm">✓</span>
+                        <span class="text-sm text-gray-200">${escapeHtml(sub.insured_name)}</span>
+                        ${sub.coverage_types ? `<span class="text-xs text-gray-500">${escapeHtml(sub.coverage_types)}</span>` : ''}
+                    </div>
+                    <button type="button" class="text-gray-500 hover:text-red-400 text-xs" onclick="deleteCreatedSubmission(${idx}, ${sub.id})" title="Remove">🗑</button>
+                </div>
+            `).join('');
+        }
+
+        async function deleteCreatedSubmission(idx, submissionId) {
+            if (!confirm('Remove this submission?')) return;
+            try {
+                await fetch(`/api/submission/${submissionId}`, { method: 'DELETE' });
+                createdSubmissions.splice(idx, 1);
+                updateCreatedList();
+            } catch (err) {
+                console.error('Failed to delete submission:', err);
+            }
+        }
+
         // New Submission Modal
         document.getElementById('newSubmissionBtn').addEventListener('click', () => {
+            resetNewSubmissionModal();
             document.getElementById('newSubmissionModal').classList.remove('hidden');
         });
 
         document.getElementById('cancelNewSubmission').addEventListener('click', () => {
             document.getElementById('newSubmissionModal').classList.add('hidden');
-            document.getElementById('insuredNameInput').value = '';
-            document.getElementById('coverageTypeInput').value = '';
-            applicationUploadStatus.textContent = '';
-            newSubmissionDropzone.removeAllFiles(true);
+        });
+
+        // Done button — smart navigation
+        document.getElementById('doneCreatingBtn').addEventListener('click', () => {
+            document.getElementById('newSubmissionModal').classList.add('hidden');
+            if (createdSubmissions.length === 1) {
+                window.location.href = `/submission/${createdSubmissions[0].id}`;
+            } else {
+                loadSubmissions();
+            }
         });
 
         newSubmissionDropzone.on("maxfilesexceeded", function(file) {
@@ -1962,7 +2418,28 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    window.location.href = `/submission/${data.submission_id}`;
+                    // Extract insured name from response
+                    const intake = data.submission_intake || {};
+                    const returnedName = (intake.insured && intake.insured.name) || formData.get('insured_name') || 'New Submission';
+                    const coverageTypes = (intake.coverage_types || []).join(', ');
+
+                    // Add to created list instead of navigating
+                    createdSubmissions.push({
+                        id: data.submission_id,
+                        insured_name: returnedName,
+                        coverage_types: coverageTypes
+                    });
+                    updateCreatedList();
+
+                    // Clear form for next entry
+                    document.getElementById('insuredNameInput').value = '';
+                    const coverageInputs = document.querySelectorAll('#coverageTypesContainer .coverage-type-input');
+                    coverageInputs.forEach(input => input.value = '');
+                    newSubmissionDropzone.removeAllFiles(true);
+                    applicationUploadStatus.textContent = '';
+
+                    // Focus insured name for quick next entry
+                    document.getElementById('insuredNameInput').focus();
                     return;
                 }
 
@@ -1978,7 +2455,7 @@
 
                 if (button) {
                     button.disabled = false;
-                    button.textContent = originalText;
+                    button.textContent = createdSubmissions.length > 0 ? 'Create Another' : 'Create Submission';
                 } else {
                     createButton.disabled = false;
                     applicationUploadStatus.textContent = '';

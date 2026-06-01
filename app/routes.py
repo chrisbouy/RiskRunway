@@ -3968,6 +3968,7 @@ def update_submission_status(submission_id):
     try:
         data = request.get_json()
         new_status = data.get('status')
+        is_renewal = data.get('is_renewal')
 
         if not new_status:
             return jsonify({'success': False, 'error': 'Status is required'}), 400
@@ -3990,6 +3991,10 @@ def update_submission_status(submission_id):
                 quote.quote_outcome = None
                 quote.status = QuoteStatus.RECEIVED
 
+        # Update renewal flag if provided
+        if is_renewal is not None:
+            submission.is_renewal = bool(is_renewal)
+
         session.commit()
         session.close()
 
@@ -3999,7 +4004,7 @@ def update_submission_status(submission_id):
             entity_id=submission_id,
             action='status_changed',
             submission_id=submission_id,
-            details=f"Status changed to {new_status}"
+            details=f"Status changed to {new_status}" + (" (renewal)" if is_renewal else "")
         )
 
         return jsonify({'success': True})
