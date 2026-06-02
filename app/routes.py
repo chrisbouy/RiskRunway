@@ -3413,6 +3413,59 @@ def triage_attachment():
                     insured_name = triage_result.get('insured_name')
 
                 if not insured_name:
+                    # Triage LLM couldn't find insured name from first 2 pages.
+                    # Fallback: run the full parser (which does deeper extraction
+                    # including vision for scanned PDFs) to get insured name AND
+                    # re-determine document type based on what the parser finds.
+                    print(f"[TRIAGE] Triage couldn't find insured name (doc_type={doc_type}), running full parser fallback...")
+                    try:
+                        # Try quote parser first — it handles both digital and scanned PDFs.
+                        # If it finds carrier/premium data, it's a quote.
+                        fallback_result = process_quote_two_pass(filepath, [])
+                        parsed = fallback_result.get('pass2_normalized', {})
+
+                        # Try insured from quote data
+                        insured_info = parsed.get('insured') or {}
+                        insured_name = insured_info.get('name')
+
+                        # Also check policies for insured_name field
+                        if not insured_name and parsed.get('policies'):
+                            for policy in parsed['policies']:
+                                if policy.get('insured_name'):
+                                    insured_name = policy['insured_name']
+                                    break
+
+                        # Re-classify: if we found carrier/premium info, it's a quote
+                        if parsed.get('policies') and len(parsed['policies']) > 0:
+                            first_policy = parsed['policies'][0]
+                            has_carrier = bool(first_policy.get('carrier'))
+                            has_premium = bool(first_policy.get('total_premium') or first_policy.get('annual_premium'))
+                            if has_carrier or has_premium:
+                                doc_type = 'quote'
+                                print(f"[TRIAGE] Fallback reclassified as QUOTE (carrier={first_policy.get('carrier')})")
+
+                        # If quote parser didn't find insured, try application parser
+                        if not insured_name:
+                            app_result = process_application_two_pass(filepath)
+                            app_parsed = app_result.get('pass2_normalized', {})
+                            app_insured = (app_parsed.get('insured') or {}).get('name')
+                            if app_insured:
+                                insured_name = app_insured
+                                # If we haven't already classified as quote, check if
+                                # the app parser found coverage_types (implies application)
+                                if doc_type not in ('quote',):
+                                    coverage_types = (app_parsed.get('submission') or {}).get('coverage_types_needed', [])
+                                    if coverage_types:
+                                        doc_type = 'application'
+                                        print(f"[TRIAGE] Fallback reclassified as APPLICATION")
+
+                        if insured_name:
+                            insured_name = insured_name.strip()
+                            print(f"[TRIAGE] Full parser found insured name: {insured_name}, final doc_type: {doc_type}")
+                    except Exception as fallback_err:
+                        print(f"[TRIAGE] Full parser fallback failed: {fallback_err}")
+
+                if not insured_name:
                     return jsonify({
                         'success': False,
                         'error': 'no_insured',

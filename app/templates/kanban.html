@@ -809,9 +809,7 @@
                 </svg>
                 Check Email
             </button>
-            <button id="newMessagesBtn" class="left-btn btn-config">
-                📬 New Messages (<span id="newMessageCount">0</span>)
-            </button>
+            <span id="newMessageCount" class="hidden">0</span>
 
             <!-- Config Section -->
             <div class="left-divider" style="margin-top: 8px;"></div>
@@ -2827,7 +2825,7 @@
                     document.getElementById('newMessagesModal').classList.remove('hidden');
                     renderEmailList();
                 } else {
-                    alert(`Email check completed (${data.source || 'OAuth'}):\n• 0 new emails found`);
+                    alert(`Email check completed (${data.source || 'OAuth'}):\n• 0 new emails found\n\nHint: mark messages as unread in your inbox to pick them up here.`);
                 }
 
             } catch (error) {
@@ -2864,13 +2862,7 @@
         let currentEmailAction = null;
         let currentAttachmentAction = null;
 
-        // Open new messages modal
-        document.getElementById('newMessagesBtn').addEventListener('click', function() {
-            document.getElementById('newMessagesModal').classList.remove('hidden');
-            renderEmailList();
-        });
-
-        // Close new messages modal
+        // Open new messages modal (triggered from Check Email when results found)
         document.getElementById('closeNewMessagesModal').addEventListener('click', function() {
             document.getElementById('newMessagesModal').classList.add('hidden');
         });
