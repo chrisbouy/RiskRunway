@@ -56,9 +56,9 @@ PASS1_OCR_PROMPT = dedent(
 # ============================================================================
 PASS2_NORMALIZATION_PROMPT = dedent(
     """
-    You are normalizing extracted insurance quote data into a standardized JSON schema.
+    You are normalizing insurance quote data into a standardized JSON schema.
     
-    INPUT: OCR text from an insurance quote document
+    INPUT: an insurance quote document
     OUTPUT: Valid JSON only (no markdown, no explanations)
 
     ═══════════════════════════════════════════════════════════════
@@ -293,6 +293,7 @@ def get_llm_client():
     if provider == "bedrock":
         return BedrockClient(model=settings.BEDROCK_MODEL, region=settings.BEDROCK_REGION)
     raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
+    # return BedrockClient(model=settings.BEDROCK_MODEL, region=settings.BEDROCK_REGION)
 # ============================================================================
 # Processing Functions
 # ============================================================================
@@ -407,101 +408,6 @@ def _is_text_garbage(text):
 
     return False
 
-def pass1_extract_quote_layout(pdf_path):
-
-    import gc
-    pages_data = []
-
-    # First, find the last relevant page to avoid processing useless pages
-    # Cap at 5 pages max. To check all pages, remove the min() wrapper.
-    last_page_to_process = min(_find_last_relevant_page(pdf_path), 5)
-
-    # Determine where to save page images (same directory as the PDF)
-    pdf_dir = os.path.dirname(os.path.abspath(pdf_path))
-    pdf_stem = os.path.splitext(os.path.basename(pdf_path))[0]
-
-    with pdfplumber.open(pdf_path) as pdf:
-        for page_num, page in enumerate(pdf.pages, start=1):
-            # Skip pages after financial data
-            if page_num > last_page_to_process:
-                print(f"  Skipping page {page_num} (after financial data)")
-                continue
-
-            print(f"  Processing page {page_num}...")
-
-            # Always save a page image for later use by AMS vision export
-            page_image = page.to_image(resolution=200).original
-            page_image_filename = f"{pdf_stem}_page_{page_num}.jpg"
-            page_image_path = os.path.join(pdf_dir, page_image_filename)
-            # Convert to RGB if needed (JPEG doesn't support alpha)
-            if page_image.mode in ("RGBA", "P", "LA"):
-                page_image = page_image.convert("RGB")
-            page_image.save(page_image_path, format="JPEG", quality=80)
-            print(f"    ✓ Saved page image: {page_image_path}")
-
-            # Try text extraction first (for digital PDFs)
-            page_text = page.extract_text()
-
-            # Check if extracted text is usable or garbage
-            if page_text and not _is_text_garbage(page_text):
-                # Digital PDF with good extractable text
-                print(f"    ✓ Extracted {len(page_text)} chars via text extraction")
-                pages_data.append({
-                    "page_number": page_num,
-                    "text": _fix_pdf_spacing(page_text),
-                    "image_path": page_image_path
-                })
-                # Clean up memory after each page
-                del page_text, page_image
-                gc.collect()
-            else:
-                # Either no text, or garbage text - use OCR
-                if page_text:
-                    print(f"    ⚠️  Extracted text is garbage/unreadable, using OCR...")
-                else:
-                    print(f"    ⚠️  Scanned PDF, using OCR...")
-
-                # Use the already-captured page image for OCR (re-render at higher DPI)
-                ocr_image = page.to_image(resolution=300).original
-
-                # Single-pass OCR with best settings for insurance docs
-                # PSM 6 = uniform block of text (best for structured documents)
-                # OEM 3 = default (LSTM + legacy)
-                try:
-                    config = '--oem 3 --psm 6'
-                    text = pytesseract.image_to_string(ocr_image, config=config)
-                    char_count = len(text)
-                    print(f"    ✓ OCR extracted {char_count} chars")
-
-                    pages_data.append({
-                        "page_number": page_num,
-                        "text": _fix_pdf_spacing(text),
-                        "image_path": page_image_path
-                    })
-
-                    # Clean up memory
-                    del page_image, ocr_image, text
-                    gc.collect()
-                except Exception as e:
-                    print(f"    ✗ OCR failed: {e}")
-                    # Add empty page so we don't skip it entirely
-                    pages_data.append({
-                        "page_number": page_num,
-                        "text": "",
-                        "image_path": page_image_path
-                    })
-                    # Clean up on error too
-                    if 'page_image' in locals():
-                        del page_image
-                    if 'ocr_image' in locals():
-                        del ocr_image
-                    gc.collect()
-
-    return {
-        "pages": pages_data,
-        "last_relevant_page": last_page_to_process
-    }
-
 def _fix_pdf_spacing(text):
     import re
     # Fix missing space between word and capitalized word (CausewayBlvd → Causeway Blvd)
@@ -510,21 +416,131 @@ def _fix_pdf_spacing(text):
     text = re.sub(r'\b([A-Z]{2})(\d{5})\b', r'\1 \2', text)
     return text
 
+
+def pass1_extract_quote_layout(pdf_path):
+    """
+    Pass 1: Extract quote data from PDF.
+    - Digital PDFs: extract tables + header text via pdfplumber (fast, no vision needed)
+    - Scanned PDFs: save page images for vision model in Pass 2
+    """
+    import gc
+
+    pages_data = []
+    is_scanned = False
+
+    # Hard cap: only process first 5 pages. To process all pages, just set last_page_to_process = total_pages
+    last_page_to_process = 5
+
+    # Determine where to save page images (same directory as the PDF)
+    pdf_dir = os.path.dirname(os.path.abspath(pdf_path))
+    pdf_stem = os.path.splitext(os.path.basename(pdf_path))[0]
+
+    with pdfplumber.open(pdf_path) as pdf:
+        total_pages = len(pdf.pages)
+        pages_to_process = min(last_page_to_process, total_pages)
+        print(f"  Processing {pages_to_process}/{total_pages} pages...")
+
+        # Check first page to determine if scanned or digital
+        first_page_text = pdf.pages[0].extract_text() if pdf.pages else None
+        is_scanned = not first_page_text or _is_text_garbage(first_page_text)
+
+        if is_scanned:
+            print(f"  Detected: SCANNED PDF → using vision model path")
+        else:
+            print(f"  Detected: DIGITAL PDF → using tables + header path")
+
+        for page_num, page in enumerate(pdf.pages, start=1):
+            if page_num > last_page_to_process:
+                break
+
+            # Always save page image (needed for AMS vision export + scanned PDF path)
+            page_image = page.to_image(resolution=200).original
+            page_image_filename = f"{pdf_stem}_page_{page_num}.jpg"
+            page_image_path = os.path.join(pdf_dir, page_image_filename)
+
+            if page_image.mode in ("RGBA", "P", "LA"):
+                page_image = page_image.convert("RGB")
+            page_image.save(page_image_path, format="JPEG", quality=80)
+            print(f"    ✓ Page {page_num} → {page_image_path}")
+
+            if is_scanned:
+                # Scanned: just save image path, vision model will read it in Pass 2
+                pages_data.append({
+                    "page_number": page_num,
+                    "image_path": page_image_path
+                })
+            else:
+                # Digital: extract full page text (fast, no OCR needed)
+                page_text = page.extract_text() or ""
+                full_text = _fix_pdf_spacing(page_text)
+
+                print(f"      ✓ {len(full_text)} chars extracted")
+                pages_data.append({
+                    "page_number": page_num,
+                    "text": full_text,
+                    "image_path": page_image_path
+                })
+
+            del page_image
+            gc.collect()
+
+    return {
+        "pages": pages_data,
+        "total_pages": total_pages,
+        "pages_processed": len(pages_data),
+        "is_scanned": is_scanned
+    }
+
+
 def pass2_normalize_quote_data(layout_data):
     """
-    Pass 2: Normalize extracted layout into standard JSON schema
-    
-    Args:
-        layout_data: Output from pass1_extract_layout
-        
-    Returns:
-        dict: Normalized quote data
+    Pass 2: Normalize to structured JSON.
+    - Scanned PDFs: send page images to vision model (it reads the doc directly)
+    - Digital PDFs: send extracted text to text-based LLM
     """
+    from PIL import Image
 
     llm = get_llm_client()
+    is_scanned = layout_data.get("is_scanned", False)
 
-    prompt = PASS2_NORMALIZATION_PROMPT + "\n\nExtracted Layout Data:\n" + json.dumps(layout_data)
-    normalized_data = llm.generate_json(prompt)
+    if is_scanned:
+        # Vision path: send images to model
+        images = []
+        vision_max_width = 1000
+        for page in layout_data.get("pages", []):
+            img_path = page.get("image_path")
+            if img_path and os.path.exists(img_path):
+                img = Image.open(img_path).convert("RGB")
+                if img.width > vision_max_width:
+                    ratio = vision_max_width / img.width
+                    new_size = (vision_max_width, int(img.height * ratio))
+                    img = img.resize(new_size, Image.LANCZOS)
+                images.append(img)
+
+        if not images:
+            raise ValueError("No page images available for vision extraction")
+
+        num_pages = len(images)
+        prompt = (
+            f"You are looking at {num_pages} page(s) from an insurance quote document.\n\n"
+            "Read the document images and extract all relevant data into the JSON schema below.\n\n"
+            + PASS2_NORMALIZATION_PROMPT
+        )
+
+        print(f"  Sending {num_pages} page image(s) to vision model...")
+        normalized_data = llm.generate_json_with_images(prompt, images)
+    else:
+        # Text path: send extracted tables + headers to LLM
+        lean_data = {
+            "pages": [
+                {"page_number": p["page_number"], "text": p.get("text", "")}
+                for p in layout_data.get("pages", [])
+            ]
+        }
+
+        prompt = PASS2_NORMALIZATION_PROMPT + "\n\nExtracted Layout Data:\n" + json.dumps(lean_data)
+        print(f"  Sending extracted text to LLM...")
+        normalized_data = llm.generate_json(prompt)
 
     if isinstance(normalized_data, dict):
         return normalized_data
@@ -544,21 +560,19 @@ def process_quote_two_pass(pdf_path, existing_quotes=None):
     start_time = time.time()
     metadata = {}
 
-    # Pass 1: Extract layout
-    print("Pass 1 of two_pass_parser.process_quote_two_pass: Extracting layout and OCR...")
+    # Pass 1: Extract layout (detects scanned vs digital)
+    print("Pass 1: Extracting quote layout...")
     pass1_start = time.time()
     layout_data = pass1_extract_quote_layout(pdf_path)
     metadata['pass1_duration'] = time.time() - pass1_start
-    print(f"  ✓ Pass 1 (quote) complete ({metadata['pass1_duration']:.2f}s)")
-    # print(f"  Pass 1 data: {json.dumps(layout_data, indent=2)}")
+    print(f"  ✓ Pass 1 complete ({metadata['pass1_duration']:.2f}s)")
 
-    # Pass 2: Normalize to JSON
-    print("Pass 2 of two_pass_parser.process_quote_two_pass: Normalizing to JSON schema...")
+    # Pass 2: Normalize (vision for scanned, text LLM for digital)
+    print("Pass 2: Normalizing to JSON schema...")
     pass2_start = time.time()
     normalized_data = pass2_normalize_quote_data(layout_data)
     metadata['pass2_duration'] = time.time() - pass2_start
-    print(f"  ✓ Pass 2 (quote) complete ({metadata['pass2_duration']:.2f}s)")
-    # print(f"  Pass 2 data: {json.dumps(normalized_data, indent=2)}")
+    print(f"  ✓ Pass 2 complete ({metadata['pass2_duration']:.2f}s)")
 
     metadata['total_duration'] = time.time() - start_time
     print(f"✓ All quote passes complete ({metadata['total_duration']:.2f}s)")
