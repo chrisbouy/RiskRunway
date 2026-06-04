@@ -1219,12 +1219,24 @@ def download_document(document_id):
         if doc.storage_provider == 's3':
             try:
                 import boto3
+                from io import BytesIO
                 bucket = current_app.config.get('S3_BUCKET')
                 client = boto3.client(
                     's3',
                     region_name=current_app.config.get('S3_REGION') or None,
                     endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
                 )
+                # For JSON/text correspondence files, stream through server to avoid CORS issues
+                if doc.content_type in ('application/json', 'text/plain'):
+                    obj = client.get_object(Bucket=bucket, Key=doc.storage_key)
+                    file_data = obj['Body'].read()
+                    return send_file(
+                        BytesIO(file_data),
+                        as_attachment=False,
+                        download_name=doc.original_filename,
+                        mimetype=doc.content_type
+                    )
+                # For other files (PDFs etc.), redirect to presigned URL
                 signed_url = client.generate_presigned_url(
                     ClientMethod='get_object',
                     Params={'Bucket': bucket, 'Key': doc.storage_key},
