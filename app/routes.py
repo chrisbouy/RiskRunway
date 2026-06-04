@@ -1648,20 +1648,15 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
                     'provider': provider_str
                 }
         
-        # Get broker emails and quote subjects for filtering
-        broker_emails = _get_user_broker_emails(db_session, user_id)
-        print(f"Broker emails for user {user_id}: {broker_emails}")
-        quote_subjects = _get_user_quote_subjects(db_session, user_id)
-        print(f"Quote subjects for user {user_id}: {quote_subjects}")
-
-        # Fetch unread emails from last 24 days
-        since_date = datetime.now() - timedelta(days=24)
+        # Fetch all unread emails from last 5 days (no broker/subject filtering)
+        since_date = datetime.now() - timedelta(days=5)
         unified_emails = oauth_service.fetch_emails(
             access_token=access_token,
             max_results=50,
             since_date=since_date,
-            broker_emails=broker_emails,
-            quote_subjects=quote_subjects
+            broker_emails=None,
+            quote_subjects=None,
+            require_attachments=False
         )
         
         if not unified_emails:

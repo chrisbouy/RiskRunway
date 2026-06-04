@@ -690,13 +690,9 @@
         }
 
         .email-attachment-actions {
-            display: none;
+            display: flex;
             gap: 0.375rem;
             flex-shrink: 0;
-        }
-
-        .email-attachment-item:hover .email-attachment-actions {
-            display: flex;
         }
 
         .email-attachment-actions button {
@@ -708,18 +704,6 @@
             white-space: nowrap;
             transition: background 0.15s;
         }
-
-        .att-parse-btn {
-            background: #059669;
-            color: white;
-        }
-        .att-parse-btn:hover { background: #047857; }
-
-        .att-save-btn {
-            background: #2563eb;
-            color: white;
-        }
-        .att-save-btn:hover { background: #1d4ed8; }
 
         /* Email correspondence body — visible scrollbar + fade hint when overflowing */
         .corr-body-wrap {
@@ -1077,7 +1061,7 @@
                 </div>
             </div>
 
-            <p class="text-gray-500 text-xs mb-3 italic">To search email, adjust filters.</p>
+            <p class="text-gray-500 text-xs mb-3 italic">To refine search, adjust filters.</p>
 
             <!-- Filters Panel (collapsible) -->
             <div id="emailFiltersPanel" class="hidden mb-4 border border-gray-600 rounded-lg p-4 bg-gray-900 bg-opacity-60">
@@ -1191,9 +1175,9 @@
             <div id="ocrLoadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10000]">
                 <div class="bg-gray-800 rounded-lg p-8 border border-gray-600 text-center">
                     <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <h3 class="text-xl font-bold text-white mb-2">Processing Quote</h3>
-                    <p class="text-gray-400 mb-2">Running OCR on the quote document...</p>
-                    <p class="text-sm text-gray-500">This may take a few moments</p>
+                    <h3 id="ocrLoadingTitle" class="text-xl font-bold text-white mb-2">Processing...</h3>
+                    <p id="ocrLoadingDesc" class="text-gray-400 mb-2">This may take a few moments</p>
+                    <p class="text-sm text-gray-500">Please wait</p>
                 </div>
             </div>
             
@@ -2891,8 +2875,6 @@
                             <span class="email-attachment-name">${escapeHtml(a.filename || 'file')}</span>
                             <span class="email-attachment-actions">
                                 <button class="att-triage-btn px-2 py-0.5 bg-purple-600 text-white text-xs rounded hover:bg-purple-700" title="Smart Process (auto-classify)">⚡ Process</button>
-                                <button class="att-parse-btn" title="Process as Quote">📄 Parse</button>
-                                <button class="att-save-btn" title="Save to Docs">💾 Save</button>
                             </span>
                         </div>
                     `).join('');
@@ -2901,7 +2883,6 @@
                         <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center;">
                             <div style="display: flex; gap: 0.375rem; align-items: center;">
                                 <button class="read-email-btn px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" data-message-id="${email.message_id}">👁 Read</button>
-                                <button class="save-corr-btn px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700" data-message-id="${email.message_id}">💬 Save</button>
                                 <button class="dismiss-email-btn px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700" data-message-id="${email.message_id}">🗑 Dismiss</button>
                             </div>
                             <div>
@@ -2933,46 +2914,6 @@
                         const emailData = cachedEmails.find(e => e.message_id === msgId);
                         if (emailData) {
                             await dismissEmail(emailData);
-                        }
-                    });
-                });
-
-                // Save as Correspondence button handlers
-                document.querySelectorAll('.save-corr-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const msgId = this.dataset.messageId;
-                        const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData) {
-                            currentEmailData = emailData;
-                            openSubmissionSelector(emailData, 'save_correspondence');
-                        }
-                    });
-                });
-
-                // Attachment Parse button handlers — now uses smart triage
-                document.querySelectorAll('.att-parse-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const item = this.closest('.email-attachment-item');
-                        const msgId = item.dataset.messageId;
-                        const attachmentId = item.dataset.attachmentId;
-                        const filename = item.dataset.filename;
-                        const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData) {
-                            triageAttachment(emailData, attachmentId, filename);
-                        }
-                    });
-                });
-
-                // Attachment Save button handlers — now uses smart triage
-                document.querySelectorAll('.att-save-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const item = this.closest('.email-attachment-item');
-                        const msgId = item.dataset.messageId;
-                        const attachmentId = item.dataset.attachmentId;
-                        const filename = item.dataset.filename;
-                        const emailData = cachedEmails.find(e => e.message_id === msgId);
-                        if (emailData) {
-                            triageAttachment(emailData, attachmentId, filename);
                         }
                     });
                 });
@@ -3078,6 +3019,14 @@
             const closeBtn = document.getElementById('closeSelectSubmissionModal');
 
             try {
+                // Set loading text based on action
+                if (currentEmailAction === 'save_correspondence') {
+                    document.getElementById('ocrLoadingTitle').textContent = 'Saving Correspondence';
+                    document.getElementById('ocrLoadingDesc').textContent = 'Cleaning email with AI...';
+                } else {
+                    document.getElementById('ocrLoadingTitle').textContent = 'Processing Document';
+                    document.getElementById('ocrLoadingDesc').textContent = 'Parsing and classifying...';
+                }
                 loadingOverlay.classList.remove('hidden');
                 selectSubmissionBtns.forEach(btn => btn.style.pointerEvents = 'none');
                 cancelBtn.disabled = true;
@@ -3147,6 +3096,7 @@
                         alert(data.message || 'Email saved as correspondence.');
                         // Mark as read in provider and remove from list
                         await dismissEmail(currentEmailData);
+                        await loadSubmissions();
                     } else {
                         cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
                         document.getElementById('newMessageCount').textContent = cachedEmails.length;
@@ -3229,6 +3179,8 @@
             const closeBtn = document.getElementById('closeSelectSubmissionModal');
 
             try {
+                document.getElementById('ocrLoadingTitle').textContent = 'Processing Document';
+                document.getElementById('ocrLoadingDesc').textContent = 'Parsing and classifying...';
                 loadingOverlay.classList.remove('hidden');
                 cancelBtn.disabled = true;
                 closeBtn.disabled = true;
@@ -3744,7 +3696,7 @@
 
             document.getElementById('readPopupIngestBtn').addEventListener('click', function() {
                 modal.classList.add('hidden');
-                openSubmissionSelector(emailData, 'ingest');
+                openSubmissionSelector(emailData, 'save_correspondence');
             });
 
             document.getElementById('readPopupDismissBtn').addEventListener('click', async function() {
