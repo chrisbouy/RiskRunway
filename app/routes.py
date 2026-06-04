@@ -3013,7 +3013,8 @@ def add_email_correspondence(email_id, submission_id):
 def save_email_correspondence_stateless():
     """
     Save email as correspondence document to a submission.
-    Stateless — accepts email content directly from the frontend (no DB email lookup).
+    Uses AI to split threads and clean signatures/boilerplate.
+    Stores as JSON so the viewer can render each message separately.
     Marks the email as read in the provider after saving.
     
     Request body:
@@ -3054,21 +3055,46 @@ def save_email_correspondence_stateless():
             insured_name = submission.insured_name or 'unknown_insured'
             sender_label = from_name or from_email or 'unknown'
 
-            # Create a text file with the email content
+            # Use AI to split thread and clean signatures/boilerplate
+            ai_result = _clean_email_with_ai(
+                subject=subject,
+                from_label=sender_label,
+                received_date=received_date,
+                body_text=body_text
+            )
+            ai_messages = ai_result.get('messages') or []
+            ai_title = ai_result.get('title') or f"Email with {sender_label}"
+
+            # Drop messages with empty bodies
+            ai_messages = [m for m in ai_messages if (m.get('body') or '').strip()]
+
+            if not ai_messages:
+                return jsonify({'success': False, 'error': 'Email has no meaningful body content to save.'}), 400
+
+            # Store as JSON so the UI can render each message in its own frame
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            display_filename = f"Email with {sender_label}.txt"
-            unique_filename = f"{timestamp}_correspondence_{submission_id}.txt"
+            display_filename = f"{ai_title}.json"[:200]
+            unique_filename = f"{timestamp}_correspondence_{submission_id}.json"
             filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
 
-            email_content = f"From: {from_name or from_email}\nTo: {session.get('username', 'unknown')}\nSubject: {subject}\nDate: {received_date}\n\n---\n\n{body_text}"
-
+            payload = {
+                'title': ai_title,
+                'outer': {
+                    'from': sender_label,
+                    'subject': subject,
+                    'date': received_date
+                },
+                'messages': ai_messages
+            }
             with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(email_content)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
 
             # Upload to storage
             term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
             doc_key = _build_storage_key(submission_id, 'CORRESPONDENCE', unique_filename, session.get('user_id'), insured_name)
-            storage_provider_val, storage_key = _storage_upload(filepath, doc_key, 'text/plain')
+            storage_provider_val, storage_key = _storage_upload(filepath, doc_key, 'application/json')
+
+            size_bytes = os.path.getsize(filepath) if os.path.exists(filepath) else None
 
             doc = Document(
                 submission_id=submission_id,
@@ -3081,13 +3107,29 @@ def save_email_correspondence_stateless():
                 storage_provider=storage_provider_val,
                 storage_key=storage_key,
                 original_filename=display_filename,
-                content_type='text/plain',
-                size_bytes=os.path.getsize(filepath) if os.path.exists(filepath) else None,
+                content_type='application/json',
+                size_bytes=size_bytes,
                 uploaded_by=session.get('username')
             )
             db_session.add(doc)
             db_session.flush()
             doc_id = doc.id
+
+            db_session.add(AuditLog(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='email_correspondence_added',
+                submission_id=submission_id,
+                user=session.get('username'),
+                details=json.dumps({
+                    'message_id': message_id,
+                    'subject': subject,
+                    'from': sender_label,
+                    'title': ai_title,
+                    'message_count': len(ai_messages)
+                })
+            ))
+
             db_session.commit()
 
             # Clean up temp file
@@ -3121,19 +3163,11 @@ def save_email_correspondence_stateless():
             except Exception as e:
                 logger.warning(f"Failed to mark email as read in provider: {e}")
 
-            # Log action
-            log_action(
-                entity_type='submission',
-                entity_id=submission_id,
-                action='email_correspondence_added',
-                submission_id=submission_id,
-                details=json.dumps({'message_id': message_id, 'subject': subject, 'from': sender_label})
-            )
-
             return jsonify({
                 'success': True,
                 'document_id': doc_id,
-                'submission_id': submission_id
+                'submission_id': submission_id,
+                'message': f'Email saved as correspondence ({len(ai_messages)} message{"s" if len(ai_messages) != 1 else ""}).'
             })
         finally:
             db_session.close()
