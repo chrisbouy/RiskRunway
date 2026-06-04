@@ -4245,8 +4245,7 @@
                     // Success — mark as read and remove from list, then refresh board
                     const stageLabel = data.stage === 'quoting' ? 'Quoting' : 'Submission';
                     let msg = data.message;
-                    if (data.is_renewal) msg += '\n🔄 Flagged as renewal.';
-                    alert(`✅ ${msg}\n\nPlaced in: ${stageLabel} stage`);
+                    alert(`✅ ${msg}`);
                     await dismissEmail(emailData);
                     loadSubmissions();
                     return;

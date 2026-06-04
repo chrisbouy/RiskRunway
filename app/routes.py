@@ -3476,7 +3476,6 @@ def triage_attachment():
                 # Step 2: Find or create submission
                 submission_id = user_submission_id
                 is_new_submission = False
-                is_renewal = False
 
                 if not submission_id:
                     # Try to match to existing submission by insured name
@@ -3528,7 +3527,7 @@ def triage_attachment():
                     'insured_name': submission.insured_name,
                     'document_type': doc_type,
                     'is_new_submission': is_new_submission,
-                    'is_renewal': is_renewal
+                    'is_renewal': False
                 }
 
                 if doc_type == 'application':
@@ -3607,18 +3606,7 @@ def triage_attachment():
                         effective_date = first_policy.get('effective_date')
                         expiration_date = first_policy.get('expiration_date')
 
-                    # Check for renewal: if submission exists in submission stage
-                    # and new expiration date is later than existing effective date
-                    if not is_new_submission and expiration_date and submission.effective_date:
-                        try:
-                            new_exp = datetime.strptime(expiration_date[:10], '%Y-%m-%d').date()
-                            old_eff = datetime.strptime(submission.effective_date[:10], '%Y-%m-%d').date()
-                            if new_exp > old_eff and submission.status == SubmissionStatus.RECEIVED:
-                                submission.is_renewal = True
-                                is_renewal = True
-                                result_data['is_renewal'] = True
-                        except (ValueError, TypeError):
-                            pass
+
 
                     # Move to quoting stage
                     if submission.status == SubmissionStatus.RECEIVED:
@@ -3665,9 +3653,7 @@ def triage_attachment():
                     result_data['stage'] = 'quoting'
                     result_data['quote_id'] = quote_id
                     result_data['carrier_name'] = carrier_name
-                    result_data['message'] = f'Quote from {carrier_name or "unknown carrier"} parsed and {"new submission created in Quoting" if is_new_submission else "added to submission (moved to Quoting)"}.'
-                    if is_renewal:
-                        result_data['message'] += ' Flagged as renewal.'
+                    result_data['message'] = f'Quote from {carrier_name or "unknown carrier"} parsed and {"new submission created (moved to Quoting stage)" if is_new_submission else "added to submission (moved to Quoting stage)"}.'
 
                 else:
                     # Other document — just save to submission
