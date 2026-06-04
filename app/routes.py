@@ -6303,7 +6303,7 @@ def ams_vision():
             all_images = [screenshot_image]
 
         # Always use Bedrock/Claude — only model that returns pixel coordinates
-        client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
+        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
 
         field_map = client.generate_json_with_images(prompt, all_images)
         logger.info(f"[AMS Vision] Bedrock returned {len(field_map)} field matches (quote_images={len(quote_images)})")

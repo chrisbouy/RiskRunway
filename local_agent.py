@@ -107,7 +107,7 @@ COPY_HOTKEY   = ("command", "c") if IS_MAC else ("ctrl", "c")
 
 # Remote mode: use typewrite instead of clipboard paste, skip verification
 REMOTE_MODE = False
-TYPEWRITE_INTERVAL = 0.04  # seconds between keystrokes in remote mode
+TYPEWRITE_INTERVAL = 0.05  # seconds between keystrokes in remote mode
 
 # Debug output directory for fill verification screenshots
 DEBUG_FILL_DIR = Path(__file__).parent / "logs" / "fill_screenshots"
