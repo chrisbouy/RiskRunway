@@ -15,7 +15,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 # GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
- BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 #BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "us.anthropic.claude-sonnet-4-6")
 
 BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-east-1")
