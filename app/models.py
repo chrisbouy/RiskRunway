@@ -141,6 +141,13 @@ class Submission(Base):
     is_renewal = Column(Boolean, default=False, nullable=False)  # True when policy is being renewed
     notes = Column(Text, nullable=True)  # JSON object with stage-keyed notes
 
+    # Applied Epic integration fields
+    ams_type = Column(String(20), nullable=True)  # 'epic' or None for local-only
+    epic_client_id = Column(String(100), nullable=True)  # Epic account/client identifier
+    epic_policy_id = Column(String(100), nullable=True)  # Epic policy identifier
+    epic_line_id = Column(String(100), nullable=True)  # Epic line identifier
+    epic_exported_at = Column(DateTime, nullable=True)  # When data was pushed back to Epic
+
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="submission", cascade="all, delete-orphan")
@@ -176,7 +183,12 @@ class Submission(Base):
             'assigned_to': self.assigned_to,
             'assigned_user': self.assigned_user.to_dict() if self.assigned_user else None,
             'is_renewal': self.is_renewal,
-            'notes': self._parse_notes()
+            'notes': self._parse_notes(),
+            'ams_type': self.ams_type,
+            'epic_client_id': self.epic_client_id,
+            'epic_policy_id': self.epic_policy_id,
+            'epic_line_id': self.epic_line_id,
+            'epic_exported_at': self.epic_exported_at.isoformat() if self.epic_exported_at else None,
         }
 
     def _parse_notes(self):

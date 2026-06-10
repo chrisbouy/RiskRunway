@@ -3592,6 +3592,10 @@ Thank you for your attention to this matter.`;
                     exportBtn.disabled = false;
                     exportBtn.style.opacity = '1';
                     exportBtn.style.cursor = 'pointer';
+                    // Update label if this is an Epic submission
+                    if (submissionData && submissionData.ams_type === 'epic') {
+                        exportBtn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to Epic';
+                    }
                 }
                 // Swap Edit btn for BOUND label
                 if (editBtn) editBtn.classList.add('hidden');
@@ -4096,6 +4100,13 @@ Thank you for your attention to this matter.`;
 
         // ─── Main Export to AMS Click Handler ─────────────────────────────────────
         document.getElementById('exportToAmsBtn').addEventListener('click', async function() {
+            // If this submission came from Epic, use Epic API export
+            if (submissionData && submissionData.ams_type === 'epic') {
+                await executeEpicExport();
+                return;
+            }
+
+            // Otherwise use the local AMS agent flow
             await generateExportData();
 
             if (exportData.length === 0) {
@@ -4117,6 +4128,67 @@ Thank you for your attention to this matter.`;
                 openAmsWizard();
             }
         });
+
+        // ─── Epic API Export ──────────────────────────────────────────────────────
+        async function executeEpicExport() {
+            const btn = document.getElementById('exportToAmsBtn');
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span style="font-size: 1.2em;">⏳</span> Exporting to Epic...';
+
+            try {
+                // Build export payload from the winning quote data
+                let exportPayload = {};
+                const wonQuote = quotes.find(q => q.quote_outcome === 'WON');
+                if (wonQuote && wonQuote.extracted_json) {
+                    try {
+                        const parsed = JSON.parse(wonQuote.extracted_json);
+                        const policies = parsed.policies || [parsed];
+                        const firstPolicy = policies[0] || {};
+                        exportPayload = {
+                            issuing_company_code: firstPolicy.carrier || wonQuote.carrier_name || '',
+                            policy_number: firstPolicy.policy_number || '',
+                            estimated_premium: parseFloat(firstPolicy.premium) || 0,
+                            status_code: 'BND',
+                            description: submissionData.insured_name + ' - ' + (firstPolicy.coverage_type || ''),
+                        };
+                    } catch(e) {
+                        console.warn('Could not parse won quote data:', e);
+                    }
+                }
+
+                const response = await fetch(`/api/epic/export/${submissionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(exportPayload)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    btn.innerHTML = '<span style="font-size: 1.2em;">✅</span> Exported to Epic';
+                    btn.style.background = '#065f46';
+
+                    // Show summary
+                    const results = data.results || {};
+                    let summary = 'Exported to Epic successfully!';
+                    if (results.line_updated) summary += '\n• Line updated';
+                    if (results.policy_updated) summary += '\n• Policy updated';
+                    if (results.attachments && results.attachments.length > 0) {
+                        const attached = results.attachments.filter(a => a.success).length;
+                        summary += `\n• ${attached} document(s) attached`;
+                    }
+                    alert(summary);
+                } else {
+                    throw new Error(data.error || 'Export failed');
+                }
+            } catch (error) {
+                console.error('Epic export error:', error);
+                alert('Epic export failed: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
 
         // ─── Actual Export Execution (after agent is confirmed installed) ──────────
         async function executeAmsExport() {

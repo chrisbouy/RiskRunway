@@ -24,6 +24,9 @@ def create_app():
     from app import routes
     app.register_blueprint(routes.bp)
 
+    from app.epic_routes import epic_bp
+    app.register_blueprint(epic_bp)
+
     # Initialize email scraping scheduler if enabled
     def scrape_emails_task():
         """Background task to scrape emails"""

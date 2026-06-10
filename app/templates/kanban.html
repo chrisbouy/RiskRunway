@@ -783,6 +783,14 @@
             <div class="left-divider"></div>
 
             <button id="newSubmissionBtn" class="left-btn btn-new">+ New Risk(s)</button>
+            <button id="importFromEpicBtn" class="left-btn btn-config" style="margin-top: 4px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Import from Epic
+            </button>
 
             <!-- Email Scraping Section -->
             <div class="left-divider" style="margin-top: 8px;"></div>
@@ -932,6 +940,64 @@
                 <button id="doneCreatingBtn" class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold text-sm">
                     Done
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Epic Import Modal -->
+    <div id="epicImportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
+            <h2 class="text-xl font-bold mb-2 text-white">Import from Applied Epic</h2>
+            <p class="text-gray-400 mb-4 text-sm">Search for a client to import their submission data.</p>
+
+            <!-- Step 1: Search -->
+            <div id="epicStep1">
+                <div class="mb-4">
+                    <label class="block text-sm font-semibold text-gray-300 mb-1">Search Client</label>
+                    <div class="flex gap-2">
+                        <input id="epicSearchInput" type="text" class="flex-1 border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="Type insured name...">
+                        <button id="epicSearchBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Search</button>
+                    </div>
+                </div>
+                <div id="epicSearchResults" class="max-h-48 overflow-y-auto space-y-1"></div>
+                <div id="epicSearchEmpty" class="hidden text-gray-500 text-sm text-center py-4">No clients found</div>
+                <div id="epicSearchLoading" class="hidden text-gray-400 text-sm text-center py-4">Searching...</div>
+            </div>
+
+            <!-- Step 2: Select Policy -->
+            <div id="epicStep2" class="hidden">
+                <div class="mb-3">
+                    <span class="text-xs text-gray-400 uppercase tracking-wide">Client:</span>
+                    <span id="epicSelectedClientName" class="text-sm text-white font-medium ml-1"></span>
+                    <button id="epicBackToSearch" class="text-xs text-blue-400 hover:text-blue-300 ml-2">← Change</button>
+                </div>
+                <div class="mb-2 text-sm font-semibold text-gray-300">Select a policy:</div>
+                <div id="epicPoliciesList" class="max-h-48 overflow-y-auto space-y-1"></div>
+                <div id="epicPoliciesEmpty" class="hidden text-gray-500 text-sm text-center py-4">No prospective policies found</div>
+                <div id="epicPoliciesLoading" class="hidden text-gray-400 text-sm text-center py-4">Loading policies...</div>
+            </div>
+
+            <!-- Step 3: Confirm & Import -->
+            <div id="epicStep3" class="hidden">
+                <div class="bg-gray-900 rounded p-4 mb-4 border border-gray-700">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Import Summary</div>
+                    <div class="space-y-1 text-sm">
+                        <div><span class="text-gray-400">Client:</span> <span id="epicConfirmClient" class="text-white"></span></div>
+                        <div><span class="text-gray-400">Policy:</span> <span id="epicConfirmPolicy" class="text-white"></span></div>
+                        <div><span class="text-gray-400">Type:</span> <span id="epicConfirmType" class="text-white"></span></div>
+                        <div><span class="text-gray-400">Effective:</span> <span id="epicConfirmDates" class="text-white"></span></div>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button id="epicBackToPolicies" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm">Back</button>
+                    <button id="epicConfirmImport" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium">Create Submission</button>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="flex justify-between items-center mt-4 pt-3 border-t border-gray-700">
+                <span id="epicStatusMsg" class="text-xs text-gray-500"></span>
+                <button id="epicCancelBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm">Cancel</button>
             </div>
         </div>
     </div>
@@ -2224,7 +2290,7 @@
             }
 
             card.innerHTML = `
-                <div class="card-name" title="${escapeHtml(submission.insured_name)}">${escapeHtml(submission.insured_name)}</div>
+                <div class="card-name" title="${escapeHtml(submission.insured_name)}">${submission.ams_type === 'epic' ? '<span style="font-size:9px;background:rgba(96,165,250,0.2);color:#93c5fd;padding:1px 4px;border-radius:2px;margin-right:4px;font-weight:600;">EPIC</span>' : ''}${escapeHtml(submission.insured_name)}</div>
                 ${renewalBadgeHtml}
                 <div class="card-row">
                     <div class="card-left">
@@ -4317,6 +4383,228 @@
                 pendingTriageData = null;
             }
         }
+
+        // ─── Epic Import Flow ───
+        (function() {
+            const modal = document.getElementById('epicImportModal');
+            const step1 = document.getElementById('epicStep1');
+            const step2 = document.getElementById('epicStep2');
+            const step3 = document.getElementById('epicStep3');
+            const searchInput = document.getElementById('epicSearchInput');
+            const searchBtn = document.getElementById('epicSearchBtn');
+            const statusMsg = document.getElementById('epicStatusMsg');
+
+            let selectedClient = null;
+            let selectedPolicy = null;
+
+            function showStep(stepNum) {
+                step1.classList.toggle('hidden', stepNum !== 1);
+                step2.classList.toggle('hidden', stepNum !== 2);
+                step3.classList.toggle('hidden', stepNum !== 3);
+            }
+
+            function resetModal() {
+                showStep(1);
+                searchInput.value = '';
+                document.getElementById('epicSearchResults').innerHTML = '';
+                document.getElementById('epicSearchEmpty').classList.add('hidden');
+                document.getElementById('epicSearchLoading').classList.add('hidden');
+                statusMsg.textContent = '';
+                selectedClient = null;
+                selectedPolicy = null;
+            }
+
+            // Open modal
+            document.getElementById('importFromEpicBtn').addEventListener('click', async () => {
+                // Check if Epic is configured
+                try {
+                    const resp = await fetch('/api/epic/status');
+                    const data = await resp.json();
+                    if (!data.configured) {
+                        alert('Epic integration is not configured. Add EPIC_CLIENT_ID and EPIC_CLIENT_SECRET to your environment.');
+                        return;
+                    }
+                } catch(e) {
+                    alert('Could not check Epic status: ' + e.message);
+                    return;
+                }
+                resetModal();
+                modal.classList.remove('hidden');
+                searchInput.focus();
+            });
+
+            // Cancel
+            document.getElementById('epicCancelBtn').addEventListener('click', () => {
+                modal.classList.add('hidden');
+            });
+
+            // Search
+            async function doSearch() {
+                const q = searchInput.value.trim();
+                if (q.length < 2) return;
+
+                const results = document.getElementById('epicSearchResults');
+                const empty = document.getElementById('epicSearchEmpty');
+                const loading = document.getElementById('epicSearchLoading');
+
+                results.innerHTML = '';
+                empty.classList.add('hidden');
+                loading.classList.remove('hidden');
+
+                try {
+                    const resp = await fetch(`/api/epic/clients/search?q=${encodeURIComponent(q)}`);
+                    const data = await resp.json();
+                    loading.classList.add('hidden');
+
+                    if (!data.success) {
+                        statusMsg.textContent = data.error || 'Search failed';
+                        return;
+                    }
+
+                    if (!data.clients || data.clients.length === 0) {
+                        empty.classList.remove('hidden');
+                        return;
+                    }
+
+                    data.clients.forEach(client => {
+                        const row = document.createElement('div');
+                        row.className = 'p-2 rounded cursor-pointer hover:bg-gray-700 border border-gray-700 transition-colors';
+                        row.innerHTML = `
+                            <div class="text-sm text-white font-medium">${client.name || 'Unknown'}</div>
+                            <div class="text-xs text-gray-400">${client.lookup_code || ''} • ${client.type || ''}</div>
+                        `;
+                        row.addEventListener('click', () => selectClient(client));
+                        results.appendChild(row);
+                    });
+                } catch(e) {
+                    loading.classList.add('hidden');
+                    statusMsg.textContent = 'Search error: ' + e.message;
+                }
+            }
+
+            searchBtn.addEventListener('click', doSearch);
+            searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+            // Select client → load policies
+            async function selectClient(client) {
+                selectedClient = client;
+                document.getElementById('epicSelectedClientName').textContent = client.name;
+                showStep(2);
+
+                const list = document.getElementById('epicPoliciesList');
+                const empty = document.getElementById('epicPoliciesEmpty');
+                const loading = document.getElementById('epicPoliciesLoading');
+
+                list.innerHTML = '';
+                empty.classList.add('hidden');
+                loading.classList.remove('hidden');
+
+                try {
+                    const resp = await fetch(`/api/epic/clients/${client.id}/policies`);
+                    const data = await resp.json();
+                    loading.classList.add('hidden');
+
+                    if (!data.success || !data.policies || data.policies.length === 0) {
+                        empty.classList.remove('hidden');
+                        return;
+                    }
+
+                    data.policies.forEach(policy => {
+                        const row = document.createElement('div');
+                        row.className = 'p-2 rounded cursor-pointer hover:bg-gray-700 border border-gray-700 transition-colors';
+                        row.innerHTML = `
+                            <div class="text-sm text-white font-medium">${policy.description || 'Untitled Policy'}</div>
+                            <div class="text-xs text-gray-400">
+                                ${policy.policy_type_description || policy.policy_type_code || ''} •
+                                ${policy.effective_on || ''} → ${policy.expiration_on || ''}
+                            </div>
+                        `;
+                        row.addEventListener('click', () => selectPolicy(policy));
+                        list.appendChild(row);
+                    });
+                } catch(e) {
+                    loading.classList.add('hidden');
+                    statusMsg.textContent = 'Error loading policies: ' + e.message;
+                }
+            }
+
+            // Back to search
+            document.getElementById('epicBackToSearch').addEventListener('click', () => showStep(1));
+
+            // Select policy → load lines to get stage, then confirm
+            async function selectPolicy(policy) {
+                selectedPolicy = policy;
+
+                // Try to get line stage for this policy
+                let lineStage = '';
+                let lineId = null;
+                try {
+                    const lineResp = await fetch(`/api/epic/policies/${policy.id}/lines`);
+                    const lineData = await lineResp.json();
+                    if (lineData.success && lineData.lines && lineData.lines.length > 0) {
+                        const firstLine = lineData.lines[0];
+                        lineStage = firstLine.stage || '';
+                        lineId = firstLine.id || null;
+                    }
+                } catch(e) {
+                    console.warn('Could not fetch lines:', e);
+                }
+                selectedPolicy._lineStage = lineStage;
+                selectedPolicy._lineId = lineId;
+
+                document.getElementById('epicConfirmClient').textContent = selectedClient.name;
+                document.getElementById('epicConfirmPolicy').textContent = policy.description || 'Untitled';
+                document.getElementById('epicConfirmType').textContent = policy.policy_type_description || policy.policy_type_code || 'N/A';
+                document.getElementById('epicConfirmDates').textContent = `${policy.effective_on || 'N/A'} → ${policy.expiration_on || 'N/A'}`;
+                showStep(3);
+            }
+
+            // Back to policies
+            document.getElementById('epicBackToPolicies').addEventListener('click', () => showStep(2));
+
+            // Confirm import
+            document.getElementById('epicConfirmImport').addEventListener('click', async () => {
+                const btn = document.getElementById('epicConfirmImport');
+                btn.disabled = true;
+                btn.textContent = 'Importing...';
+
+                try {
+                    const resp = await fetch('/api/epic/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            client_id: selectedClient.id,
+                            client_name: selectedClient.name,
+                            policy_id: selectedPolicy.id,
+                            line_id: selectedPolicy._lineId,
+                            effective_date: selectedPolicy.effective_on,
+                            expiration_date: selectedPolicy.expiration_on,
+                            state: null,
+                            description: selectedPolicy.description,
+                            line_type: selectedPolicy.policy_type_code,
+                            policy_type_description: selectedPolicy.policy_type_description,
+                            policy_status: selectedPolicy.status,
+                            line_stage: selectedPolicy._lineStage,
+                        })
+                    });
+                    const data = await resp.json();
+
+                    if (data.success) {
+                        modal.classList.add('hidden');
+                        // Navigate to the new submission
+                        window.location.href = `/submission/${data.submission_id}`;
+                    } else {
+                        statusMsg.textContent = data.error || 'Import failed';
+                        btn.disabled = false;
+                        btn.textContent = 'Create Submission';
+                    }
+                } catch(e) {
+                    statusMsg.textContent = 'Import error: ' + e.message;
+                    btn.disabled = false;
+                    btn.textContent = 'Create Submission';
+                }
+            });
+        })();
 
         // Run initialization on page load
         initializePage();

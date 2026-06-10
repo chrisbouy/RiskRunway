@@ -254,6 +254,11 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('submissions', 'status_label', 'VARCHAR(255)')
         _safe_add_column('submissions', 'notes', 'TEXT')
         _safe_add_column('submissions', 'is_renewal', 'BOOLEAN DEFAULT FALSE NOT NULL')
+        _safe_add_column('submissions', 'ams_type', 'VARCHAR(20)')
+        _safe_add_column('submissions', 'epic_client_id', 'VARCHAR(100)')
+        _safe_add_column('submissions', 'epic_policy_id', 'VARCHAR(100)')
+        _safe_add_column('submissions', 'epic_line_id', 'VARCHAR(100)')
+        _safe_add_column('submissions', 'epic_exported_at', 'TIMESTAMP')
 
     # users
     if 'users' in table_names:
