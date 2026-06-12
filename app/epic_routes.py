@@ -291,6 +291,86 @@ def epic_import_submission():
         except Exception as doc_err:
             print(f"[EPIC IMPORT] Error saving document record: {doc_err}")
 
+    # ── Step 5b: Fetch and process quote attachments (non-system-generated) ──
+    quotes_imported = 0
+    if policy_id and epic_client.is_configured:
+        try:
+            quote_attachments = epic_client.get_attachments_for_policy(
+                policy_id, system_generated=False
+            )
+            for att in quote_attachments:
+                file_info = att.get('file', {})
+                file_url = file_info.get('url')
+                ext = (file_info.get('extension') or '').lower()
+                status = (file_info.get('status') or '').upper()
+
+                if not file_url or ext not in ('.pdf', 'pdf') or status != 'OK':
+                    continue
+
+                try:
+                    pdf_bytes = epic_client.download_attachment_file(file_url)
+                    if not pdf_bytes or len(pdf_bytes) < 100:
+                        continue
+
+                    # Save quote PDF
+                    upload_folder = current_app.config.get('UPLOAD_FOLDER', '/tmp')
+                    quote_filename = f"epic_quote_{file_info.get('name', 'unknown')}_{datetime.now().strftime('%H%M%S')}.pdf"
+                    quote_path = os.path.join(upload_folder, quote_filename)
+                    with open(quote_path, 'wb') as f:
+                        f.write(pdf_bytes)
+
+                    # Parse as quote
+                    from app.parsers.two_pass_parser import process_quote_two_pass
+                    from app.database import create_quote
+                    quote_result = process_quote_two_pass(quote_path)
+                    extracted_json = json.dumps(quote_result.get('pass2_normalized', {}))
+                    carrier_name = None
+                    normalized = quote_result.get('pass2_normalized', {})
+                    if 'policies' in normalized and normalized['policies']:
+                        carrier_name = normalized['policies'][0].get('carrier')
+                    if not carrier_name:
+                        carrier_name = att.get('description', 'Unknown Carrier')
+
+                    # Build a readable filename: "CarrierName_EffDate-ExpDate.pdf"
+                    safe_carrier = (carrier_name or 'Unknown').replace(' ', '_').replace('/', '-')[:40]
+                    readable_filename = f"{safe_carrier}_{effective_date}.pdf"
+                    readable_path = os.path.join(upload_folder, readable_filename)
+                    # Rename the temp file
+                    if os.path.exists(quote_path) and not os.path.exists(readable_path):
+                        os.rename(quote_path, readable_path)
+                        quote_path = readable_path
+
+                    quote_id = create_quote(
+                        submission_id=submission_id,
+                        carrier_name=carrier_name,
+                        raw_document_path=quote_path,
+                        extracted_json=extracted_json,
+                        user=session.get('username'),
+                        pass1_layout_json=json.dumps(quote_result.get('pass1_layout', {})) if quote_result.get('pass1_layout') else None,
+                    )
+                    quotes_imported += 1
+                    print(f"[EPIC IMPORT] Quote imported: {carrier_name} (quote_id={quote_id})")
+
+                except Exception as quote_err:
+                    print(f"[EPIC IMPORT] Error processing quote attachment: {quote_err}")
+
+        except EpicAPIError as e:
+            print(f"[EPIC IMPORT] Could not fetch quote attachments: {e}")
+        except Exception as e:
+            print(f"[EPIC IMPORT] Unexpected error fetching quotes: {e}")
+
+    # ── Step 5c: If quotes were imported, move to IN_PROGRESS (quoting stage) ──
+    if quotes_imported > 0:
+        db_session = get_session()
+        try:
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if submission:
+                from app.models import SubmissionStatus
+                submission.status = SubmissionStatus.IN_PROGRESS
+                db_session.commit()
+        finally:
+            db_session.close()
+
     # ── Step 6: Log ──
     log_action(
         entity_type='submission',
@@ -305,6 +385,7 @@ def epic_import_submission():
             'line_type': data.get('line_type'),
             'acord_125_downloaded': acord_pdf_path is not None,
             'acord_125_parsed': parsed_application is not None,
+            'quotes_imported': quotes_imported,
         })
     )
 
