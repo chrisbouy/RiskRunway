@@ -326,6 +326,73 @@ updated_lines = {}
 updated_policies = {}
 created_attachments = []
 
+# Attachment data (system-generated ACORDs for each policy)
+ATTACHMENTS = [
+    {
+        "id": "att-001-martinez-gl-125",
+        "description": "ACORD 125 - Commercial Insurance Application",
+        "active": True,
+        "systemGenerated": True,
+        "account": "c001-aaaa-bbbb-cccc-111111111111",
+        "attachedOn": "2026-06-01T10:00:00Z",
+        "receivedOn": "2026-06-01T10:00:00Z",
+        "attachedTos": [
+            {"id": "p001-1111-2222-3333-444444444444", "type": "POLICY", "description": "GL - Roofing", "primary": True}
+        ],
+        "clientAccessible": False,
+        "file": {
+            "id": "file-martinez-125",
+            "name": "ACORD_125_Martinez_Roofing",
+            "extension": ".pdf",
+            "size": 85947,
+            "url": "http://localhost:5002/mock-files/martinez-125.pdf",
+            "status": "OK"
+        }
+    },
+    {
+        "id": "att-002-sunshine-gl-125",
+        "description": "ACORD 125 - Commercial Insurance Application",
+        "active": True,
+        "systemGenerated": True,
+        "account": "c002-aaaa-bbbb-cccc-222222222222",
+        "attachedOn": "2026-06-05T14:30:00Z",
+        "receivedOn": "2026-06-05T14:30:00Z",
+        "attachedTos": [
+            {"id": "p003-1111-2222-3333-666666666666", "type": "POLICY", "description": "GL - Hotels", "primary": True}
+        ],
+        "clientAccessible": False,
+        "file": {
+            "id": "file-sunshine-125",
+            "name": "ACORD_125_Sunshine_Hospitality",
+            "extension": ".pdf",
+            "size": 92100,
+            "url": "http://localhost:5002/mock-files/sunshine-125.pdf",
+            "status": "OK"
+        }
+    },
+    {
+        "id": "att-003-atlantic-auto-125",
+        "description": "ACORD 125 - Commercial Insurance Application",
+        "active": True,
+        "systemGenerated": True,
+        "account": "c003-aaaa-bbbb-cccc-333333333333",
+        "attachedOn": "2026-05-20T09:00:00Z",
+        "receivedOn": "2026-05-20T09:00:00Z",
+        "attachedTos": [
+            {"id": "p005-1111-2222-3333-888888888888", "type": "POLICY", "description": "Auto - Waste Haulers", "primary": True}
+        ],
+        "clientAccessible": False,
+        "file": {
+            "id": "file-atlantic-125",
+            "name": "ACORD_125_Atlantic_Waste",
+            "extension": ".pdf",
+            "size": 78000,
+            "url": "http://localhost:5002/mock-files/atlantic-125.pdf",
+            "status": "OK"
+        }
+    },
+]
+
 
 # ─── AUTH ─────────────────────────────────────────────────────
 
@@ -450,6 +517,62 @@ def get_lines():
         "_embedded": {"lines": embedded_results},
         "_links": {"self": {"href": request.url}}
     })
+
+
+# ─── ATTACHMENTS (GET) ────────────────────────────────────────
+
+@app.route('/epic/attachment/v2/attachments', methods=['GET'])
+def get_attachments():
+    """Get attachments filtered by policy, account, etc."""
+    policy_filter = request.args.get('policy')
+    account_filter = request.args.get('account')
+    system_generated = request.args.get('systemGenerated')
+    desc_contains = request.args.get('description_contains', '').lower()
+
+    results = ATTACHMENTS[:]
+
+    if policy_filter:
+        results = [a for a in results if any(
+            at.get('id') == policy_filter and at.get('type') == 'POLICY'
+            for at in a.get('attachedTos', [])
+        )]
+    if account_filter:
+        results = [a for a in results if a.get('account') == account_filter]
+    if system_generated is not None:
+        sg = system_generated.lower() == 'true'
+        results = [a for a in results if a.get('systemGenerated') == sg]
+    if desc_contains:
+        results = [a for a in results if desc_contains in a.get('description', '').lower()]
+
+    return jsonify({
+        "total": len(results),
+        "_embedded": {"attachments": results},
+        "_links": {"self": {"href": request.url}}
+    })
+
+
+@app.route('/epic/attachment/v2/attachments/<attachment_id>', methods=['GET'])
+def get_attachment(attachment_id):
+    """Get a single attachment by ID."""
+    att = next((a for a in ATTACHMENTS if a['id'] == attachment_id), None)
+    if not att:
+        return jsonify({"title": "Not Found", "status": 404}), 404
+    return jsonify(att)
+
+
+@app.route('/mock-files/<filename>', methods=['GET'])
+def serve_mock_file(filename):
+    """Serve the sample ACORD 125 PDF for any mock file request."""
+    import os
+    # All mock files serve the same sample ACORD 125 for demo purposes
+    sample_pdf = os.path.join(
+        os.path.dirname(__file__),
+        'sample_docs', 'Acme', 'ACORD_125_Application.pdf'
+    )
+    if os.path.exists(sample_pdf):
+        from flask import send_file
+        return send_file(sample_pdf, mimetype='application/pdf', as_attachment=True, download_name=filename)
+    return "File not found", 404
 
 
 # ─── SDK MODULE (Updates) ────────────────────────────────────

@@ -171,6 +171,59 @@ class EpicClient:
     # ATTACHMENTS (REST API v2)
     # ─────────────────────────────────────────────
 
+    def get_attachments_for_policy(self, policy_id, system_generated=None, description_contains=None):
+        """
+        Get attachments associated with a policy.
+
+        Args:
+            policy_id: UUID of the policy
+            system_generated: If True/False, filter by system-generated flag
+            description_contains: Filter by description substring
+
+        Returns:
+            List of attachment objects
+        """
+        params = {
+            'policy': policy_id,
+            'active_status': 'active',
+            'fileStatus': 'OK',
+        }
+        if system_generated is not None:
+            params['systemGenerated'] = str(system_generated).lower()
+        if description_contains:
+            params['description_contains'] = description_contains
+
+        data = self._get(f"{self.attachment_api}/attachments", params=params)
+        embedded = data.get('_embedded', {})
+        return embedded.get('attachments', [])
+
+    def download_attachment_file(self, file_url):
+        """
+        Download the actual file content from an attachment's file URL.
+
+        Args:
+            file_url: The URL from attachment.file.url
+
+        Returns:
+            bytes of the file content, or None if download fails
+        """
+        try:
+            # The file URL may or may not need auth depending on the implementation
+            # Try with auth first, fall back to without
+            headers = {'Authorization': f'Bearer {self._get_token()}'}
+            resp = requests.get(file_url, headers=headers, timeout=60)
+            if resp.status_code == 200:
+                return resp.content
+
+            # Try without auth (some document services use pre-signed URLs)
+            resp = requests.get(file_url, timeout=60)
+            if resp.status_code == 200:
+                return resp.content
+
+            return None
+        except Exception:
+            return None
+
     def create_attachment(self, attach_to_id, attach_to_type, filename, description=None,
                           folder=None, received_on=None):
         """

@@ -4,9 +4,10 @@ Applied Epic integration routes.
 Provides endpoints for:
 - Searching Epic clients
 - Importing client/policy data to create a RiskRunway submission
+  (including downloading and parsing the ACORD 125 from Epic)
 - Exporting bound submission data back to Epic
 """
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, current_app
 from datetime import datetime
 from functools import wraps
 import json
@@ -14,7 +15,7 @@ import os
 
 from app.epic_client import get_epic_client, EpicAPIError
 from app.database import get_session, create_submission, log_action
-from app.models import Submission, SubmissionStatus, Document
+from app.models import Submission, SubmissionStatus, Document, DocumentType
 
 epic_bp = Blueprint('epic', __name__)
 
@@ -44,10 +45,7 @@ def epic_status():
 @epic_bp.route('/api/epic/clients/search', methods=['GET'])
 @login_required
 def epic_search_clients():
-    """
-    Search Epic clients by name.
-    Query params: q (search term), limit (default 20)
-    """
+    """Search Epic clients by name."""
     client = get_epic_client()
     if not client.is_configured:
         return jsonify({'success': False, 'error': 'Epic integration not configured'}), 400
@@ -60,14 +58,13 @@ def epic_search_clients():
 
     try:
         clients = client.search_clients(name_contains=query, limit=limit)
-        # Normalize to a simple list for the frontend
         results = []
         for c in clients:
             results.append({
                 'id': c.get('id'),
                 'name': c.get('name'),
                 'lookup_code': c.get('lookupCode'),
-                'type': c.get('type'),  # PROSPECT or INSURED
+                'type': c.get('type'),
                 'active': c.get('active'),
                 'address': c.get('address'),
             })
@@ -79,10 +76,7 @@ def epic_search_clients():
 @epic_bp.route('/api/epic/clients/<client_id>/policies', methods=['GET'])
 @login_required
 def epic_client_policies(client_id):
-    """
-    Get prospective policies for a given Epic client.
-    Returns policies that are ready to be marketed.
-    """
+    """Get prospective policies for a given Epic client."""
     client = get_epic_client()
     if not client.is_configured:
         return jsonify({'success': False, 'error': 'Epic integration not configured'}), 400
@@ -93,10 +87,8 @@ def epic_client_policies(client_id):
         policies = client.get_policies_for_client(client_id, status=status_filter)
         results = []
         for p in policies:
-            # Extract embedded data if available
             embedded = p.get('_embedded', {})
             policy_type = embedded.get('policyType', {})
-
             results.append({
                 'id': p.get('id'),
                 'description': p.get('description'),
@@ -128,7 +120,6 @@ def epic_policy_lines(policy_id):
             embedded = line.get('_embedded', {})
             line_type = embedded.get('lineType', {})
             issuing_company = embedded.get('issuingCompany', {})
-
             results.append({
                 'id': line.get('id'),
                 'line_type_code': line_type.get('code'),
@@ -148,20 +139,15 @@ def epic_policy_lines(policy_id):
 @login_required
 def epic_import_submission():
     """
-    Import a client/policy from Epic to create a new RiskRunway submission.
+    Import a client/policy from Epic to create a fully populated RiskRunway submission.
 
-    Expected JSON body:
-    {
-        "client_id": "uuid",
-        "client_name": "Acme Corp",
-        "policy_id": "uuid",
-        "line_id": "uuid",
-        "effective_date": "2024-01-01",
-        "expiration_date": "2025-01-01",
-        "state": "NY",
-        "description": "General Liability Policy",
-        "line_type": "GL"
-    }
+    Flow:
+    1. Takes client/policy selection from the frontend
+    2. Fetches system-generated ACORD 125 attachment from the policy
+    3. Downloads the 125 PDF
+    4. Parses it with the ACORD parser to extract insured/coverage data
+    5. Creates a submission with all parsed fields populated
+    6. Attaches the 125 PDF to the submission
     """
     data = request.get_json()
     if not data:
@@ -173,19 +159,86 @@ def epic_import_submission():
 
     effective_date = data.get('effective_date') or datetime.now().strftime('%Y-%m-%d')
     state = data.get('state')
+    policy_id = data.get('policy_id')
 
-    # Determine appropriate RR status based on Epic policy/line stage
-    epic_policy_status = (data.get('policy_status') or '').upper()
-    epic_line_stage = (data.get('line_stage') or '').upper()
+    # ── Step 1: Try to find and download the ACORD 125 from Epic ──
+    epic_client = get_epic_client()
+    acord_pdf_path = None
+    parsed_application = None
 
-    if epic_policy_status == 'CONTRACTED' or epic_line_stage == 'ISSUED':
-        rr_status = SubmissionStatus.SENT_TO_FINANCE  # Already bound
-    elif epic_line_stage in ('SUBMITTED', 'IN_PROCESS'):
-        rr_status = SubmissionStatus.IN_PROGRESS  # Quoting stage
-    else:
-        rr_status = SubmissionStatus.RECEIVED  # Submission stage (NOT_SUBMITTED or unknown)
+    if policy_id and epic_client.is_configured:
+        try:
+            # Look for attachments on this policy
+            attachments = epic_client.get_attachments_for_policy(
+                policy_id, system_generated=True
+            )
 
-    # Create the submission in RiskRunway
+            # Find the ACORD 125 by description or extension
+            acord_attachment = None
+            for att in attachments:
+                desc = (att.get('description') or '').lower()
+                file_info = att.get('file', {})
+                ext = (file_info.get('extension') or '').lower()
+                if ('125' in desc or 'acord' in desc or 'application' in desc):
+                    if ext in ('.pdf', 'pdf', '.PDF'):
+                        acord_attachment = att
+                        break
+
+            # Fallback: take any PDF attachment with status OK
+            if not acord_attachment and attachments:
+                for att in attachments:
+                    file_info = att.get('file', {})
+                    ext = (file_info.get('extension') or '').lower()
+                    status = (file_info.get('status') or '').upper()
+                    if ext in ('.pdf', 'pdf', '.PDF') and status == 'OK' and file_info.get('url'):
+                        acord_attachment = att
+                        break
+
+            # Download the PDF
+            if acord_attachment:
+                file_info = acord_attachment.get('file', {})
+                file_url = file_info.get('url')
+                if file_url:
+                    pdf_bytes = epic_client.download_attachment_file(file_url)
+                    if pdf_bytes and len(pdf_bytes) > 100:
+                        # Save to uploads folder for parsing
+                        upload_folder = current_app.config.get('UPLOAD_FOLDER', '/tmp')
+                        os.makedirs(upload_folder, exist_ok=True)
+                        safe_id = (policy_id or 'unknown')[:8]
+                        filename = f"epic_125_{safe_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                        acord_pdf_path = os.path.join(upload_folder, filename)
+                        with open(acord_pdf_path, 'wb') as f:
+                            f.write(pdf_bytes)
+
+                        # Parse the ACORD 125
+                        try:
+                            from app.parsers.application_parser import process_application_two_pass
+                            application_result = process_application_two_pass(acord_pdf_path)
+                            parsed_application = application_result.get('pass2_normalized', {})
+                            print(f"[EPIC IMPORT] Successfully parsed ACORD 125 ({len(pdf_bytes)} bytes)")
+                        except Exception as parse_err:
+                            print(f"[EPIC IMPORT] ACORD parse error: {parse_err}")
+                            parsed_application = None
+
+        except EpicAPIError as e:
+            print(f"[EPIC IMPORT] Could not fetch attachments: {e}")
+        except Exception as e:
+            print(f"[EPIC IMPORT] Unexpected error fetching 125: {e}")
+
+    # ── Step 2: Use parsed data to enrich submission fields ──
+    if parsed_application:
+        insured_data = parsed_application.get('insured') or {}
+        parsed_name = (insured_data.get('name') or '').strip()
+        if parsed_name:
+            client_name = parsed_name
+        parsed_state = (insured_data.get('address') or {}).get('state')
+        if parsed_state:
+            state = parsed_state
+        submission_fields = parsed_application.get('submission') or {}
+        if submission_fields.get('effective_date'):
+            effective_date = submission_fields['effective_date']
+
+    # ── Step 3: Create the submission ──
     submission_id = create_submission(
         insured_name=client_name,
         effective_date=effective_date,
@@ -194,7 +247,7 @@ def epic_import_submission():
         assigned_to=session.get('user_id'),
     )
 
-    # Update with Epic-specific fields and correct status
+    # ── Step 4: Set Epic-specific fields ──
     db_session = get_session()
     try:
         submission = db_session.query(Submission).filter_by(id=submission_id).first()
@@ -202,8 +255,7 @@ def epic_import_submission():
         submission.epic_client_id = data.get('client_id')
         submission.epic_policy_id = data.get('policy_id')
         submission.epic_line_id = data.get('line_id')
-        submission.status = rr_status
-        # Set status label to policy type for visibility on kanban card
+        # Set status label to policy type for kanban visibility
         policy_desc = data.get('policy_type_description') or data.get('line_type') or data.get('description') or ''
         if policy_desc:
             submission.status_label = policy_desc
@@ -211,6 +263,35 @@ def epic_import_submission():
     finally:
         db_session.close()
 
+    # ── Step 5: Attach the ACORD 125 PDF as a document ──
+    if acord_pdf_path and os.path.exists(acord_pdf_path):
+        try:
+            file_size = os.path.getsize(acord_pdf_path)
+            db_session = get_session()
+            try:
+                doc = Document(
+                    submission_id=submission_id,
+                    quote_id=None,
+                    document_type=DocumentType.APPLICATION,
+                    carrier=None,
+                    term_key=effective_date,
+                    version=1,
+                    is_active=True,
+                    storage_provider='local',
+                    storage_key=acord_pdf_path,
+                    original_filename=f"ACORD_125_{client_name.replace(' ', '_')}.pdf",
+                    content_type='application/pdf',
+                    size_bytes=file_size,
+                    uploaded_by=session.get('username'),
+                )
+                db_session.add(doc)
+                db_session.commit()
+            finally:
+                db_session.close()
+        except Exception as doc_err:
+            print(f"[EPIC IMPORT] Error saving document record: {doc_err}")
+
+    # ── Step 6: Log ──
     log_action(
         entity_type='submission',
         entity_id=submission_id,
@@ -222,6 +303,8 @@ def epic_import_submission():
             'epic_policy_id': data.get('policy_id'),
             'epic_line_id': data.get('line_id'),
             'line_type': data.get('line_type'),
+            'acord_125_downloaded': acord_pdf_path is not None,
+            'acord_125_parsed': parsed_application is not None,
         })
     )
 
@@ -229,6 +312,8 @@ def epic_import_submission():
         'success': True,
         'submission_id': submission_id,
         'message': f'Submission created for {client_name} from Epic',
+        'acord_downloaded': acord_pdf_path is not None,
+        'acord_parsed': parsed_application is not None,
     }), 201
 
 
@@ -237,16 +322,7 @@ def epic_import_submission():
 def epic_export_submission(submission_id):
     """
     Export a bound submission back to Epic.
-
-    Updates the line with carrier/premium/policy number data and attaches documents.
-
-    Expected JSON body (optional overrides):
-    {
-        "issuing_company_code": "ACEIN1",
-        "policy_number": "GL-2024-001",
-        "estimated_premium": 5000.00,
-        "status_code": "BND"
-    }
+    Updates the line with carrier/premium/policy number and attaches all documents.
     """
     client = get_epic_client()
     if not client.is_configured:
@@ -264,10 +340,9 @@ def epic_export_submission(submission_id):
         if not submission.epic_line_id or not submission.epic_policy_id:
             return jsonify({'success': False, 'error': 'Missing Epic line or policy ID'}), 400
 
-        # Get override data from request
         data = request.get_json() or {}
 
-        # Build line update payload
+        # Build line update
         line_update = {}
         if data.get('issuing_company_code'):
             line_update['IssuingCompanyLookupCode'] = data['issuing_company_code']
@@ -276,38 +351,29 @@ def epic_export_submission(submission_id):
         if data.get('status_code'):
             line_update['StatusCode'] = data['status_code']
 
-        # Build policy update payload
+        # Build policy update
         policy_update = {}
         if data.get('policy_number'):
             policy_update['PolicyNumber'] = data['policy_number']
         if data.get('description'):
             policy_update['Description'] = data['description']
 
-        # Collect documents to attach
+        # Collect documents
         documents_to_attach = []
         docs = db_session.query(Document).filter_by(
-            submission_id=submission_id,
-            is_active=True
+            submission_id=submission_id, is_active=True
         ).all()
 
         for doc in docs:
-            if doc.storage_provider == 'local' and os.path.exists(doc.storage_key):
-                documents_to_attach.append({
-                    'filepath': doc.storage_key,
-                    'filename': doc.original_filename,
-                    'content_type': doc.content_type or 'application/pdf',
-                    'description': f"{doc.document_type.value}: {doc.original_filename}",
-                })
-            elif doc.storage_provider == 's3':
-                # For S3 docs, we'd need to download first — skip for now in mock
-                documents_to_attach.append({
-                    'filepath': None,  # Signal that upload will be skipped
-                    'filename': doc.original_filename,
-                    'content_type': doc.content_type or 'application/pdf',
-                    'description': f"{doc.document_type.value}: {doc.original_filename}",
-                })
+            filepath = doc.storage_key if doc.storage_provider == 'local' and os.path.exists(doc.storage_key) else None
+            documents_to_attach.append({
+                'filepath': filepath,
+                'filename': doc.original_filename,
+                'content_type': doc.content_type or 'application/pdf',
+                'description': f"{doc.document_type.value}: {doc.original_filename}",
+            })
 
-        # Execute the export
+        # Execute export
         try:
             results = client.export_submission_to_epic(
                 epic_policy_id=submission.epic_policy_id,
@@ -320,10 +386,9 @@ def epic_export_submission(submission_id):
             return jsonify({
                 'success': False,
                 'error': f'Epic API error during export: {e.detail}',
-                'status_code': e.status_code,
             }), 500
 
-        # Mark submission as exported
+        # Mark as exported
         submission.epic_exported_at = datetime.utcnow()
         db_session.commit()
 
