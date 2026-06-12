@@ -749,17 +749,20 @@ def get_submission_detail(submission_id):
 
         db_session = get_session()
         try:
-            intake_log = db_session.query(AuditLog).filter(
-                AuditLog.submission_id == submission_id,
-                AuditLog.action.in_(['submission_intake_parsed', 'submission_created_manual'])
-            ).order_by(AuditLog.timestamp.desc()).first()
-            if intake_log and intake_log.details:
-                try:
-                    submission['submission_intake'] = json.loads(intake_log.details)
-                except Exception:
+            # Read submission_intake from the column (preferred)
+            # Fallback to audit log for submissions created before the column existed
+            if not submission.get('submission_intake'):
+                intake_log = db_session.query(AuditLog).filter(
+                    AuditLog.submission_id == submission_id,
+                    AuditLog.action.in_(['submission_intake_parsed', 'submission_created_manual'])
+                ).order_by(AuditLog.timestamp.desc()).first()
+                if intake_log and intake_log.details:
+                    try:
+                        submission['submission_intake'] = json.loads(intake_log.details)
+                    except Exception:
+                        submission['submission_intake'] = None
+                else:
                     submission['submission_intake'] = None
-            else:
-                submission['submission_intake'] = None
 
             docs = db_session.query(Document).filter(Document.submission_id == submission_id).order_by(Document.created_at.desc()).all()
             submission['documents'] = []
@@ -1019,6 +1022,17 @@ def create_submission_entry():
             submission_id=submission_id,
             details=json.dumps(intake_data)
         )
+
+        # Persist intake data on the submission record itself
+        db_session = get_session()
+        try:
+            sub = db_session.query(Submission).filter_by(id=submission_id).first()
+            if sub:
+                sub.submission_intake = json.dumps(intake_data)
+                db_session.commit()
+        finally:
+            db_session.close()
+
         print(f"Created submission {submission_id} with intake data: {intake_data}")
         return jsonify({
             'success': True,
@@ -3627,6 +3641,8 @@ def triage_attachment():
                         submission_id=submission_id,
                         details=json.dumps(intake_data)
                     )
+                    # Also persist on the submission record
+                    submission.submission_intake = json.dumps(intake_data)
                     db_session.commit()
 
                     result_data['stage'] = 'submission'

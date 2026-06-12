@@ -148,6 +148,9 @@ class Submission(Base):
     epic_line_id = Column(String(100), nullable=True)  # Epic line identifier
     epic_exported_at = Column(DateTime, nullable=True)  # When data was pushed back to Epic
 
+    # Parsed intake data from ACORD 125 or manual entry (JSON)
+    submission_intake = Column(Text, nullable=True)
+
     # Relationships
     quotes = relationship("Quote", back_populates="submission", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="submission", cascade="all, delete-orphan")
@@ -189,6 +192,7 @@ class Submission(Base):
             'epic_policy_id': self.epic_policy_id,
             'epic_line_id': self.epic_line_id,
             'epic_exported_at': self.epic_exported_at.isoformat() if self.epic_exported_at else None,
+            'submission_intake': self._parse_submission_intake(),
         }
 
     def _parse_notes(self):
@@ -204,6 +208,16 @@ class Submission(Base):
         except (json.JSONDecodeError, TypeError):
             # Legacy plain text — put it under 'submission' key
             return {"submission": self.notes}
+
+    def _parse_submission_intake(self):
+        """Parse submission_intake JSON safely."""
+        if not self.submission_intake:
+            return None
+        try:
+            parsed = json.loads(self.submission_intake)
+            return parsed if isinstance(parsed, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            return None
 
 
 class Quote(Base):

@@ -259,6 +259,22 @@ def epic_import_submission():
         policy_desc = data.get('policy_type_description') or data.get('line_type') or data.get('description') or ''
         if policy_desc:
             submission.status_label = policy_desc
+
+        # Store parsed ACORD 125 data as submission_intake
+        if parsed_application:
+            insured_data = parsed_application.get('insured') or {}
+            submission_fields = parsed_application.get('submission') or {}
+            intake_data = {
+                'source': 'epic_import',
+                'insured': parsed_application.get('insured'),
+                'retail_agent': parsed_application.get('retail_agent'),
+                'quote_number': parsed_application.get('quote_number'),
+                'account_number': parsed_application.get('account_number'),
+                'coverage_types': submission_fields.get('coverage_types_needed') or [],
+                'effective_date': effective_date,
+            }
+            submission.submission_intake = json.dumps(intake_data)
+
         db_session.commit()
     finally:
         db_session.close()
@@ -324,16 +340,31 @@ def epic_import_submission():
                     from app.database import create_quote
                     quote_result = process_quote_two_pass(quote_path)
                     extracted_json = json.dumps(quote_result.get('pass2_normalized', {}))
-                    carrier_name = None
                     normalized = quote_result.get('pass2_normalized', {})
+
+                    # Use MGA/wholesale broker name as the display name (falls back to carrier, then attachment desc)
+                    mga_name = (normalized.get('general_agent_or_wholesale_broker') or {}).get('name')
+                    carrier_name = None
                     if 'policies' in normalized and normalized['policies']:
                         carrier_name = normalized['policies'][0].get('carrier')
-                    if not carrier_name:
-                        carrier_name = att.get('description', 'Unknown Carrier')
+                    display_name = mga_name or carrier_name or att.get('description', 'Unknown')
 
-                    # Build a readable filename: "CarrierName_EffDate-ExpDate.pdf"
-                    safe_carrier = (carrier_name or 'Unknown').replace(' ', '_').replace('/', '-')[:40]
-                    readable_filename = f"{safe_carrier}_{effective_date}.pdf"
+                    # Get effective/expiration dates from parsed policy data
+                    eff_date = effective_date
+                    exp_date = None
+                    if 'policies' in normalized and normalized['policies']:
+                        policy = normalized['policies'][0]
+                        if policy.get('effective_date'):
+                            eff_date = policy['effective_date']
+                        if policy.get('expiration_date'):
+                            exp_date = policy['expiration_date']
+
+                    # Build readable filename: "MGA Name EffDate - ExpDate.pdf"
+                    safe_name = (display_name or 'Unknown').replace('/', '-')[:50]
+                    if exp_date:
+                        readable_filename = f"{safe_name} {eff_date} - {exp_date}.pdf"
+                    else:
+                        readable_filename = f"{safe_name} {eff_date}.pdf"
                     readable_path = os.path.join(upload_folder, readable_filename)
                     # Rename the temp file
                     if os.path.exists(quote_path) and not os.path.exists(readable_path):
@@ -342,14 +373,39 @@ def epic_import_submission():
 
                     quote_id = create_quote(
                         submission_id=submission_id,
-                        carrier_name=carrier_name,
+                        carrier_name=display_name,
                         raw_document_path=quote_path,
                         extracted_json=extracted_json,
                         user=session.get('username'),
                         pass1_layout_json=json.dumps(quote_result.get('pass1_layout', {})) if quote_result.get('pass1_layout') else None,
                     )
+
+                    # Also create a Document record so the quote appears in the kanban Docs dropdown
+                    db_session = get_session()
+                    try:
+                        file_size = os.path.getsize(quote_path) if os.path.exists(quote_path) else None
+                        quote_doc = Document(
+                            submission_id=submission_id,
+                            quote_id=quote_id,
+                            document_type=DocumentType.QUOTE,
+                            carrier=display_name,
+                            term_key=eff_date,
+                            version=1,
+                            is_active=True,
+                            storage_provider='local',
+                            storage_key=quote_path,
+                            original_filename=readable_filename,
+                            content_type='application/pdf',
+                            size_bytes=file_size,
+                            uploaded_by=session.get('username'),
+                        )
+                        db_session.add(quote_doc)
+                        db_session.commit()
+                    finally:
+                        db_session.close()
+
                     quotes_imported += 1
-                    print(f"[EPIC IMPORT] Quote imported: {carrier_name} (quote_id={quote_id})")
+                    print(f"[EPIC IMPORT] Quote imported: {display_name} (quote_id={quote_id})")
 
                 except Exception as quote_err:
                     print(f"[EPIC IMPORT] Error processing quote attachment: {quote_err}")

@@ -259,6 +259,7 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('submissions', 'epic_policy_id', 'VARCHAR(100)')
         _safe_add_column('submissions', 'epic_line_id', 'VARCHAR(100)')
         _safe_add_column('submissions', 'epic_exported_at', 'TIMESTAMP')
+        _safe_add_column('submissions', 'submission_intake', 'TEXT')
 
     # users
     if 'users' in table_names:

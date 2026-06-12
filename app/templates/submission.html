@@ -2314,10 +2314,12 @@
 
             quotes.forEach((quote, index) => {
                 const filename = quote.raw_document_path.split('/').pop();
-                const originalFilename = filename.replace(/^\d{8}_\d{6}_/, '');
                 const colorClass = `quote-color-${index % 8}`;
                 const fileItem = document.createElement('div');
                 fileItem.className = `file-item ${colorClass}`;
+
+                // Determine MGA/broker display name (carrier_name now stores MGA name from epic import)
+                const mgaName = quote.carrier_name || 'Unknown';
 
                 // Extract effective/expiration dates from parsed quote data
                 let datesHtml = '';
@@ -2336,9 +2338,9 @@
                             expiration = parsed.expiration_date;
                         }
                         if (effective || expiration) {
-                            const effYear = effective ? effective.slice(0, 4) : '—';
-                            const expYear = expiration ? expiration.slice(0, 4) : '—';
-                            datesHtml = `<span class="file-dates" style="font-size: 11px; font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #000000; display: block; text-align: center; margin-top: 3px; line-height: 1.3;">${effYear} → ${expYear}</span>`;
+                            const effStr = effective || '—';
+                            const expStr = expiration || '—';
+                            datesHtml = `<span class="file-dates" style="font-size: 10px; font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #000000; display: block; text-align: center; margin-top: 2px; line-height: 1.3;">${effStr} - ${expStr}</span>`;
                         }
                     }
                 } catch (e) { /* ignore parse errors */ }
@@ -2348,7 +2350,7 @@
                     <svg class="file-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10,19L12,15H9V10H15V15L13,19H10Z"/>
                     </svg>
-                    <span class="file-name" title="${originalFilename}">${originalFilename}</span>
+                    <span class="file-name" title="${mgaName}">${mgaName}</span>
                     ${datesHtml}
                 `;
                 fileItem.style.cursor = 'pointer';
@@ -2866,9 +2868,9 @@
             const address = data.insured?.address
                 ? [data.insured.address.street, data.insured.address.city, data.insured.address.state, data.insured.address.zip].filter(Boolean).join(', ')
                 : null;
-            let coverages = [...new Set(allQuotes.map(q => q.coverage).filter(Boolean))].join(', ') || null;
+            let coverages = [...new Set(allQuotes.map(q => q.coverage).filter(Boolean))].join('<br>') || null;
             if (!coverages && Array.isArray(data.coverage_types)) {
-                coverages = data.coverage_types.join(', ') || null;
+                coverages = data.coverage_types.join('<br>') || null;
             }
 
             const submissionQuoteId = allPDFInfo[0]?.quoteId || null;
