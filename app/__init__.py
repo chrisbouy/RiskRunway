@@ -17,7 +17,7 @@ def create_app():
     CORS(app)
 
     # Initialize database
-    from app.database import init_db
+    from app.database import init_db, set_tenant_for_request
     init_db()
 
     # Register blueprints
@@ -26,6 +26,12 @@ def create_app():
 
     from app.epic_routes import epic_bp
     app.register_blueprint(epic_bp)
+
+    # Multi-tenant: resolve tenant from hostname on every request
+    @app.before_request
+    def resolve_tenant():
+        tenant = set_tenant_for_request(request.host)
+        print(f"[TENANT] host={request.host} tenant={tenant}")
 
     # Initialize email scraping scheduler if enabled
     def scrape_emails_task():

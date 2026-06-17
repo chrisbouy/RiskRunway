@@ -41,7 +41,9 @@ bp = Blueprint('main', __name__)
 
 @bp.before_app_request
 def select_database_for_request():
-    """Apply the session's selected database before route handlers run."""
+    """Apply the session's selected database before route handlers run.
+    In production, tenant routing (hostname-based) is handled by app/__init__.py.
+    This only applies to local dev database switching."""
     if not is_database_switching_enabled():
         session.pop('current_database', None)
         set_current_db('production')
@@ -134,10 +136,14 @@ def _build_storage_key(submission_id, document_type, filename, user_id=None, ins
     safe_name = secure_filename(filename) or 'document.bin'
     provider = (current_app.config.get('STORAGE_PROVIDER') or 'local').lower()
     
-    # S3: user_id/insured_name/...
+    # S3: tenant/user_id/insured_name/...
     # Local: insured_name/...
-    if provider == 's3' and user_id:
-        base = f"{user_id}/"
+    if provider == 's3':
+        from app.database import get_current_tenant
+        tenant = get_current_tenant()
+        base = f"{tenant}/" if tenant and tenant != 'default' else ""
+        if user_id:
+            base = f"{base}{user_id}/"
     else:
         base = ""
     

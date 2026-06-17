@@ -1,5 +1,6 @@
 # app/database.py
 import os
+import json
 from contextvars import ContextVar
 from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.engine import make_url
@@ -64,6 +65,7 @@ class Database:
 # Global database instances, keyed by configured database name.
 _db_cache = {}
 _current_db_name = ContextVar('current_db_name', default='development')
+_current_tenant = ContextVar('current_tenant', default='default')
 _LOCAL_DATABASE_NAMES = ('development', 'use_cases', 'test')
 
 
@@ -91,6 +93,85 @@ def is_database_switching_enabled():
     if is_production_environment():
         return False
     return not _is_falsey(os.environ.get('ALLOW_DATABASE_SWITCHING'))
+
+
+# ─────────────────────────────────────────────
+# MULTI-TENANT ROUTING
+# ─────────────────────────────────────────────
+
+def _load_tenant_config():
+    """
+    Load tenant → database URL mapping from TENANT_DATABASE_MAP env var.
+    Format: JSON object mapping subdomain prefix to database URL.
+    Example: {"paulin": "postgresql://user:pass@host:5432/riskrunway_paulin"}
+
+    The special key "default" maps to the main DATABASE_URL.
+    """
+    raw = os.environ.get('TENANT_DATABASE_MAP', '{}')
+    try:
+        mapping = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        mapping = {}
+    # Ensure 'default' always resolves to DATABASE_URL
+    if 'default' not in mapping:
+        mapping['default'] = os.environ.get('DATABASE_URL', '')
+    return mapping
+
+
+def resolve_tenant_from_host(hostname):
+    """
+    Extract tenant identifier from the request hostname.
+    E.g. 'paulin.risk-runway.com' → 'paulin'
+         'risk-runway.com' → 'default'
+         'localhost:5001' → 'default'
+    """
+    if not hostname:
+        return 'default'
+
+    # Strip port
+    host = hostname.split(':')[0].lower()
+
+    # Check if it's a subdomain of risk-runway.com (or configured base domain)
+    base_domain = os.environ.get('BASE_DOMAIN', 'risk-runway.com').lower()
+
+    if host == base_domain or host == f'www.{base_domain}':
+        return 'default'
+
+    if host.endswith(f'.{base_domain}'):
+        subdomain = host[: -(len(base_domain) + 1)]
+        # Could be multi-level like 'app.paulin', take the first part
+        return subdomain.split('.')[0]
+
+    # Local development: check for explicit tenant header or default
+    return 'default'
+
+
+def set_tenant_for_request(hostname):
+    """
+    Set the current tenant based on the request hostname.
+    Called from the Flask before_request hook.
+    Returns the resolved tenant name.
+    """
+    tenant = resolve_tenant_from_host(hostname)
+    _current_tenant.set(tenant)
+    return tenant
+
+
+def get_current_tenant():
+    """Get the current tenant identifier for this request context."""
+    return _current_tenant.get()
+
+
+def get_tenant_database_url(tenant=None):
+    """Get the database URL for the given (or current) tenant."""
+    if tenant is None:
+        tenant = get_current_tenant()
+    mapping = _load_tenant_config()
+    url = mapping.get(tenant)
+    if not url:
+        # Fall back to default
+        url = mapping.get('default', os.environ.get('DATABASE_URL', ''))
+    return url
 
 
 def _derive_database_url(base_url, suffix):
@@ -138,6 +219,19 @@ def get_configured_databases():
 
 def get_db():
     """Get the selected database instance for this request/context."""
+    # In production, route by tenant
+    if is_production_environment():
+        tenant = get_current_tenant()
+        cache_key = f"tenant:{tenant}"
+        if cache_key not in _db_cache:
+            db_url = get_tenant_database_url(tenant)
+            if not db_url:
+                raise ValueError(f"No database configured for tenant: {tenant}")
+            _db_cache[cache_key] = Database(db_url)
+            _db_cache[cache_key].init_db()
+        return _db_cache[cache_key]
+
+    # In development, use the existing db-name switching logic
     db_name = get_current_db_name()
     db_url = get_configured_databases().get(db_name)
     if not db_url:
