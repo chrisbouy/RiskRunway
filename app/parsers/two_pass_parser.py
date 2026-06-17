@@ -417,19 +417,20 @@ def _fix_pdf_spacing(text):
     return text
 
 
-def pass1_extract_quote_layout(pdf_path):
+def pass1_extract_quote_layout(pdf_path, max_pages=5):
     """
     Pass 1: Extract quote data from PDF.
     - Digital PDFs: extract tables + header text via pdfplumber (fast, no vision needed)
     - Scanned PDFs: save page images for vision model in Pass 2
+    
+    Args:
+        pdf_path: Path to the PDF file
+        max_pages: Maximum pages to process (None = all pages, default 5)
     """
     import gc
 
     pages_data = []
     is_scanned = False
-
-    # Hard cap: only process first 5 pages. To process all pages, just set last_page_to_process = total_pages
-    last_page_to_process = 5
 
     # Determine where to save page images (same directory as the PDF)
     pdf_dir = os.path.dirname(os.path.abspath(pdf_path))
@@ -437,7 +438,8 @@ def pass1_extract_quote_layout(pdf_path):
 
     with pdfplumber.open(pdf_path) as pdf:
         total_pages = len(pdf.pages)
-        pages_to_process = min(last_page_to_process, total_pages)
+        last_page_to_process = total_pages if max_pages is None else min(max_pages, total_pages)
+        pages_to_process = last_page_to_process
         print(f"  Processing {pages_to_process}/{total_pages} pages...")
 
         # Check first page to determine if scanned or digital

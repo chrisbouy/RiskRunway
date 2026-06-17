@@ -546,3 +546,93 @@ def epic_export_submission(submission_id):
 
     finally:
         db_session.close()
+
+
+@epic_bp.route('/api/epic/prepare-export/<int:submission_id>', methods=['POST'])
+@login_required
+def epic_prepare_export(submission_id):
+    """
+    Parse the winning quote/binder PDF and combine with previously parsed data
+    to produce the SDK export payload for agent confirmation.
+    
+    Returns the combined payload for display in the confirmation modal.
+    The agent reviews/edits, then calls the actual export endpoint.
+    """
+    from app.models import Quote, QuoteStatus
+    from app.parsers.epic_export_parser import parse_for_epic_export, build_epic_export_payload
+
+    db_session = get_session()
+    try:
+        submission = db_session.query(Submission).filter_by(id=submission_id).first()
+        if not submission:
+            return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+        if submission.ams_type != 'epic':
+            return jsonify({'success': False, 'error': 'Submission is not linked to Epic'}), 400
+
+        # Find the winning quote (quote_outcome = 'WON')
+        won_quote = db_session.query(Quote).filter_by(
+            submission_id=submission_id,
+            quote_outcome='WON'
+        ).first()
+
+        if not won_quote:
+            # Fallback: use the first/only quote if none marked as WON
+            won_quote = db_session.query(Quote).filter_by(
+                submission_id=submission_id
+            ).first()
+
+        if not won_quote or not won_quote.raw_document_path:
+            return jsonify({'success': False, 'error': 'No quote PDF found for export parsing'}), 400
+
+        pdf_path = won_quote.raw_document_path
+        if not os.path.exists(pdf_path):
+            return jsonify({'success': False, 'error': f'Quote PDF not found on disk: {pdf_path}'}), 400
+
+        # Get previously parsed data
+        # 1. Submission intake (from app parse)
+        submission_intake = None
+        if submission.submission_intake:
+            try:
+                submission_intake = json.loads(submission.submission_intake)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # 2. Winning quote extracted_json (from quote parse)
+        winning_quote_data = None
+        if won_quote.extracted_json:
+            try:
+                winning_quote_data = json.loads(won_quote.extracted_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # 3. Parse the PDF for export-specific fields (limits, commission, etc.)
+        try:
+            export_parsed = parse_for_epic_export(pdf_path)
+        except Exception as parse_err:
+            print(f"[EPIC EXPORT] Parse error: {parse_err}")
+            # If parse fails, still build payload from existing data
+            export_parsed = {}
+
+        # Combine all three data sources
+        payload = build_epic_export_payload(
+            submission_data=submission_intake,
+            winning_quote_data=winning_quote_data,
+            export_parsed_data=export_parsed,
+        )
+
+        # Add submission context for the modal
+        payload['submission_id'] = submission_id
+        payload['insured_name'] = submission.insured_name
+        payload['epic_policy_id'] = submission.epic_policy_id
+        payload['epic_line_id'] = submission.epic_line_id
+        payload['quote_id'] = won_quote.id
+        payload['quote_filename'] = os.path.basename(won_quote.raw_document_path)
+
+        return jsonify({'success': True, 'export_payload': payload})
+
+    except Exception as e:
+        print(f"[EPIC EXPORT] Error preparing export: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()

@@ -4136,44 +4136,167 @@ Thank you for your attention to this matter.`;
             const btn = document.getElementById('exportToAmsBtn');
             btn.disabled = true;
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span style="font-size: 1.2em;">⏳</span> Exporting to Epic...';
+            btn.innerHTML = '<span style="font-size: 1.2em;">⏳</span> Preparing Export...';
 
             try {
-                // Build export payload from the winning quote data
-                let exportPayload = {};
-                const wonQuote = quotes.find(q => q.quote_outcome === 'WON');
-                if (wonQuote && wonQuote.extracted_json) {
-                    try {
-                        const parsed = JSON.parse(wonQuote.extracted_json);
-                        const policies = parsed.policies || [parsed];
-                        const firstPolicy = policies[0] || {};
-                        exportPayload = {
-                            issuing_company_code: firstPolicy.carrier || wonQuote.carrier_name || '',
-                            policy_number: firstPolicy.policy_number || '',
-                            estimated_premium: parseFloat(firstPolicy.premium) || 0,
-                            status_code: 'BND',
-                            description: submissionData.insured_name + ' - ' + (firstPolicy.coverage_type || ''),
-                        };
-                    } catch(e) {
-                        console.warn('Could not parse won quote data:', e);
-                    }
+                // Step 1: Call prepare-export to parse PDF and build combined payload
+                const prepareResp = await fetch(`/api/epic/prepare-export/${submissionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const prepareData = await prepareResp.json();
+
+                if (!prepareData.success) {
+                    throw new Error(prepareData.error || 'Failed to prepare export');
                 }
 
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+
+                // Step 2: Show confirmation modal with the payload
+                showEpicExportConfirmModal(prepareData.export_payload);
+
+            } catch (error) {
+                console.error('Epic export prepare error:', error);
+                alert('Failed to prepare Epic export: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        function showEpicExportConfirmModal(payload) {
+            const modalHtml = `
+                <div id="epicExportModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 1rem;">
+                    <div style="background: var(--card-bg); border-radius: 0.5rem; border: 1px solid var(--border-color); max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                        <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+                            <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-primary);">🔗 Confirm Epic Export</h3>
+                            <button onclick="document.getElementById('epicExportModal').remove()" style="background: none; border: none; color: var(--color-neutral-500); font-size: 1.2rem; cursor: pointer;">✕</button>
+                        </div>
+                        <div style="padding: 1rem;">
+                            <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--color-neutral-50); border-radius: 4px;">
+                                <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-neutral-500); margin-bottom: 4px;">Insured</div>
+                                <div style="font-weight: 600; color: var(--text-primary);">${payload.insured_name || '—'}</div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Carrier</label>
+                                    <input type="text" class="epic-export-field" data-path="carrier_name" value="${payload.carrier_name || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Policy Number</label>
+                                    <input type="text" class="epic-export-field" data-path="policy_number" value="${payload.policy_number || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Effective Date</label>
+                                    <input type="text" class="epic-export-field" data-path="effective_date" value="${payload.effective_date || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Expiration Date</label>
+                                    <input type="text" class="epic-export-field" data-path="expiration_date" value="${payload.expiration_date || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Premium</label>
+                                    <input type="text" class="epic-export-field" data-path="estimated_premium" value="${payload.estimated_premium || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Commission %</label>
+                                    <input type="text" class="epic-export-field" data-path="agency_commission_percent" value="${payload.agency_commission_percent || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-neutral-500);">Line Type</label>
+                                    <input type="text" class="epic-export-field" data-path="line_type_description" value="${payload.line_type_description || ''}" 
+                                        style="width: 100%; background: var(--color-neutral-50); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 0.813rem;">
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 1rem;">
+                            </div>
+
+                            <div style="font-size: 0.7rem; color: var(--color-neutral-400); margin-bottom: 1rem;">
+                                All documents will be attached to the policy in Epic. Source: ${payload.quote_filename || 'quote PDF'}
+                            </div>
+                        </div>
+                        <div style="padding: 1rem; border-top: 1px solid var(--border-color); display: flex; gap: 0.5rem; justify-content: flex-end;">
+                            <button onclick="document.getElementById('epicExportModal').remove()" 
+                                style="background: var(--color-neutral-200); color: var(--text-primary); padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.813rem;">
+                                Cancel
+                            </button>
+                            <button onclick="confirmEpicExport()" 
+                                style="background: #2563eb; color: white; padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.813rem; font-weight: 600;">
+                                🔗 Export to Epic
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Store payload for the confirm action
+            window._epicExportPayload = payload;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        async function confirmEpicExport() {
+            const modal = document.getElementById('epicExportModal');
+            const payload = window._epicExportPayload;
+
+            // Read any edits from the modal fields
+            modal.querySelectorAll('.epic-export-field').forEach(input => {
+                const path = input.dataset.path;
+                const val = input.value.trim();
+                const numVal = parseFloat(val.replace(/,/g, ''));
+                payload[path] = isNaN(numVal) ? val : numVal;
+            });
+
+            // Update SDK payloads with any edits
+            payload.sdk_line_update.IssuingCompanyLookupCode = payload.carrier_name;
+            payload.sdk_line_update.EstimatedPremium = payload.estimated_premium;
+            payload.sdk_line_update.AnnualizedPremium = payload.estimated_premium;
+            payload.sdk_line_update.BilledPremium = payload.estimated_premium;
+            payload.sdk_line_update.AgencyCommissionPercent = payload.agency_commission_percent;
+            payload.sdk_line_update.StatusCode = 'BOUND';
+            payload.sdk_line_update.LineTypeDescription = payload.line_type_description;
+            payload.sdk_policy_update.PolicyNumber = payload.policy_number;
+            payload.sdk_policy_update.EffectiveDate = payload.effective_date;
+            payload.sdk_policy_update.ExpirationDate = payload.expiration_date;
+            payload.sdk_policy_update.EstimatedPremium = payload.estimated_premium;
+            payload.sdk_policy_update.Description = payload.line_type_description;
+
+            // Disable button, show loading
+            const confirmBtn = modal.querySelector('button:last-child');
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '⏳ Exporting...';
+
+            try {
                 const response = await fetch(`/api/epic/export/${submissionId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(exportPayload)
+                    body: JSON.stringify({
+                        issuing_company_code: payload.sdk_line_update.IssuingCompanyLookupCode,
+                        estimated_premium: payload.sdk_line_update.EstimatedPremium,
+                        status_code: 'BOUND',
+                        policy_number: payload.sdk_policy_update.PolicyNumber,
+                        description: payload.sdk_policy_update.Description,
+                    })
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
+                    modal.remove();
+                    const btn = document.getElementById('exportToAmsBtn');
                     btn.innerHTML = '<span style="font-size: 1.2em;">✅</span> Exported to Epic';
                     btn.style.background = '#065f46';
+                    btn.disabled = true;
 
-                    // Show summary
-                    const results = data.results || {};
                     let summary = 'Exported to Epic successfully!';
+                    const results = data.results || {};
                     if (results.line_updated) summary += '\n• Line updated';
                     if (results.policy_updated) summary += '\n• Policy updated';
                     if (results.attachments && results.attachments.length > 0) {
@@ -4187,8 +4310,8 @@ Thank you for your attention to this matter.`;
             } catch (error) {
                 console.error('Epic export error:', error);
                 alert('Epic export failed: ' + error.message);
-                btn.disabled = false;
-                btn.innerHTML = originalText;
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '🔗 Export to Epic';
             }
         }
 
