@@ -27,6 +27,9 @@ def create_app():
     from app.epic_routes import epic_bp
     app.register_blueprint(epic_bp)
 
+    from app.sms_routes import sms_bp
+    app.register_blueprint(sms_bp)
+
     # Multi-tenant: resolve tenant from hostname on every request
     @app.before_request
     def resolve_tenant():
@@ -105,6 +108,7 @@ def create_app():
                                 # For now just count - full integration would reuse email_client.py logic
                                 oauth_result = {'success': True, 'accounts': len(accounts), 'emails': len(emails)}
                                 
+                                
                             except Exception as account_err:
                                 print(f"[EMAIL SCRAPER] Error processing account {account.email_address}: {account_err}")
                         
@@ -164,6 +168,68 @@ def create_app():
                 print(f"[EMAIL SCRAPER] Failed to log action: {log_error}")
             finally:
                 db_session.close()
+
+            # === SMS ALERTS ===
+            # After scraping, check for new matched emails and send SMS alerts
+            if app.config.get('SMS_ALERTS_ENABLED', False):
+                try:
+                    from app.sms_client import create_sms_client, build_email_alert_text
+                    from app.models import EmailMessage, SmsAlert, User, Submission
+
+                    sms = create_sms_client(app.config)
+                    if sms:
+                        sms_session = get_session()
+                        try:
+                            # Find emails matched in the last polling interval that haven't been alerted yet
+                            cutoff = datetime.now() - timedelta(
+                                minutes=app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5) + 1
+                            )
+                            new_matched_emails = sms_session.query(EmailMessage).filter(
+                                EmailMessage.submission_id.isnot(None),
+                                EmailMessage.created_at >= cutoff
+                            ).all()
+
+                            # Get already-alerted email IDs to avoid duplicates
+                            already_alerted = set(
+                                row[0] for row in sms_session.query(SmsAlert.email_id).filter(
+                                    SmsAlert.email_id.isnot(None)
+                                ).all()
+                            )
+
+                            alerts_sent = 0
+                            for email_msg in new_matched_emails:
+                                if email_msg.id in already_alerted:
+                                    continue
+
+                                # Find the assigned user for this submission
+                                submission = sms_session.query(Submission).filter_by(
+                                    id=email_msg.submission_id
+                                ).first()
+                                if not submission or not submission.assigned_to:
+                                    continue
+
+                                user = sms_session.query(User).filter_by(
+                                    id=submission.assigned_to
+                                ).first()
+                                if not user or not user.phone_number or not user.sms_alerts_enabled:
+                                    continue
+
+                                # Build and send alert
+                                alert_text = build_email_alert_text(email_msg, submission)
+                                sms.send_alert(
+                                    user=user,
+                                    message=alert_text,
+                                    email_id=email_msg.id,
+                                    submission_id=submission.id
+                                )
+                                alerts_sent += 1
+
+                            if alerts_sent > 0:
+                                print(f"[SMS ALERTS] Sent {alerts_sent} text alert(s)")
+                        finally:
+                            sms_session.close()
+                except Exception as sms_err:
+                    print(f"[SMS ALERTS] Error sending alerts: {sms_err}")
 
     # Start scheduler if email polling is enabled
     if app.config.get('EMAIL_POLLING_ENABLED', False):

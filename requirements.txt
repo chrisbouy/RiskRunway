@@ -18,6 +18,7 @@ sqlalchemy
 gunicorn
 sendgrid
 resend
+twilio
 boto3
 apscheduler
 # OAuth and API clients

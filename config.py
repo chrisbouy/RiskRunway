@@ -68,6 +68,12 @@ class Config:
         import secrets
         TOKEN_ENCRYPTION_KEY = secrets.token_hex(32)
 
+    # Twilio SMS Integration
+    TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
+    TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
+    TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')  # Your Twilio number e.g. +15551234567
+    SMS_ALERTS_ENABLED = os.environ.get('SMS_ALERTS_ENABLED', 'false').lower() == 'true'
+
     # Document storage settings
     STORAGE_PROVIDER = os.environ.get('STORAGE_PROVIDER', 'local')  # local | s3
     S3_BUCKET = os.environ.get('S3_BUCKET', '')

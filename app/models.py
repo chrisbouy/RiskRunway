@@ -79,6 +79,8 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     signature = Column(Text, nullable=True)  # Email signature for follow-ups
     ams_agent_installed = Column(Boolean, default=False, nullable=False)  # Whether user has completed agent setup
+    phone_number = Column(String(20), nullable=True)  # For SMS alerts, e.g. +15551234567
+    sms_alerts_enabled = Column(Boolean, default=False, nullable=False)  # Whether user wants SMS notifications
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires = Column(DateTime, nullable=True)
 
@@ -118,6 +120,8 @@ class User(Base):
             'is_active': self.is_active,
             'signature': self.signature,
             'ams_agent_installed': self.ams_agent_installed,
+            'phone_number': self.phone_number,
+            'sms_alerts_enabled': self.sms_alerts_enabled,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -642,4 +646,74 @@ class AmsExportJob(Base):
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'user_id': self.user_id
+        }
+
+
+class SmsAlertStatus(enum.Enum):
+    SENT = "sent"           # Alert sent, waiting for reply
+    REPLIED = "replied"     # Agent replied
+    DRAFT_SENT = "draft_sent"  # AI draft sent back to agent for approval
+    EXECUTED = "executed"   # Agent approved, action taken (email sent, card moved, etc.)
+    EXPIRED = "expired"     # No reply within timeout
+    SKIPPED = "skipped"     # Agent replied SKIP
+
+
+class SmsAlert(Base):
+    """
+    Tracks SMS alert conversations between the system and an agent.
+    Each alert is tied to an email that triggered it, and tracks the
+    back-and-forth state (alert → reply → draft → confirm → execute).
+    """
+    __tablename__ = 'sms_alerts'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    email_id = Column(Integer, ForeignKey('email_messages.id'), nullable=True, index=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=True, index=True)
+
+    # The outbound alert text we sent
+    alert_text = Column(Text, nullable=False)
+
+    # Agent's reply (if any)
+    agent_reply = Column(Text, nullable=True)
+
+    # AI-generated draft reply (if agent requested one)
+    draft_reply = Column(Text, nullable=True)
+
+    # State machine
+    status = Column(Enum(SmsAlertStatus), default=SmsAlertStatus.SENT, nullable=False, index=True)
+
+    # Twilio message SIDs for tracking
+    outbound_sid = Column(String(100), nullable=True)  # SID of the alert we sent
+    inbound_sid = Column(String(100), nullable=True)   # SID of the agent's reply
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    replied_at = Column(DateTime, nullable=True)
+    executed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)  # When this alert expires if no reply
+
+    # Relationships
+    user = relationship("User", backref="sms_alerts")
+    email = relationship("EmailMessage", backref="sms_alerts")
+    submission = relationship("Submission", backref="sms_alerts")
+
+    def __repr__(self):
+        return f"<SmsAlert(id={self.id}, user_id={self.user_id}, status='{self.status.value}')>"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'email_id': self.email_id,
+            'submission_id': self.submission_id,
+            'alert_text': self.alert_text,
+            'agent_reply': self.agent_reply,
+            'draft_reply': self.draft_reply,
+            'status': self.status.value if self.status else None,
+            'outbound_sid': self.outbound_sid,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'replied_at': self.replied_at.isoformat() if self.replied_at else None,
+            'executed_at': self.executed_at.isoformat() if self.executed_at else None,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
         }

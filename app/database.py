@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
-from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment, ConnectedAccount, UserRole, SubmissionStatus, QuoteStatus, EmailProvider, ConnectedAccountStatus, DocumentType
+from app.models import Base, Submission, Quote, AuditLog, AppetiteRule, Broker, EmailMessage, EmailAttachment, ConnectedAccount, UserRole, SubmissionStatus, QuoteStatus, EmailProvider, ConnectedAccountStatus, DocumentType, SmsAlertStatus
 
 
 class Database:
@@ -268,7 +268,8 @@ def _ensure_schema_updates(engine):
         'quotestatus': QuoteStatus,
         'emailprovider': EmailProvider,
         'connectedaccountstatus': ConnectedAccountStatus,
-        'documenttype': DocumentType
+        'documenttype': DocumentType,
+        'smsalertstatus': SmsAlertStatus
     }
 
     for enum_name, enum_class in enum_types.items():
@@ -362,6 +363,8 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('users', 'email', 'VARCHAR(255)')
         _safe_add_column('users', 'password_reset_token', 'VARCHAR(255)')
         _safe_add_column('users', 'password_reset_expires', 'TIMESTAMP')
+        _safe_add_column('users', 'phone_number', 'VARCHAR(20)')
+        _safe_add_column('users', 'sms_alerts_enabled', 'BOOLEAN DEFAULT FALSE NOT NULL')
 
     # brokers
     if 'brokers' in table_names:
