@@ -189,6 +189,11 @@ class BedrockClient(LLMClient):
 
         content_blocks = response["output"]["message"]["content"]
         full_text = "".join(block.get("text", "") for block in content_blocks)
+
+        # Log the raw response for debugging empty/unexpected replies
+        stop_reason = response.get("stopReason", "unknown")
+        print(f"[Bedrock Vision] stopReason={stop_reason}, response_len={len(full_text)}, raw={full_text[:300]!r}")
+
         full_text = full_text.strip()
         if full_text.startswith("```json"):
             full_text = full_text[7:].strip()
@@ -196,6 +201,10 @@ class BedrockClient(LLMClient):
             full_text = full_text[3:].strip()
         if full_text.endswith("```"):
             full_text = full_text[:-3].strip()
+
+        if not full_text:
+            print(f"[Bedrock Vision] WARNING: Empty response from model. Full response: {response}")
+            return {}
 
         return json.loads(full_text)
 
