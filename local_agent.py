@@ -37,6 +37,25 @@ if platform.system() == "Windows":
         except Exception:
             pass
 
+    # Minimize the console window so it's not visible while the agent runs
+    try:
+        _hwnd_console = ctypes.windll.kernel32.GetConsoleWindow()
+        if _hwnd_console:
+            ctypes.windll.user32.ShowWindow(_hwnd_console, 6)  # SW_MINIMIZE
+    except Exception:
+        pass
+
+
+def _close_console_window():
+    """Close (hide) the console window when the agent is done."""
+    if platform.system() == "Windows":
+        try:
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+        except Exception:
+            pass
+
 import re
 import sys
 import tempfile
@@ -86,6 +105,10 @@ PASTE_HOTKEY  = ("command", "v") if IS_MAC else ("ctrl", "v")
 SELECT_HOTKEY = ("command", "a") if IS_MAC else ("ctrl", "a")
 COPY_HOTKEY   = ("command", "c") if IS_MAC else ("ctrl", "c")
 
+# Remote mode: use typewrite instead of clipboard paste, skip verification
+REMOTE_MODE = False
+TYPEWRITE_INTERVAL = 0.05  # seconds between keystrokes in remote mode
+
 # Debug output directory for fill verification screenshots
 DEBUG_FILL_DIR = Path(__file__).parent / "logs" / "fill_screenshots"
 DEBUG_FILL_DIR.mkdir(parents=True, exist_ok=True)
@@ -103,6 +126,141 @@ logger.info(
 
 job_queue: queue.Queue = queue.Queue()
 persistent_overlay = None  # Global persistent overlay widget
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# macOS Accessibility helpers — snap clicks to the nearest text field
+# ─────────────────────────────────────────────────────────────────────────────
+
+_AX_AVAILABLE = False
+if IS_MAC:
+    try:
+        from ApplicationServices import (
+            AXUIElementCopyElementAtPosition,
+            AXUIElementCreateSystemWide,
+            AXUIElementCopyAttributeValue,
+            AXUIElementSetAttributeValue,
+            AXUIElementPerformAction,
+            kAXErrorSuccess,
+        )
+        from CoreFoundation import CFEqual
+        _AX_SYSTEMWIDE = AXUIElementCreateSystemWide()
+        _AX_AVAILABLE = True
+    except ImportError as _ax_err:
+        logger.warning(f"Accessibility API not available: {_ax_err}")
+
+
+# Roles that accept text input
+_AX_TEXT_ROLES = {
+    "AXTextField", "AXTextArea", "AXSearchField", "AXComboBox",
+    "AXSecureTextField",
+}
+
+
+def ax_get(elem, attr: str):
+    """Safely read an accessibility attribute. Returns None on failure."""
+    try:
+        err, value = AXUIElementCopyAttributeValue(elem, attr, None)
+        if err == kAXErrorSuccess:
+            return value
+    except Exception:
+        pass
+    return None
+
+
+def ax_element_at(x: int, y: int):
+    """Get the AX element at screen position (x, y), or None."""
+    if not _AX_AVAILABLE:
+        return None
+    try:
+        err, elem = AXUIElementCopyElementAtPosition(_AX_SYSTEMWIDE, float(x), float(y), None)
+        if err == kAXErrorSuccess and elem is not None:
+            return elem
+    except Exception as e:
+        logger.debug(f"ax_element_at({x},{y}) failed: {e}")
+    return None
+
+
+def ax_role(elem) -> str:
+    """Get the AXRole of an element as a string, or empty string."""
+    role = ax_get(elem, "AXRole")
+    return str(role) if role else ""
+
+
+def ax_find_nearest_text_field(x: int, y: int, max_radius: int = 60):
+    """
+    Find the nearest text-input element to (x, y) by sampling points in a
+    spiral pattern. Returns the AXUIElement or None.
+    """
+    if not _AX_AVAILABLE:
+        return None
+
+    # Try the exact point first
+    elem = ax_element_at(x, y)
+    if elem is not None and ax_role(elem) in _AX_TEXT_ROLES:
+        return elem
+
+    # Sample points in expanding rings
+    for radius in (10, 20, 30, 40, max_radius):
+        for dx, dy in [(0, radius), (0, -radius), (radius, 0), (-radius, 0),
+                       (radius, radius), (-radius, -radius),
+                       (radius, -radius), (-radius, radius)]:
+            if abs(dx) > max_radius or abs(dy) > max_radius:
+                continue
+            elem = ax_element_at(x + dx, y + dy)
+            if elem is not None and ax_role(elem) in _AX_TEXT_ROLES:
+                logger.debug(f"  AX: found {ax_role(elem)} at offset ({dx},{dy})")
+                return elem
+    return None
+
+
+def ax_set_value(elem, value: str) -> bool:
+    """
+    Try to set the value of a text-input element directly via Accessibility.
+    Returns True on success, False otherwise.
+    """
+    if not _AX_AVAILABLE or elem is None:
+        return False
+    try:
+        # Focus it first so the user/system sees the change
+        AXUIElementSetAttributeValue(elem, "AXFocused", True)
+        err = AXUIElementSetAttributeValue(elem, "AXValue", value)
+        return err == kAXErrorSuccess
+    except Exception as e:
+        logger.debug(f"ax_set_value failed: {e}")
+        return False
+
+
+def ax_get_value(elem) -> str:
+    """Read the current value of a text-input element."""
+    if not _AX_AVAILABLE or elem is None:
+        return ""
+    val = ax_get(elem, "AXValue")
+    return str(val) if val is not None else ""
+
+
+def ax_fill_field(x: int, y: int, value: str) -> tuple[bool, str]:
+    """
+    Try to fill a text field near (x, y) using the Accessibility API.
+    Returns (success, info) where info describes what happened.
+    """
+    if not _AX_AVAILABLE:
+        return False, "ax_unavailable"
+
+    elem = ax_find_nearest_text_field(x, y)
+    if elem is None:
+        return False, "no_field_found"
+
+    role = ax_role(elem)
+    if ax_set_value(elem, value):
+        # Verify
+        readback = ax_get_value(elem)
+        if value in readback or readback == value:
+            return True, f"ax_success ({role})"
+        else:
+            return False, f"ax_set_but_readback_mismatch (role={role}, got={readback[:30]!r})"
+    return False, f"ax_set_failed (role={role})"
+
 
 def extract_json(text: str) -> dict:
     """
@@ -425,7 +583,8 @@ def capture_miss_thumbnail(abs_x: int, abs_y: int, label: str, attempt: int, reg
     Capture a small screenshot (~200x120px) around the click point for debugging.
     Saved to the debug directory with field name and attempt number.
     """
-    thumb_w, thumb_h = 200, 120
+    # Wide thumbnail so the field's label (usually to the left) is visible
+    thumb_w, thumb_h = 420, 100
     # Center the thumbnail on the click point, but clamp to screen
     tx = abs_x - thumb_w // 2
     ty = abs_y - thumb_h // 2
@@ -534,36 +693,81 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
         base_y = int(info["y"] / scale) + region["y"]
 
         field_filled = False
-        for attempt in range(1, MAX_FIELD_RETRIES + 1):
-            # On retries, nudge the click slightly (down-right, then up-left)
-            if attempt == 1:
-                abs_x, abs_y = base_x, base_y
-            elif attempt == 2:
-                abs_x = base_x + RETRY_OFFSET_PX
-                abs_y = base_y + RETRY_OFFSET_PX
+
+        # ── ATTEMPT 0: Accessibility API (macOS) ─────────────────────────────
+        # Snap to the nearest text field and set its value directly.
+        if _AX_AVAILABLE:
+            ax_ok, ax_info = ax_fill_field(base_x, base_y, value)
+            if ax_ok:
+                logger.info(
+                    f"✓ FILLED '{label}' | via AX | {ax_info} | "
+                    f"value='{value}' | coords=({base_x},{base_y})"
+                )
+                click_log.append({
+                    "label": label, "abs_x": base_x, "abs_y": base_y,
+                    "status": "hit", "attempt": 0, "value": value, "method": "ax",
+                })
+                filled.add(label)
+                field_filled = True
             else:
-                abs_x = base_x - RETRY_OFFSET_PX
-                abs_y = base_y - RETRY_OFFSET_PX
+                logger.info(
+                    f"  AX did not succeed for '{label}' ({ax_info}) — falling back to click+paste"
+                )
+
+        # ── FALLBACK: click + Cmd+A + paste with retries ─────────────────────
+        # Retry offsets: try center, then below (labels usually above field),
+        # then above, then sideways. Larger offsets to actually land on the box.
+        retry_offsets = [(0, 0), (0, 18), (0, -18), (15, 0), (-15, 0)]
+
+        for attempt_idx, (dx, dy) in enumerate(retry_offsets):
+            if field_filled:
+                break
+            attempt = attempt_idx + 1
+            if attempt > MAX_FIELD_RETRIES:
+                break
+            abs_x = base_x + dx
+            abs_y = base_y + dy
 
             try:
                 pyautogui.click(abs_x, abs_y)
                 time.sleep(CLICK_DELAY)
                 pyautogui.hotkey(*SELECT_HOTKEY)
-                pyperclip.copy(value)
-                pyautogui.hotkey(*PASTE_HOTKEY)
+
+                if REMOTE_MODE:
+                    # Remote mode: typewrite keystrokes (no clipboard access)
+                    pyautogui.typewrite(value, interval=TYPEWRITE_INTERVAL)
+                else:
+                    pyperclip.copy(value)
+                    pyautogui.hotkey(*PASTE_HOTKEY)
                 time.sleep(FILL_DELAY)
+
+                if REMOTE_MODE:
+                    # Skip verification in remote mode — clipboard isn't shared
+                    logger.info(
+                        f"✓ FILLED '{label}' (remote, unverified) | attempt {attempt} (offset {dx},{dy}) | "
+                        f"value='{value}' | coords=({abs_x},{abs_y})"
+                    )
+                    click_log.append({
+                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                        "status": "hit", "attempt": attempt, "value": value, "method": "typewrite",
+                    })
+                    filled.add(label)
+                    field_filled = True
+                    pyautogui.click(safe_x, safe_y)
+                    time.sleep(0.03)
+                    break
 
                 # Verify the paste landed
                 verdict = verify_field_filled(value)
 
                 if verdict == "hit":
                     logger.info(
-                        f"✓ FILLED '{label}' | attempt {attempt} | "
+                        f"✓ FILLED '{label}' | attempt {attempt} (offset {dx},{dy}) | "
                         f"value='{value}' | coords=({abs_x},{abs_y})"
                     )
                     click_log.append({
                         "label": label, "abs_x": abs_x, "abs_y": abs_y,
-                        "status": "hit", "attempt": attempt, "value": value,
+                        "status": "hit", "attempt": attempt, "value": value, "method": "click",
                     })
                     filled.add(label)
                     field_filled = True
@@ -573,7 +777,7 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
                     break
                 else:
                     logger.warning(
-                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} | "
+                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} (offset {dx},{dy}) | "
                         f"verdict={verdict} | value='{value}' | coords=({abs_x},{abs_y})"
                     )
                     # Capture a thumbnail of the miss area
@@ -595,7 +799,7 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
 
         if not field_filled:
             logger.error(
-                f"✗✗ FAILED '{label}' after {MAX_FIELD_RETRIES} attempts | "
+                f"✗✗ FAILED '{label}' after all attempts | "
                 f"value='{value}' | base_coords=({base_x},{base_y})"
             )
             click_log.append({
@@ -632,10 +836,11 @@ class SelectionPopup:
         self.root.attributes("-topmost", True)
         self.root.overrideredirect(True)
         self.root.attributes("-alpha", 0.95)
-        self.root.configure(bg="#1a1f2e")
+        self.root.configure(bg="#0f1219")
         self.root.resizable(False, False)
 
-        w, h = 220, 250
+        w = 260
+        h = 195
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{w}x{h}+{screen_w - w - 20}+80")
 
@@ -650,53 +855,86 @@ class SelectionPopup:
 
     def _build_ui(self):
         # Header / drag handle
-        hdr = self.tk.Frame(self.root, bg="#141824", cursor="fleur")
+        hdr = self.tk.Frame(self.root, bg="#0f1219", cursor="fleur")
         hdr.pack(fill="x")
         hdr.bind("<ButtonPress-1>", self._drag_start)
         hdr.bind("<B1-Motion>", self._drag_move)
 
-        inner = self.tk.Frame(hdr, bg="#141824")
-        inner.pack(fill="x", padx=12, pady=8)
+        inner = self.tk.Frame(hdr, bg="#0f1219")
+        inner.pack(fill="x", padx=14, pady=(10, 4))
         inner.bind("<ButtonPress-1>", self._drag_start)
         inner.bind("<B1-Motion>", self._drag_move)
 
-        title = self.tk.Label(inner, text="AMS Agent", font=("Courier", 11, "bold"),
-                              fg="#4f8ef7", bg="#141824")
+        title = self.tk.Label(inner, text="RiskRunway", font=("Segoe UI", 10, "bold"),
+                              fg="#c8cfe0", bg="#0f1219")
         title.pack(side="left")
         title.bind("<ButtonPress-1>", self._drag_start)
         title.bind("<B1-Motion>", self._drag_move)
 
+        subtitle = self.tk.Label(inner, text="export agent",
+                                 font=("Segoe UI", 8), fg="#4a5270", bg="#0f1219")
+        subtitle.pack(side="left", padx=(6, 0))
+        subtitle.bind("<ButtonPress-1>", self._drag_start)
+        subtitle.bind("<B1-Motion>", self._drag_move)
+
+        # Separator
+        self.tk.Frame(self.root, bg="#1e2538", height=1).pack(fill="x", padx=14)
+
         # Body
-        body = self.tk.Frame(self.root, bg="#1a1f2e")
-        body.pack(fill="both", expand=True, padx=12, pady=6)
+        body = self.tk.Frame(self.root, bg="#0f1219")
+        body.pack(fill="both", expand=True, padx=14, pady=(10, 10))
 
+        # Instruction
         self.tk.Label(
-            body, text="Drag onto AMS window\nthen click below.",
-            font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
-            justify="center", wraplength=180,
-        ).pack(pady=(2, 6))
+            body, text="Drag onto target window",
+            font=("Segoe UI", 8), fg="#6b7394", bg="#0f1219",
+        ).pack(anchor="w", pady=(0, 6))
 
+        # Main button
         self.tk.Button(
             body, text="Push Data Here",
-            font=("Helvetica", 11, "bold"), fg="#ffffff", bg="#4f8ef7",
-            activebackground="#3a7ee8", activeforeground="#ffffff",
-            relief="flat", cursor="hand2", padx=10, pady=8,
+            font=("Segoe UI", 9, "bold"), fg="#0f1219", bg="#c8cfe0",
+            activebackground="#a8b4cc", activeforeground="#0f1219",
+            relief="flat", cursor="hand2", pady=6,
             command=self._on_push,
         ).pack(fill="x")
 
-        cancel = self.tk.Label(body, text="close",
-                               font=("Helvetica", 9), fg="#3a4060", bg="#1a1f2e", cursor="hand2")
-        cancel.pack(pady=(2, 0))
-        cancel.bind("<Button-1>", lambda e: self._on_close())
+        # Bottom row: 2 columns — disclaimer left, buttons right
+        bottom = self.tk.Frame(body, bg="#0f1219")
+        bottom.pack(fill="x", pady=(6, 0))
 
+        # Left column: disclaimer
         self.tk.Label(
-            body,
-            text="RiskRunway is assisting with data entry. Please verify all values before saving.",
-            font=("Helvetica", 7), fg="#5a6180", bg="#1a1f2e",
-            justify="center", wraplength=196,
-        ).pack(pady=(2, 0))
+            bottom, text="Verify all values\nbefore saving.",
+            font=("Segoe UI", 7), fg="#6b7394", bg="#0f1219",
+            justify="center",
+        ).pack(side="left", anchor="s")
 
-        self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
+        # Right column: remote push + close stacked
+        right_col = self.tk.Frame(bottom, bg="#0f1219")
+        right_col.pack(side="right", anchor="se")
+
+        remote_link = self.tk.Label(
+            right_col, text="remote push",
+            font=("Segoe UI", 8), fg="#4f8ef7", bg="#0f1219",
+            cursor="hand2",
+        )
+        remote_link.pack(anchor="e")
+        remote_link.bind("<Button-1>", lambda e: self._on_remote_push())
+        remote_link.bind("<Enter>", lambda e: remote_link.config(fg="#7aabff"))
+        remote_link.bind("<Leave>", lambda e: remote_link.config(fg="#4f8ef7"))
+
+        close_link = self.tk.Label(
+            right_col, text="close",
+            font=("Segoe UI", 8), fg="#c0392b", bg="#0f1219",
+            cursor="hand2",
+        )
+        close_link.pack(anchor="e", pady=(2, 0))
+        close_link.bind("<Button-1>", lambda e: self._on_close())
+        close_link.bind("<Enter>", lambda e: close_link.config(fg="#e74c3c"))
+        close_link.bind("<Leave>", lambda e: close_link.config(fg="#c0392b"))
+
+        self.root.configure(highlightbackground="#1e2538", highlightthickness=1)
 
     def _drag_start(self, e):
         self.drag["x"] = e.x_root - self.root.winfo_x()
@@ -710,6 +948,14 @@ class SelectionPopup:
         cy = self.root.winfo_y() + self.root.winfo_height() // 2
         self.position_result = (cx, cy)
         logger.info(f"User clicked Push Data Here at ({cx}, {cy})")
+
+    def _on_remote_push(self):
+        global REMOTE_MODE
+        REMOTE_MODE = True
+        cx = self.root.winfo_x() + self.root.winfo_width() // 2
+        cy = self.root.winfo_y() + self.root.winfo_height() // 2
+        self.position_result = (cx, cy)
+        logger.info(f"User clicked Remote Push at ({cx}, {cy}) — remote mode enabled")
 
     def _on_close(self):
         self.should_close = True
@@ -1055,7 +1301,10 @@ def update_job_status(server_url: str, job_id: int, status: str, message: str = 
         logger.error(f"Status update failed for job {job_id}: {e}")
 
 def run_job(job: dict, server_url: str):
-    global persistent_overlay
+    global persistent_overlay, REMOTE_MODE
+
+    # Reset remote mode for each job — user picks per-job via button
+    REMOTE_MODE = False
 
     job_id    = job["id"]
     json_data = job.get("json_data") or {}
@@ -1174,7 +1423,7 @@ def main():
   Server   : {server_url}
   Mode     : {'Single-shot (Job #' + str(args.job_id) + ')' if is_single_shot else 'Daemon (continuous polling)'}
   OS       : {platform.system()}
-  Paste    : {'+'.join(PASTE_HOTKEY)}
+  Input    : Choose in popup — 'Push Data Here' (paste) or 'Remote Push' (typewrite)
     """)
 
     if is_single_shot:
@@ -1201,6 +1450,7 @@ def main():
         if persistent_overlay:
             persistent_overlay.destroy()
         print(f"\n✓ Job {args.job_id} complete. Exiting.")
+        _close_console_window()
         sys.exit(0)
     
     else:
@@ -1245,6 +1495,7 @@ def main():
         # Clean up
         if persistent_overlay:
             persistent_overlay.destroy()
+        _close_console_window()
         sys.exit(0)
 
 if __name__ == "__main__":
