@@ -1410,6 +1410,7 @@
                         <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Mark as Bound</button>
                         <button id="downloadCsvBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
                         <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🔗</span> Export to AMS</button>
+                        <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🤖</span> AI Fill (Computer Use)</button>
                     </div>
                 </div>
             </div>
@@ -3580,6 +3581,7 @@ Thank you for your attention to this matter.`;
             const btn = document.getElementById('markBoundBtn');
             const bindSection = document.getElementById('bindStageSection');
             const exportBtn = document.getElementById('exportToAmsBtn');
+            const exportCUBtn = document.getElementById('exportToAmsCUBtn');
             const editBtn = document.getElementById('editQuotesBtn');
             const boundLabel = document.getElementById('boundLabel');
             if (!btn || !bindSection) return;
@@ -3598,6 +3600,11 @@ Thank you for your attention to this matter.`;
                     if (submissionData && submissionData.ams_type === 'epic') {
                         exportBtn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to Epic';
                     }
+                }
+                if (exportCUBtn) {
+                    exportCUBtn.disabled = false;
+                    exportCUBtn.style.opacity = '1';
+                    exportCUBtn.style.cursor = 'pointer';
                 }
                 // Swap Edit btn for BOUND label
                 if (editBtn) editBtn.classList.add('hidden');
@@ -4362,6 +4369,64 @@ Thank you for your attention to this matter.`;
                 alert('Error starting AMS export: ' + error.message);
                 btn.disabled = false;
                 btn.textContent = '☁️ Export to AMS';
+            }
+        }
+
+        // ─── AI Fill (Computer Use) Click Handler ─────────────────────────────────
+        document.getElementById('exportToAmsCUBtn').addEventListener('click', async function() {
+            await generateExportData();
+            if (exportData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            executeAmsComputerUse();
+        });
+
+        async function executeAmsComputerUse() {
+            const btn = document.getElementById('exportToAmsCUBtn');
+            btn.disabled = true;
+            btn.textContent = '🤖 Starting...';
+
+            try {
+                const response = await fetch('/api/ams-export/jobs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        submission_id: submissionId,
+                        quote_id: null,
+                        mode: 'computer_use'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to create AMS export job');
+                }
+
+                const jobId = data.job.id;
+                btn.textContent = '🤖 Opening agent...';
+
+                const serverUrl = window.location.origin;
+                const protocolUrl = `riskrunway://export?job_id=${jobId}&server=${encodeURIComponent(serverUrl)}&mode=computer_use`;
+
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = protocolUrl;
+                document.body.appendChild(iframe);
+                setTimeout(() => document.body.removeChild(iframe), 1000);
+
+                setTimeout(() => {
+                    window.location.reload();
+                }, 800);
+
+                btn.textContent = '🤖 AI is working...';
+
+            } catch (error) {
+                console.error('Error starting AI Fill:', error);
+                alert('Error starting AI Fill: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<span style="font-size: 1.2em;">🤖</span> AI Fill (Computer Use)';
             }
         }
 

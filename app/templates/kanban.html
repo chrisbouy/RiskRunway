@@ -831,6 +831,7 @@
                 <div id="currentUserName" class="user-name"></div>
                 <div id="currentUserRole" class="user-role"></div>
             </div>
+            <button id="smsSettingsBtn" class="left-btn" style="margin-top:6px; font-size:11px;">📱 SMS Alerts</button>
             <a href="/privacy" class="text-center text-xs text-gray-400 hover:text-gray-200 transition-colors" style="margin-top:4px; display:block;">Privacy Policy</a>
             <button id="logoutBtn" class="left-btn btn-logout" style="margin-top:6px;">Logout</button>
         </aside>
@@ -1020,6 +1021,48 @@
                 <button id="confirmConnectEmail" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                     OK
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SMS Alerts Settings Modal -->
+    <div id="smsSettingsModal" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+            <h2 class="text-xl font-bold mb-2 text-white">📱 SMS Alert Settings</h2>
+            <p class="text-gray-400 mb-5 text-sm">Get text alerts when new quotes arrive for your submissions.</p>
+
+            <div class="space-y-4">
+                <div>
+                    <label for="smsPhoneNumber" class="block text-sm font-semibold text-gray-300 mb-1">Phone Number</label>
+                    <input id="smsPhoneNumber" type="tel" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="+12255551234">
+                    <p class="text-xs text-gray-500 mt-1">Include country code (e.g. +1 for US)</p>
+                </div>
+
+                <p class="text-xs text-gray-400 leading-relaxed">By providing your number you agree to receive SMS alerts from Risk Runway. Msg &amp; data rates may apply. Reply STOP to cancel.</p>
+
+                <div class="flex items-center gap-3">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="smsEnabled" class="sr-only peer">
+                        <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                    <span class="text-sm text-gray-300">Enable SMS alerts</span>
+                </div>
+
+                <div id="smsStatus" class="hidden text-sm rounded px-3 py-2"></div>
+            </div>
+
+            <div class="flex justify-between items-center mt-6">
+                <button id="smsTestBtn" class="px-3 py-2 bg-gray-700 text-gray-300 rounded text-sm hover:bg-gray-600 disabled:opacity-50">
+                    Send Test
+                </button>
+                <div class="flex gap-2">
+                    <button id="smsCancelBtn" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button id="smsSaveBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        Save
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -4608,6 +4651,99 @@
 
         // Run initialization on page load
         initializePage();
+
+        // ============================================================================
+        // SMS ALERTS SETTINGS
+        // ============================================================================
+        (function() {
+            const modal = document.getElementById('smsSettingsModal');
+            const phoneInput = document.getElementById('smsPhoneNumber');
+            const enabledToggle = document.getElementById('smsEnabled');
+            const statusDiv = document.getElementById('smsStatus');
+            const testBtn = document.getElementById('smsTestBtn');
+            const saveBtn = document.getElementById('smsSaveBtn');
+            const cancelBtn = document.getElementById('smsCancelBtn');
+            const openBtn = document.getElementById('smsSettingsBtn');
+
+            function showStatus(msg, isError) {
+                statusDiv.textContent = msg;
+                statusDiv.className = 'text-sm rounded px-3 py-2 ' + (isError ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300');
+                statusDiv.classList.remove('hidden');
+                setTimeout(() => statusDiv.classList.add('hidden'), 4000);
+            }
+
+            // Open modal
+            openBtn.addEventListener('click', async function() {
+                modal.classList.remove('hidden');
+                // Load current settings
+                try {
+                    const resp = await fetch('/api/sms/settings');
+                    const data = await resp.json();
+                    if (data.success) {
+                        phoneInput.value = data.phone_number || '';
+                        enabledToggle.checked = data.sms_alerts_enabled || false;
+                        if (!data.twilio_configured) {
+                            showStatus('SMS service not configured on server.', true);
+                        }
+                    }
+                } catch (e) {
+                    showStatus('Failed to load settings.', true);
+                }
+            });
+
+            // Close modal
+            cancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+
+            // Save settings
+            saveBtn.addEventListener('click', async function() {
+                const phone = phoneInput.value.trim();
+                const enabled = enabledToggle.checked;
+
+                // Basic validation
+                if (enabled && !phone) {
+                    showStatus('Enter a phone number to enable alerts.', true);
+                    return;
+                }
+
+                try {
+                    const resp = await fetch('/api/sms/settings', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: phone, sms_alerts_enabled: enabled })
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        showStatus('Settings saved!', false);
+                        setTimeout(() => modal.classList.add('hidden'), 1500);
+                    } else {
+                        showStatus(data.error || 'Save failed.', true);
+                    }
+                } catch (e) {
+                    showStatus('Network error.', true);
+                }
+            });
+
+            // Test SMS
+            testBtn.addEventListener('click', async function() {
+                testBtn.disabled = true;
+                testBtn.textContent = 'Sending...';
+                try {
+                    const resp = await fetch('/api/sms/test', { method: 'POST' });
+                    const data = await resp.json();
+                    if (data.success) {
+                        showStatus('Test SMS sent! Check your phone.', false);
+                    } else {
+                        showStatus(data.error || 'Test failed.', true);
+                    }
+                } catch (e) {
+                    showStatus('Network error.', true);
+                } finally {
+                    testBtn.disabled = false;
+                    testBtn.textContent = 'Send Test';
+                }
+            });
+        })();
     </script>
 </body>
 </html>
