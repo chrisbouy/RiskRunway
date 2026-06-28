@@ -78,6 +78,12 @@ def privacy_policy():
     return render_template('privacy.html')
 
 
+@bp.route('/sms-consent', methods=['GET'])
+def sms_consent():
+    """Public SMS opt-in page for Twilio verification reviewers"""
+    return render_template('sms_consent.html')
+
+
 @bp.route('/extension/privacy', methods=['GET'])
 def extension_privacy_policy():
     """Chrome extension privacy policy"""
