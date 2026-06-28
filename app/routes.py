@@ -6384,6 +6384,222 @@ def ams_vision():
 
 
 # ============================================================================
+# AMS COMPUTER USE — Agentic loop with Claude computer-use tool
+# ============================================================================
+
+@bp.route('/api/ams/computer-use-step', methods=['POST'])
+def ams_computer_use_step():
+    """
+    One step of the computer-use agentic loop.
+    Receives: screenshot (base64), job_id, messages (conversation history)
+    Returns: action to execute (click, type, scroll, etc.) or "done"
+    
+    The local agent calls this in a loop:
+      1. Take screenshot → send here
+      2. Get action back → execute it
+      3. Take new screenshot → send here again
+      4. Repeat until "done" or timeout
+    """
+    try:
+        import settings as settings_module
+        from PIL import Image
+        from io import BytesIO
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON payload'}), 400
+
+        screenshot_b64 = data.get('screenshot')
+        job_id = data.get('job_id')
+        messages = data.get('messages', [])
+        display_width = data.get('display_width', 1920)
+        display_height = data.get('display_height', 1080)
+
+        if not screenshot_b64:
+            return jsonify({'success': False, 'error': 'screenshot is required'}), 400
+
+        # Decode screenshot to get dimensions
+        screenshot_bytes = base64.b64decode(screenshot_b64)
+        screenshot_image = Image.open(BytesIO(screenshot_bytes))
+        img_width, img_height = screenshot_image.size
+
+        # Load quote images for the system prompt (first call only — when messages is empty)
+        quote_images_b64 = []
+        system_prompt = ""
+        if not messages:
+            # First turn — build the system context with quote images
+            quote_context = ""
+            if job_id:
+                db_session = get_session()
+                try:
+                    job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                    if job and job.quote_id:
+                        quote = db_session.query(Quote).filter_by(id=job.quote_id).first()
+                        if quote and quote.pass1_layout_json:
+                            layout = json.loads(quote.pass1_layout_json)
+                            for page in layout.get('pages', []):
+                                img_path = page.get('image_path')
+                                if img_path and os.path.exists(img_path):
+                                    with open(img_path, 'rb') as f:
+                                        img_bytes = f.read()
+                                    quote_images_b64.append(base64.b64encode(img_bytes).decode('ascii'))
+                    elif job:
+                        quotes = db_session.query(Quote).filter_by(submission_id=job.submission_id).all()
+                        for quote in quotes:
+                            if quote.pass1_layout_json:
+                                layout = json.loads(quote.pass1_layout_json)
+                                for page in layout.get('pages', []):
+                                    img_path = page.get('image_path')
+                                    if img_path and os.path.exists(img_path):
+                                        with open(img_path, 'rb') as f:
+                                            img_bytes = f.read()
+                                        quote_images_b64.append(base64.b64encode(img_bytes).decode('ascii'))
+                                break
+                finally:
+                    db_session.close()
+
+            system_prompt = (
+                "You are an insurance data entry assistant. Your job is to fill in an AMS "
+                "(Agency Management System) form with data from a quote document.\n\n"
+                "You can see the AMS form via screenshots and control it using mouse clicks, "
+                "keyboard typing, and scrolling.\n\n"
+                "RULES:\n"
+                "- Read the quote document images to extract data (insured name, address, carrier, "
+                "dates, premiums, broker, etc.)\n"
+                "- Click on form fields and type the correct values\n"
+                "- Handle dropdowns by clicking them and selecting the right option\n"
+                "- Scroll down if you need to reach more fields below the visible area\n"
+                "- Use Tab to move between fields when appropriate\n"
+                "- Format dates as MM/DD/YYYY, currency as digits only (no $), states as 2-letter codes\n"
+                "- Type all values in ALL CAPS\n"
+                "- Only enter data you can clearly read from the quote — do not guess\n"
+                "- When you have filled all visible fields that match quote data, scroll down to check for more\n"
+                "- When done (no more fields to fill), take a final screenshot to confirm, then stop\n"
+            )
+
+            # Build first user message with quote images + screenshot
+            content_parts = []
+            for i, img_b64 in enumerate(quote_images_b64):
+                content_parts.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}
+                })
+            content_parts.append({
+                "type": "text",
+                "text": (
+                    f"Above are {len(quote_images_b64)} pages from an insurance quote document. "
+                    "Below is a screenshot of the AMS form I need you to fill in. "
+                    "Please start filling in the form fields with the data from the quote. "
+                    "Click on each field and type the appropriate value."
+                )
+            })
+            content_parts.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/jpeg", "data": screenshot_b64}
+            })
+
+            messages = [{"role": "user", "content": content_parts}]
+        else:
+            # Subsequent turns — add the new screenshot as a user message
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "image/jpeg", "data": screenshot_b64}
+                    },
+                    {
+                        "type": "text",
+                        "text": "Here is the updated screenshot after your last action. Continue filling the form, or say done if complete."
+                    }
+                ]
+            })
+
+        # Call Bedrock with computer-use tool
+        client = boto3.client("bedrock-runtime", region_name=settings_module.BEDROCK_REGION)
+
+        model_id = settings_module.BEDROCK_VISION_MODEL  # Sonnet 4.6
+
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "anthropic_beta": ["computer-use-2025-11-24"],
+            "max_tokens": 4096,
+            "system": system_prompt if system_prompt else "",
+            "messages": messages,
+            "tools": [
+                {
+                    "type": "computer_20251124",
+                    "name": "computer",
+                    "display_width_px": display_width,
+                    "display_height_px": display_height,
+                }
+            ],
+        }
+
+        # Remove system key if empty (subsequent turns)
+        if not system_prompt:
+            body.pop("system", None)
+
+        response = client.invoke_model(
+            modelId=model_id,
+            body=json.dumps(body),
+        )
+
+        result = json.loads(response["body"].read())
+        stop_reason = result.get("stop_reason", "")
+        content_blocks = result.get("content", [])
+
+        logger.info(f"[AMS Computer Use] stop_reason={stop_reason}, blocks={len(content_blocks)}")
+
+        # Parse the response — look for tool_use blocks
+        actions = []
+        assistant_text = ""
+        for block in content_blocks:
+            if block.get("type") == "tool_use" and block.get("name") == "computer":
+                actions.append(block.get("input", {}))
+            elif block.get("type") == "text":
+                assistant_text += block.get("text", "")
+
+        # Add assistant response to messages for next turn
+        messages.append({"role": "assistant", "content": content_blocks})
+
+        # If there are actions, add a tool_result for the next turn
+        if actions:
+            # We'll send the screenshot as the tool result in the next call
+            tool_use_id = next(
+                (b["id"] for b in content_blocks if b.get("type") == "tool_use"),
+                None
+            )
+            if tool_use_id:
+                messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": "Action executed. New screenshot will be provided."
+                    }]
+                })
+
+        # Determine if we're done
+        is_done = (
+            stop_reason == "end_turn" and not actions
+        ) or "done" in assistant_text.lower()
+
+        return jsonify({
+            'success': True,
+            'actions': actions,
+            'is_done': is_done,
+            'messages': messages,
+            'assistant_text': assistant_text,
+            'stop_reason': stop_reason,
+        })
+
+    except Exception as e:
+        logger.error(f"[AMS Computer Use] Error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
 # AMS EXPORT JOBS
 # ============================================================================
 
@@ -6397,6 +6613,7 @@ def create_ams_export_job():
         data = request.get_json() or {}
         submission_id = data.get('submission_id')
         quote_id = data.get('quote_id')  # Optional: specific quote
+        mode = data.get('mode', 'vision')  # 'vision' or 'computer_use'
         
         if not submission_id:
             return jsonify({'success': False, 'error': 'submission_id is required'}), 400
@@ -6442,7 +6659,7 @@ def create_ams_export_job():
                 submission_id=submission_id,
                 quote_id=quote_id,
                 json_data=json.dumps(json_data),
-                instructions='Enter this policy data into the highlighted form fields.',
+                instructions=json.dumps({'text': 'Enter this policy data into the highlighted form fields.', 'mode': mode}),
                 status='pending',
                 attempt_count=0,
                 max_attempts=3,
@@ -6452,7 +6669,8 @@ def create_ams_export_job():
             db_session.commit()
             db_session.refresh(job)
             job_id   = job.id
-            job_dict = job.to_dict()             
+            job_dict = job.to_dict()
+            job_dict['mode'] = mode  # Pass mode to the agent             
             # Log the action
             log_action(
                 entity_type='submission',

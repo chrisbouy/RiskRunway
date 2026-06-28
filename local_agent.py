@@ -505,6 +505,182 @@ def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Computer Use Mode — Agentic loop where Claude controls the mouse/keyboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+COMPUTER_USE_TIMEOUT = 45  # seconds max for the agentic loop
+COMPUTER_USE_MAX_STEPS = 30  # max actions before stopping
+
+def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> bool:
+    """
+    Agentic computer-use loop:
+    1. Take screenshot of the AMS form
+    2. Send to server (which calls Claude with computer-use tool)
+    3. Get back an action (click, type, scroll, etc.)
+    4. Execute the action via pyautogui
+    5. Repeat until Claude says done or timeout
+    """
+    messages = []  # conversation history maintained server-side
+    start_time = time.time()
+    actions_taken = 0
+
+    logger.info(f"[Computer Use] Starting agentic loop for job {job_id}")
+    logger.info(f"[Computer Use] Region: {region}")
+    logger.info(f"[Computer Use] Timeout: {COMPUTER_USE_TIMEOUT}s, Max steps: {COMPUTER_USE_MAX_STEPS}")
+
+    while True:
+        # Check timeout
+        elapsed = time.time() - start_time
+        if elapsed > COMPUTER_USE_TIMEOUT:
+            logger.info(f"[Computer Use] Timeout reached ({elapsed:.1f}s). Stopping.")
+            break
+
+        # Check step limit
+        if actions_taken >= COMPUTER_USE_MAX_STEPS:
+            logger.info(f"[Computer Use] Max steps reached ({actions_taken}). Stopping.")
+            break
+
+        # 1. Take screenshot
+        screenshot_bytes, scale = take_screenshot(region)
+        logger.info(f"[Computer Use] Step {actions_taken + 1}: screenshot taken")
+
+        # 2. Send to server
+        payload = {
+            'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'),
+            'job_id': job_id,
+            'messages': messages,
+            'display_width': int(region['width'] * scale),
+            'display_height': int(region['height'] * scale),
+        }
+
+        try:
+            response = requests.post(
+                f"{server_url}/api/ams/computer-use-step",
+                json=payload,
+                timeout=60
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            logger.error(f"[Computer Use] Server request failed: {e}")
+            break
+
+        if not data.get('success'):
+            logger.error(f"[Computer Use] Server error: {data.get('error')}")
+            break
+
+        # Update conversation history
+        messages = data.get('messages', [])
+        actions = data.get('actions', [])
+        is_done = data.get('is_done', False)
+        assistant_text = data.get('assistant_text', '')
+
+        if assistant_text:
+            logger.info(f"[Computer Use] Claude says: {assistant_text[:100]}")
+
+        if is_done:
+            logger.info(f"[Computer Use] Claude indicated done. Total actions: {actions_taken}")
+            return True
+
+        if not actions:
+            logger.info(f"[Computer Use] No actions returned. Stopping.")
+            break
+
+        # 3. Execute each action
+        for action in actions:
+            action_type = action.get('action', '')
+            logger.info(f"[Computer Use] Executing: {action_type} {action}")
+
+            try:
+                _execute_computer_action(action, region, scale)
+                actions_taken += 1
+            except Exception as e:
+                logger.error(f"[Computer Use] Action failed: {e}")
+
+            time.sleep(0.1)  # small delay between actions
+
+        # Small delay before next screenshot to let the UI update
+        time.sleep(0.3)
+
+    logger.info(f"[Computer Use] Loop ended. {actions_taken} actions taken in {time.time() - start_time:.1f}s")
+    return actions_taken > 0
+
+
+def _execute_computer_action(action: dict, region: dict, scale: float):
+    """Execute a single computer-use action from Claude."""
+    action_type = action.get('action', '')
+    coordinate = action.get('coordinate')  # [x, y] in screenshot coordinates
+
+    if action_type == 'screenshot':
+        # Claude just wants a new screenshot — we'll take one next iteration
+        return
+
+    elif action_type in ('left_click', 'click'):
+        if coordinate:
+            abs_x = int(coordinate[0] / scale) + region['x']
+            abs_y = int(coordinate[1] / scale) + region['y']
+            pyautogui.click(abs_x, abs_y)
+            logger.info(f"  → click at ({abs_x}, {abs_y})")
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'double_click':
+        if coordinate:
+            abs_x = int(coordinate[0] / scale) + region['x']
+            abs_y = int(coordinate[1] / scale) + region['y']
+            pyautogui.doubleClick(abs_x, abs_y)
+            logger.info(f"  → double_click at ({abs_x}, {abs_y})")
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'right_click':
+        if coordinate:
+            abs_x = int(coordinate[0] / scale) + region['x']
+            abs_y = int(coordinate[1] / scale) + region['y']
+            pyautogui.rightClick(abs_x, abs_y)
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'type':
+        text = action.get('text', '')
+        if text:
+            pyautogui.typewrite(text, interval=TYPE_INTERVAL)
+            logger.info(f"  → type: '{text[:50]}'")
+
+    elif action_type == 'key':
+        key = action.get('text', '')
+        if key:
+            # Handle special keys and combos
+            if '+' in key:
+                keys = [k.strip().lower() for k in key.split('+')]
+                pyautogui.hotkey(*keys)
+            else:
+                pyautogui.press(key.lower())
+            logger.info(f"  → key: {key}")
+
+    elif action_type == 'scroll':
+        direction = action.get('direction', 'down')
+        amount = action.get('amount', 3)
+        if coordinate:
+            abs_x = int(coordinate[0] / scale) + region['x']
+            abs_y = int(coordinate[1] / scale) + region['y']
+            pyautogui.moveTo(abs_x, abs_y)
+        if direction == 'down':
+            pyautogui.scroll(-amount)
+        elif direction == 'up':
+            pyautogui.scroll(amount)
+        logger.info(f"  → scroll {direction} ({amount})")
+        time.sleep(0.3)
+
+    elif action_type == 'mouse_move':
+        if coordinate:
+            abs_x = int(coordinate[0] / scale) + region['x']
+            abs_y = int(coordinate[1] / scale) + region['y']
+            pyautogui.moveTo(abs_x, abs_y)
+
+    else:
+        logger.warning(f"  → Unknown action type: {action_type}")
+
+
 def get_tb_coords(server_url: str, screenshot_bytes: bytes,
                           json_data: dict, already_filled: set, job_id: int = None) -> dict:
     """
@@ -1340,7 +1516,24 @@ def run_job(job: dict, server_url: str):
     # Define the work function to run in a thread
     def do_work():
         try:
-            success = run_vision_job(server_url, json_data, region, job_id=job_id)
+            # Check job mode — 'computer_use' for agentic loop, default for vision
+            job_mode = job.get("mode", "vision") if isinstance(job, dict) else "vision"
+            # Also check instructions field (mode stored there for polling-fetched jobs)
+            if job_mode == "vision":
+                instructions = job.get("instructions", "")
+                if isinstance(instructions, str) and instructions.startswith("{"):
+                    try:
+                        instr = json.loads(instructions)
+                        if instr.get("mode") == "computer_use":
+                            job_mode = "computer_use"
+                    except Exception:
+                        pass
+            
+            if job_mode == "computer_use":
+                success = run_computer_use_job(server_url, region, job_id=job_id)
+            else:
+                success = run_vision_job(server_url, json_data, region, job_id=job_id)
+            
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")
@@ -1397,6 +1590,8 @@ def main():
                         help="Run in single-shot mode: fetch specific job ID, execute, then exit")
     parser.add_argument("--daemon", action="store_true",
                         help="Run in daemon mode: continuously poll for jobs (default behavior)")
+    parser.add_argument("--mode", default="vision", choices=["vision", "computer_use"],
+                        help="Export mode: 'vision' (single-shot) or 'computer_use' (agentic loop)")
     parser.add_argument("url", nargs="?", default=None,
                         help="Optional riskrunway:// protocol URL (parsed for job_id and server)")
     args       = parser.parse_args()
@@ -1410,8 +1605,11 @@ def main():
             args.job_id = int(params['job_id'][0])
         if 'server' in params and args.server == DEFAULT_SERVER_URL:
             args.server = urllib.parse.unquote(params['server'][0])
+        if 'mode' in params:
+            args.mode = params['mode'][0]
 
     server_url = args.server.rstrip("/")
+    job_mode = args.mode  # 'vision' or 'computer_use'
 
     # Determine mode: single-shot if job_id provided, otherwise daemon (or explicit --daemon)
     is_single_shot = args.job_id is not None
@@ -1438,6 +1636,10 @@ def main():
         # Create overlay just for this job
         persistent_overlay = PersistentOverlay()
         logger.info("Overlay created for single-shot job")
+        
+        # Inject mode from URL params into job dict
+        if isinstance(job, dict):
+            job['mode'] = job_mode
         
         # Execute the job
         try:
