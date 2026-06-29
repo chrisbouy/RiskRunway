@@ -633,6 +633,14 @@ def _execute_computer_action(action: dict, region: dict, scale: float):
             logger.info(f"  → double_click at ({abs_x}, {abs_y})")
             time.sleep(CLICK_DELAY)
 
+    elif action_type == 'triple_click':
+        if coordinate:
+            abs_x = int(coordinate[0] / scale) + region['x']
+            abs_y = int(coordinate[1] / scale) + region['y']
+            pyautogui.click(abs_x, abs_y, clicks=3)
+            logger.info(f"  → triple_click at ({abs_x}, {abs_y})")
+            time.sleep(CLICK_DELAY)
+
     elif action_type == 'right_click':
         if coordinate:
             abs_x = int(coordinate[0] / scale) + region['x']
@@ -643,8 +651,10 @@ def _execute_computer_action(action: dict, region: dict, scale: float):
     elif action_type == 'type':
         text = action.get('text', '')
         if text:
-            pyautogui.typewrite(text, interval=TYPE_INTERVAL)
-            logger.info(f"  → type: '{text[:50]}'")
+            pyperclip.copy(text)
+            pyautogui.hotkey(*PASTE_HOTKEY)
+            logger.info(f"  → type (paste): '{text[:50]}'")
+            time.sleep(0.05)
 
     elif action_type == 'key':
         key = action.get('text', '')
@@ -1516,24 +1526,7 @@ def run_job(job: dict, server_url: str):
     # Define the work function to run in a thread
     def do_work():
         try:
-            # Check job mode — 'computer_use' for agentic loop, default for vision
-            job_mode = job.get("mode", "vision") if isinstance(job, dict) else "vision"
-            # Also check instructions field (mode stored there for polling-fetched jobs)
-            if job_mode == "vision":
-                instructions = job.get("instructions", "")
-                if isinstance(instructions, str) and instructions.startswith("{"):
-                    try:
-                        instr = json.loads(instructions)
-                        if instr.get("mode") == "computer_use":
-                            job_mode = "computer_use"
-                    except Exception:
-                        pass
-            
-            if job_mode == "computer_use":
-                success = run_computer_use_job(server_url, region, job_id=job_id)
-            else:
-                success = run_vision_job(server_url, json_data, region, job_id=job_id)
-            
+            success = run_computer_use_job(server_url, region, job_id=job_id)
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")
@@ -1590,8 +1583,6 @@ def main():
                         help="Run in single-shot mode: fetch specific job ID, execute, then exit")
     parser.add_argument("--daemon", action="store_true",
                         help="Run in daemon mode: continuously poll for jobs (default behavior)")
-    parser.add_argument("--mode", default="vision", choices=["vision", "computer_use"],
-                        help="Export mode: 'vision' (single-shot) or 'computer_use' (agentic loop)")
     parser.add_argument("url", nargs="?", default=None,
                         help="Optional riskrunway:// protocol URL (parsed for job_id and server)")
     args       = parser.parse_args()
@@ -1605,11 +1596,8 @@ def main():
             args.job_id = int(params['job_id'][0])
         if 'server' in params and args.server == DEFAULT_SERVER_URL:
             args.server = urllib.parse.unquote(params['server'][0])
-        if 'mode' in params:
-            args.mode = params['mode'][0]
 
     server_url = args.server.rstrip("/")
-    job_mode = args.mode  # 'vision' or 'computer_use'
 
     # Determine mode: single-shot if job_id provided, otherwise daemon (or explicit --daemon)
     is_single_shot = args.job_id is not None
@@ -1636,10 +1624,6 @@ def main():
         # Create overlay just for this job
         persistent_overlay = PersistentOverlay()
         logger.info("Overlay created for single-shot job")
-        
-        # Inject mode from URL params into job dict
-        if isinstance(job, dict):
-            job['mode'] = job_mode
         
         # Execute the job
         try:

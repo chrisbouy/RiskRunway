@@ -6516,19 +6516,20 @@ def ams_computer_use_step():
             })
 
         # Call Bedrock with computer-use tool
+        import boto3
         client = boto3.client("bedrock-runtime", region_name=settings_module.BEDROCK_REGION)
 
-        model_id = settings_module.BEDROCK_VISION_MODEL  # Sonnet 4.6
+        model_id = settings_module.BEDROCK_MODEL  # Haiku 4.5
 
         body = {
             "anthropic_version": "bedrock-2023-05-31",
-            "anthropic_beta": ["computer-use-2025-11-24"],
+            "anthropic_beta": ["computer-use-2025-01-24"],
             "max_tokens": 4096,
             "system": system_prompt if system_prompt else "",
             "messages": messages,
             "tools": [
                 {
-                    "type": "computer_20251124",
+                    "type": "computer_20250124",
                     "name": "computer",
                     "display_width_px": display_width,
                     "display_height_px": display_height,
@@ -6613,7 +6614,6 @@ def create_ams_export_job():
         data = request.get_json() or {}
         submission_id = data.get('submission_id')
         quote_id = data.get('quote_id')  # Optional: specific quote
-        mode = data.get('mode', 'vision')  # 'vision' or 'computer_use'
         
         if not submission_id:
             return jsonify({'success': False, 'error': 'submission_id is required'}), 400
@@ -6659,7 +6659,7 @@ def create_ams_export_job():
                 submission_id=submission_id,
                 quote_id=quote_id,
                 json_data=json.dumps(json_data),
-                instructions=json.dumps({'text': 'Enter this policy data into the highlighted form fields.', 'mode': mode}),
+                instructions='Enter this policy data into the AMS form.',
                 status='pending',
                 attempt_count=0,
                 max_attempts=3,
@@ -6669,8 +6669,7 @@ def create_ams_export_job():
             db_session.commit()
             db_session.refresh(job)
             job_id   = job.id
-            job_dict = job.to_dict()
-            job_dict['mode'] = mode  # Pass mode to the agent             
+            job_dict = job.to_dict()             
             # Log the action
             log_action(
                 entity_type='submission',
