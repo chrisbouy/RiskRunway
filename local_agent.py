@@ -542,17 +542,28 @@ def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> b
             logger.info(f"[Computer Use] Max steps reached ({actions_taken}). Stopping.")
             break
 
-        # 1. Take screenshot
-        screenshot_bytes, scale = take_screenshot(region)
-        logger.info(f"[Computer Use] Step {actions_taken + 1}: screenshot taken")
+        # 1. Take screenshot — resize to 1280x720 for API (per Anthropic best practices)
+        CU_DISPLAY_W, CU_DISPLAY_H = 1280, 720
+        screenshot_bytes, _raw_scale = take_screenshot(region)
+        # Resize to 1280x720 regardless of native size
+        from PIL import Image as _PILImage
+        _ss_img = _PILImage.open(io.BytesIO(screenshot_bytes)).convert("RGB")
+        _ss_resized = _ss_img.resize((CU_DISPLAY_W, CU_DISPLAY_H), _PILImage.LANCZOS)
+        _ss_buf = io.BytesIO()
+        _ss_resized.save(_ss_buf, format="JPEG", quality=80)
+        screenshot_bytes = _ss_buf.getvalue()
+        # Scale factors: Claude coords (1280x720) → native region pixels
+        scale_x = region['width'] / CU_DISPLAY_W
+        scale_y = region['height'] / CU_DISPLAY_H
+        logger.info(f"[Computer Use] Step {actions_taken + 1}: screenshot taken ({CU_DISPLAY_W}x{CU_DISPLAY_H})")
 
         # 2. Send to server
         payload = {
             'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'),
             'job_id': job_id,
             'messages': messages,
-            'display_width': int(region['width'] * scale),
-            'display_height': int(region['height'] * scale),
+            'display_width': CU_DISPLAY_W,
+            'display_height': CU_DISPLAY_H,
         }
 
         try:
@@ -585,8 +596,9 @@ def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> b
             return True
 
         if not actions:
-            logger.info(f"[Computer Use] No actions returned. Stopping.")
-            break
+            # Claude responded without tool_use — task is complete
+            logger.info(f"[Computer Use] No more actions — task complete. Total actions: {actions_taken}")
+            return actions_taken > 0
 
         # 3. Execute each action
         for action in actions:
@@ -594,7 +606,7 @@ def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> b
             logger.info(f"[Computer Use] Executing: {action_type} {action}")
 
             try:
-                _execute_computer_action(action, region, scale)
+                _execute_computer_action(action, region, scale_x, scale_y)
                 actions_taken += 1
             except Exception as e:
                 logger.error(f"[Computer Use] Action failed: {e}")
@@ -608,10 +620,11 @@ def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> b
     return actions_taken > 0
 
 
-def _execute_computer_action(action: dict, region: dict, scale: float):
-    """Execute a single computer-use action from Claude."""
+def _execute_computer_action(action: dict, region: dict, scale_x: float, scale_y: float):
+    """Execute a single computer-use action from Claude.
+    scale_x/scale_y convert from Claude's 1280x720 coords to native region pixels."""
     action_type = action.get('action', '')
-    coordinate = action.get('coordinate')  # [x, y] in screenshot coordinates
+    coordinate = action.get('coordinate')  # [x, y] in 1280x720 space
 
     if action_type == 'screenshot':
         # Claude just wants a new screenshot — we'll take one next iteration
@@ -619,32 +632,32 @@ def _execute_computer_action(action: dict, region: dict, scale: float):
 
     elif action_type in ('left_click', 'click'):
         if coordinate:
-            abs_x = int(coordinate[0] / scale) + region['x']
-            abs_y = int(coordinate[1] / scale) + region['y']
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
             pyautogui.click(abs_x, abs_y)
             logger.info(f"  → click at ({abs_x}, {abs_y})")
             time.sleep(CLICK_DELAY)
 
     elif action_type == 'double_click':
         if coordinate:
-            abs_x = int(coordinate[0] / scale) + region['x']
-            abs_y = int(coordinate[1] / scale) + region['y']
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
             pyautogui.doubleClick(abs_x, abs_y)
             logger.info(f"  → double_click at ({abs_x}, {abs_y})")
             time.sleep(CLICK_DELAY)
 
     elif action_type == 'triple_click':
         if coordinate:
-            abs_x = int(coordinate[0] / scale) + region['x']
-            abs_y = int(coordinate[1] / scale) + region['y']
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
             pyautogui.click(abs_x, abs_y, clicks=3)
             logger.info(f"  → triple_click at ({abs_x}, {abs_y})")
             time.sleep(CLICK_DELAY)
 
     elif action_type == 'right_click':
         if coordinate:
-            abs_x = int(coordinate[0] / scale) + region['x']
-            abs_y = int(coordinate[1] / scale) + region['y']
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
             pyautogui.rightClick(abs_x, abs_y)
             time.sleep(CLICK_DELAY)
 
@@ -668,24 +681,35 @@ def _execute_computer_action(action: dict, region: dict, scale: float):
             logger.info(f"  → key: {key}")
 
     elif action_type == 'scroll':
-        direction = action.get('direction', 'down')
-        amount = action.get('amount', 3)
+        direction = action.get('scroll_direction', action.get('direction', 'down'))
+        amount = action.get('scroll_amount', action.get('amount', 5))
         if coordinate:
-            abs_x = int(coordinate[0] / scale) + region['x']
-            abs_y = int(coordinate[1] / scale) + region['y']
-            pyautogui.moveTo(abs_x, abs_y)
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.click(abs_x, abs_y)  # Focus the area first
+            time.sleep(0.05)
+        # Full-page scroll: try pagedown (Windows), then Fn+Down (Mac)
         if direction == 'down':
-            pyautogui.scroll(-amount)
+            pyautogui.press('pagedown')
+            time.sleep(0.05)
+            pyautogui.hotkey('fn', 'down')
         elif direction == 'up':
-            pyautogui.scroll(amount)
-        logger.info(f"  → scroll {direction} ({amount})")
+            pyautogui.press('pageup')
+            time.sleep(0.05)
+            pyautogui.hotkey('fn', 'up')
+        logger.info(f"  → scroll {direction} (pagedown + fn+arrow)")
         time.sleep(0.3)
 
     elif action_type == 'mouse_move':
         if coordinate:
-            abs_x = int(coordinate[0] / scale) + region['x']
-            abs_y = int(coordinate[1] / scale) + region['y']
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
             pyautogui.moveTo(abs_x, abs_y)
+
+    elif action_type == 'wait':
+        duration = action.get('duration', 1)
+        time.sleep(min(duration, 5))  # Cap at 5s
+        logger.info(f"  → wait {duration}s")
 
     else:
         logger.warning(f"  → Unknown action type: {action_type}")

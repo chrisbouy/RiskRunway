@@ -6462,19 +6462,7 @@ def ams_computer_use_step():
                 "You are an insurance data entry assistant. Your job is to fill in an AMS "
                 "(Agency Management System) form with data from a quote document.\n\n"
                 "You can see the AMS form via screenshots and control it using mouse clicks, "
-                "keyboard typing, and scrolling.\n\n"
-                "RULES:\n"
-                "- Read the quote document images to extract data (insured name, address, carrier, "
-                "dates, premiums, broker, etc.)\n"
-                "- Click on form fields and type the correct values\n"
-                "- Handle dropdowns by clicking them and selecting the right option\n"
-                "- Scroll down if you need to reach more fields below the visible area\n"
-                "- Use Tab to move between fields when appropriate\n"
-                "- Format dates as MM/DD/YYYY, currency as digits only (no $), states as 2-letter codes\n"
-                "- Type all values in ALL CAPS\n"
-                "- Only enter data you can clearly read from the quote — do not guess\n"
-                "- When you have filled all visible fields that match quote data, scroll down to check for more\n"
-                "- When done (no more fields to fill), take a final screenshot to confirm, then stop\n"
+                "and scrolling.\n\n"
             )
 
             # Build first user message with quote images + screenshot
@@ -6488,9 +6476,16 @@ def ams_computer_use_step():
                 "type": "text",
                 "text": (
                     f"Above are {len(quote_images_b64)} pages from an insurance quote document. "
-                    "Below is a screenshot of the AMS form I need you to fill in. "
-                    "Please start filling in the form fields with the data from the quote. "
-                    "Click on each field and type the appropriate value."
+                    "Below is a screenshot of an AMS form.\n\n"
+                    "YOUR TASK: Only handle DROPDOWNS and SCROLLING. Ignore text fields.\n\n"
+                    "- There is a small 'exporting...' spinner overlay on screen — IGNORE IT. The form is ready.\n"
+                    "- Look at each dropdown/select field on the form\n"
+                    "- Match it to the correct value from the quote document\n"
+                    "- Click the dropdown, then click the correct option\n"
+                    "- After handling all visible dropdowns, scroll the page down using the scroll action with a large amount (10+) to reveal more fields\n"
+                    "- Repeat until you've scrolled through the entire form\n"
+                    "- Do NOT type into any text fields\n"
+                    "- When there are no more dropdowns and no more scrolling to do, stop."
                 )
             })
             content_parts.append({
