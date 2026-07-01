@@ -4315,13 +4315,17 @@ Thank you for your attention to this matter.`;
             }
         }
 
-        // ─── Actual Export Execution (after agent is confirmed installed) ──────────
+        // ─── Actual Export Execution (via Chrome extension) ──────────────────────
+        // Extension ID — update this after loading the extension in Chrome
+        const AMS_FILL_EXTENSION_ID = 'egmmmpopnianogbdaohnglledcahhhno';  // TODO: set after installing extension
+
         async function executeAmsExport() {
             const btn = document.getElementById('exportToAmsBtn');
             btn.disabled = true;
-            btn.textContent = 'Starting...';
+            btn.textContent = 'Creating job...';
 
             try {
+                // 1. Create the job on the server
                 const response = await fetch('/api/ams-export/jobs', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -4332,37 +4336,72 @@ Thank you for your attention to this matter.`;
                 });
 
                 const data = await response.json();
-
                 if (!data.success) {
                     throw new Error(data.error || 'Failed to create AMS export job');
                 }
 
                 amsExportJobId = data.job.id;
-                btn.textContent = 'Opening agent...';
+                btn.textContent = 'Filling AMS form...';
 
+                // 2. Send message to the Chrome extension to fill the AMS tab
                 const serverUrl = window.location.origin;
-                const protocolUrl = `riskrunway://export?job_id=${amsExportJobId}&server=${encodeURIComponent(serverUrl)}`;
 
-                console.log('Triggering local agent:', protocolUrl, 'Job ID:', amsExportJobId);
+                chrome.runtime.sendMessage(AMS_FILL_EXTENSION_ID, {
+                    action: 'fill_ams',
+                    job_id: amsExportJobId,
+                    server_url: serverUrl
+                }, (result) => {
+                    if (chrome.runtime.lastError) {
+                        // Extension not installed or not responding — fall back to local agent
+                        console.warn('Extension not available, falling back to local agent:', chrome.runtime.lastError.message);
+                        fallbackToLocalAgent(amsExportJobId, serverUrl);
+                        return;
+                    }
 
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                iframe.src = protocolUrl;
-                document.body.appendChild(iframe);
-                setTimeout(() => document.body.removeChild(iframe), 1000);
-
-                setTimeout(() => {
-                    window.location.reload();
-                }, 800);
-
-                btn.textContent = 'Check your desktop...';
+                    if (result && result.success) {
+                        btn.textContent = `✓ Filled ${result.filled} fields`;
+                        btn.style.background = '#065f46';
+                        setTimeout(() => {
+                            btn.disabled = false;
+                            btn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to AMS';
+                            btn.style.background = '#059669';
+                        }, 3000);
+                    } else {
+                        const errMsg = result ? result.error : 'Unknown error';
+                        console.error('Extension fill failed:', errMsg);
+                        alert('AMS fill failed: ' + errMsg);
+                        btn.disabled = false;
+                        btn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to AMS';
+                        btn.style.background = '#059669';
+                    }
+                });
 
             } catch (error) {
                 console.error('Error starting AMS export:', error);
                 alert('Error starting AMS export: ' + error.message);
                 btn.disabled = false;
-                btn.textContent = '☁️ Export to AMS';
+                btn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to AMS';
             }
+        }
+
+        // Fallback: launch local agent via protocol URL (for desktop AMS or extension not installed)
+        function fallbackToLocalAgent(jobId, serverUrl) {
+            const btn = document.getElementById('exportToAmsBtn');
+            btn.textContent = 'Opening desktop agent...';
+
+            const protocolUrl = `riskrunway://export?job_id=${jobId}&server=${encodeURIComponent(serverUrl)}`;
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = protocolUrl;
+            document.body.appendChild(iframe);
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+
+            btn.textContent = 'Check your desktop...';
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to AMS';
+                btn.style.background = '#059669';
+            }, 3000);
         }
 
         // ============================================================================

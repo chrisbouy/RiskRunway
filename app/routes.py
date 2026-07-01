@@ -6384,6 +6384,103 @@ def ams_vision():
 
 
 # ============================================================================
+# AMS EXTENSION FILL — Chrome extension enumerates DOM fields, server matches
+# ============================================================================
+
+@bp.route('/api/ams/extension-fill', methods=['POST'])
+def ams_extension_fill():
+    """
+    Called by the Chrome extension content script.
+    Receives: job_id + list of form fields (with labels, types, options).
+    Returns: fill instructions mapping selectors to values.
+    Uses Claude to match quote data to the available form fields.
+    """
+    try:
+        import settings as settings_module
+        from app.parsers.llm_parsers import BedrockClient
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON payload'}), 400
+
+        job_id = data.get('job_id')
+        fields = data.get('fields', [])
+
+        if not fields:
+            return jsonify({'success': False, 'error': 'No fields provided'}), 400
+
+        # Load quote images for this job
+        quote_images = []
+        if job_id:
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job and job.quote_id:
+                    quote = db_session.query(Quote).filter_by(id=job.quote_id).first()
+                    if quote and quote.pass1_layout_json:
+                        from PIL import Image
+                        layout = json.loads(quote.pass1_layout_json)
+                        for page in layout.get('pages', []):
+                            img_path = page.get('image_path')
+                            if img_path and os.path.exists(img_path):
+                                quote_images.append(Image.open(img_path).convert("RGB"))
+                elif job:
+                    quotes = db_session.query(Quote).filter_by(submission_id=job.submission_id).all()
+                    for quote in quotes:
+                        if quote.pass1_layout_json:
+                            from PIL import Image
+                            layout = json.loads(quote.pass1_layout_json)
+                            for page in layout.get('pages', []):
+                                img_path = page.get('image_path')
+                                if img_path and os.path.exists(img_path):
+                                    quote_images.append(Image.open(img_path).convert("RGB"))
+                            break
+            finally:
+                db_session.close()
+
+        if not quote_images:
+            return jsonify({'success': False, 'error': 'No quote images found for this job'}), 400
+
+        # Build prompt: field list + quote images → ask Claude to match
+        fields_description = json.dumps(fields, indent=2)
+
+        prompt = (
+            "You are matching insurance quote data to form fields.\n\n"
+            "Below is a list of empty form fields from an AMS (Agency Management System) web form. "
+            "Each field has a label, type, selector, and for dropdowns, available options.\n\n"
+            f"FORM FIELDS:\n{fields_description}\n\n"
+            "The images show pages from an insurance quote document.\n\n"
+            "YOUR TASK:\n"
+            "- Read the quote document to extract all relevant data\n"
+            "- Match extracted data to the appropriate form fields\n"
+            "- For dropdown/select fields, pick the closest matching option from the available options list\n"
+            "- Format dates as MM/DD/YYYY, currency as digits only (no $), states as 2-letter codes\n"
+            "- Type all values in ALL CAPS\n"
+            "- Only match data you can clearly read from the quote — do not guess\n"
+            "- Skip fields where no matching data exists in the quote\n\n"
+            "Return ONLY valid JSON mapping each field's selector to its value:\n"
+            '{\n'
+            '  "#insured_name": {"value": "ACME CORP LLC"},\n'
+            '  "#state": {"value": "LA"},\n'
+            '  "[name=\\"effective_date\\"]": {"value": "02/10/2026"}\n'
+            '}\n'
+            "Only include fields you have confident matches for."
+        )
+
+        # Call Claude with quote images
+        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+        fills = client.generate_json_with_images(prompt, quote_images)
+
+        logger.info(f"[AMS Extension Fill] Matched {len(fills)} fields for job {job_id}")
+
+        return jsonify({'success': True, 'fills': fills})
+
+    except Exception as e:
+        logger.error(f"[AMS Extension Fill] Error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
 # AMS COMPUTER USE — Agentic loop with Claude computer-use tool
 # ============================================================================
 
