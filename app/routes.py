@@ -6477,8 +6477,9 @@ def ams_computer_use_step():
                 "text": (
                     f"Above are {len(quote_images_b64)} pages from an insurance quote document. "
                     "Below is a screenshot of an AMS form.\n\n"
-                    "YOUR TASK: Only handle DROPDOWNS and SCROLLING. Ignore text fields.\n\n"
+                    "YOUR TASK: Only handle DROPDOWNS and SCROLLING. Text fields have already been filled.\n\n"
                     "- There is a small 'exporting...' spinner overlay on screen — IGNORE IT. The form is ready.\n"
+                    "- Text fields are already filled — do NOT click on or type into any text input fields\n"
                     "- Look at each dropdown/select field on the form\n"
                     "- Match it to the correct value from the quote document\n"
                     "- Click the dropdown, then click the correct option\n"

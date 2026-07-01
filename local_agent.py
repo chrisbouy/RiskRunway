@@ -902,119 +902,30 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
         base_x = int(info["x"] / scale) + region["x"]
         base_y = int(info["y"] / scale) + region["y"]
 
-        field_filled = False
+        # Apply +18px offset by default (Claude points at labels, not inputs)
+        abs_x = base_x
+        abs_y = base_y + 18
 
-        # ── ATTEMPT 0: Accessibility API (macOS) ─────────────────────────────
-        # Snap to the nearest text field and set its value directly.
-        if _AX_AVAILABLE:
-            ax_ok, ax_info = ax_fill_field(base_x, base_y, value)
-            if ax_ok:
-                logger.info(
-                    f"✓ FILLED '{label}' | via AX | {ax_info} | "
-                    f"value='{value}' | coords=({base_x},{base_y})"
-                )
-                click_log.append({
-                    "label": label, "abs_x": base_x, "abs_y": base_y,
-                    "status": "hit", "attempt": 0, "value": value, "method": "ax",
-                })
-                filled.add(label)
-                field_filled = True
-            else:
-                logger.info(
-                    f"  AX did not succeed for '{label}' ({ax_info}) — falling back to click+paste"
-                )
-
-        # ── FALLBACK: click + Cmd+A + paste with retries ─────────────────────
-        # Retry offsets: try center, then below (labels usually above field),
-        # then above, then sideways. Larger offsets to actually land on the box.
-        retry_offsets = [(0, 0), (0, 18), (0, -18), (15, 0), (-15, 0)]
-
-        for attempt_idx, (dx, dy) in enumerate(retry_offsets):
-            if field_filled:
-                break
-            attempt = attempt_idx + 1
-            if attempt > MAX_FIELD_RETRIES:
-                break
-            abs_x = base_x + dx
-            abs_y = base_y + dy
-
-            try:
-                pyautogui.click(abs_x, abs_y)
-                time.sleep(CLICK_DELAY)
-                pyautogui.hotkey(*SELECT_HOTKEY)
-
-                if REMOTE_MODE:
-                    # Remote mode: typewrite keystrokes (no clipboard access)
-                    pyautogui.typewrite(value, interval=TYPEWRITE_INTERVAL)
-                else:
-                    pyperclip.copy(value)
-                    pyautogui.hotkey(*PASTE_HOTKEY)
-                time.sleep(FILL_DELAY)
-
-                if REMOTE_MODE:
-                    # Skip verification in remote mode — clipboard isn't shared
-                    logger.info(
-                        f"✓ FILLED '{label}' (remote, unverified) | attempt {attempt} (offset {dx},{dy}) | "
-                        f"value='{value}' | coords=({abs_x},{abs_y})"
-                    )
-                    click_log.append({
-                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
-                        "status": "hit", "attempt": attempt, "value": value, "method": "typewrite",
-                    })
-                    filled.add(label)
-                    field_filled = True
-                    pyautogui.click(safe_x, safe_y)
-                    time.sleep(0.03)
-                    break
-
-                # Verify the paste landed
-                verdict = verify_field_filled(value)
-
-                if verdict == "hit":
-                    logger.info(
-                        f"✓ FILLED '{label}' | attempt {attempt} (offset {dx},{dy}) | "
-                        f"value='{value}' | coords=({abs_x},{abs_y})"
-                    )
-                    click_log.append({
-                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
-                        "status": "hit", "attempt": attempt, "value": value, "method": "click",
-                    })
-                    filled.add(label)
-                    field_filled = True
-                    # Click safe spot to deselect before moving to next field
-                    pyautogui.click(safe_x, safe_y)
-                    time.sleep(0.03)
-                    break
-                else:
-                    logger.warning(
-                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} (offset {dx},{dy}) | "
-                        f"verdict={verdict} | value='{value}' | coords=({abs_x},{abs_y})"
-                    )
-                    # Capture a thumbnail of the miss area
-                    capture_miss_thumbnail(abs_x, abs_y, label, attempt, region)
-                    # Press Escape to deselect / dismiss anything before retry
-                    pyautogui.press("escape")
-                    time.sleep(0.05)
-                    # Click safe spot to reset focus
-                    pyautogui.click(safe_x, safe_y)
-                    time.sleep(0.05)
-
-            except Exception as e:
-                logger.error(
-                    f"✗ EXCEPTION '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} | "
-                    f"coords=({abs_x},{abs_y}) | error: {e}"
-                )
-                pyautogui.click(safe_x, safe_y)
-                time.sleep(0.05)
-
-        if not field_filled:
-            logger.error(
-                f"✗✗ FAILED '{label}' after all attempts | "
-                f"value='{value}' | base_coords=({base_x},{base_y})"
+        # Just click + paste — no select-all, no verification, no AX
+        try:
+            pyautogui.click(abs_x, abs_y)
+            time.sleep(CLICK_DELAY)
+            pyperclip.copy(value)
+            pyautogui.hotkey(*PASTE_HOTKEY)
+            time.sleep(FILL_DELAY)
+            logger.info(
+                f"✓ FILLED '{label}' | value='{value}' | coords=({abs_x},{abs_y})"
             )
             click_log.append({
-                "label": label, "abs_x": base_x, "abs_y": base_y,
-                "status": "miss", "attempt": MAX_FIELD_RETRIES, "value": value,
+                "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                "status": "hit", "value": value,
+            })
+            filled.add(label)
+        except Exception as e:
+            logger.error(f"✗ FAILED '{label}' | coords=({abs_x},{abs_y}) | error: {e}")
+            click_log.append({
+                "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                "status": "miss", "value": value,
             })
             failed.add(label)
 
@@ -1550,7 +1461,22 @@ def run_job(job: dict, server_url: str):
     # Define the work function to run in a thread
     def do_work():
         try:
-            success = run_computer_use_job(server_url, region, job_id=job_id)
+            # ── Pass 1: Vision/coordinates for textboxes (fast) ──
+            print(f"\n  Pass 1: Filling textboxes via vision...")
+            vision_success = run_vision_job(server_url, json_data, region, job_id=job_id)
+            if vision_success:
+                logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) succeeded")
+            else:
+                logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) filled nothing — continuing to pass 2")
+
+            # ── Pass 2: Computer-use for dropdowns, scrolling, anything missed ──
+            print(f"  Pass 2: Handling dropdowns and scrolling via computer-use...")
+            cu_success = run_computer_use_job(server_url, region, job_id=job_id)
+            if cu_success:
+                logger.info(f"[Job {job_id}] Pass 2 (computer-use) succeeded")
+
+            # Overall success if either pass did something
+            success = vision_success or cu_success
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")
