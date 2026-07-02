@@ -131,7 +131,7 @@ class GroqClient(LLMClient):
 
 
 class BedrockClient(LLMClient):
-    def __init__(self, model="us.anthropic.claude-sonnet-4-6", region="us-east-1"):
+    def __init__(self, model="us.anthropic.claude-haiku-4-5-20251001-v1:0", region="us-east-1"):
         self.model = model
         self.region = region
         self.client = boto3.client("bedrock-runtime", region_name=self.region)
