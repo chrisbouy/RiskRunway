@@ -4346,34 +4346,32 @@ Thank you for your attention to this matter.`;
                 // 2. Send message to the Chrome extension to fill the AMS tab
                 const serverUrl = window.location.origin;
 
+                console.log('Sending to extension:', AMS_FILL_EXTENSION_ID, 'job:', amsExportJobId);
+
+                if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+                    console.warn('chrome.runtime.sendMessage not available — falling back to local agent');
+                    fallbackToLocalAgent(amsExportJobId, serverUrl);
+                    return;
+                }
+
                 chrome.runtime.sendMessage(AMS_FILL_EXTENSION_ID, {
                     action: 'fill_ams',
                     job_id: amsExportJobId,
                     server_url: serverUrl
                 }, (result) => {
                     if (chrome.runtime.lastError) {
-                        // Extension not installed or not responding — fall back to local agent
                         console.warn('Extension not available, falling back to local agent:', chrome.runtime.lastError.message);
                         fallbackToLocalAgent(amsExportJobId, serverUrl);
                         return;
                     }
 
-                    if (result && result.success) {
-                        btn.textContent = `✓ Filled ${result.filled} fields`;
-                        btn.style.background = '#065f46';
-                        setTimeout(() => {
-                            btn.disabled = false;
-                            btn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to AMS';
-                            btn.style.background = '#059669';
-                        }, 3000);
-                    } else {
-                        const errMsg = result ? result.error : 'Unknown error';
-                        console.error('Extension fill failed:', errMsg);
-                        alert('AMS fill failed: ' + errMsg);
+                    // Extension received the job — tab picker will open
+                    btn.textContent = 'Select AMS tab in the popup...';
+                    setTimeout(() => {
                         btn.disabled = false;
                         btn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to AMS';
                         btn.style.background = '#059669';
-                    }
+                    }, 5000);
                 });
 
             } catch (error) {

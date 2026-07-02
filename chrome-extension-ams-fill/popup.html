@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 300px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f1219;
+    color: #e2e8f0;
+    padding: 16px;
+  }
+  h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #4f8ef7;
+  }
+  .subtitle {
+    font-size: 11px;
+    color: #6b7394;
+    margin-bottom: 12px;
+  }
+  .tab-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .tab-item {
+    padding: 10px 12px;
+    border: 1px solid #1e2433;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s;
+  }
+  .tab-item:hover {
+    border-color: #4f8ef7;
+    background: rgba(79, 142, 247, 0.08);
+  }
+  .tab-item .tab-title {
+    font-weight: 500;
+    color: #e2e8f0;
+  }
+  .tab-item .tab-url {
+    font-size: 10px;
+    color: #6b7394;
+    margin-top: 2px;
+  }
+  .status {
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    color: #6b7394;
+  }
+  .error {
+    color: #e74c3c;
+    font-size: 12px;
+    padding: 10px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <h2>RiskRunway AMS Fill</h2>
+  <p class="subtitle">Select the tab with your AMS form:</p>
+  <div id="tabList" class="tab-list">
+    <div class="status">Loading tabs...</div>
+  </div>
+  <div id="error" class="error" style="display:none"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
