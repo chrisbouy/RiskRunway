@@ -505,6 +505,216 @@ def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int 
     logger.info(f"Done. Filled: {sorted(all_filled)}")
     return len(all_filled) > 0
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Computer Use Mode — Agentic loop where Claude controls the mouse/keyboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+COMPUTER_USE_TIMEOUT = 45  # seconds max for the agentic loop
+COMPUTER_USE_MAX_STEPS = 30  # max actions before stopping
+
+def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> bool:
+    """
+    Agentic computer-use loop:
+    1. Take screenshot of the AMS form
+    2. Send to server (which calls Claude with computer-use tool)
+    3. Get back an action (click, type, scroll, etc.)
+    4. Execute the action via pyautogui
+    5. Repeat until Claude says done or timeout
+    """
+    messages = []  # conversation history maintained server-side
+    start_time = time.time()
+    actions_taken = 0
+
+    logger.info(f"[Computer Use] Starting agentic loop for job {job_id}")
+    logger.info(f"[Computer Use] Region: {region}")
+    logger.info(f"[Computer Use] Timeout: {COMPUTER_USE_TIMEOUT}s, Max steps: {COMPUTER_USE_MAX_STEPS}")
+
+    while True:
+        # Check timeout
+        elapsed = time.time() - start_time
+        if elapsed > COMPUTER_USE_TIMEOUT:
+            logger.info(f"[Computer Use] Timeout reached ({elapsed:.1f}s). Stopping.")
+            break
+
+        # Check step limit
+        if actions_taken >= COMPUTER_USE_MAX_STEPS:
+            logger.info(f"[Computer Use] Max steps reached ({actions_taken}). Stopping.")
+            break
+
+        # 1. Take screenshot — resize to 1280x720 for API (per Anthropic best practices)
+        CU_DISPLAY_W, CU_DISPLAY_H = 1280, 720
+        screenshot_bytes, _raw_scale = take_screenshot(region)
+        # Resize to 1280x720 regardless of native size
+        from PIL import Image as _PILImage
+        _ss_img = _PILImage.open(io.BytesIO(screenshot_bytes)).convert("RGB")
+        _ss_resized = _ss_img.resize((CU_DISPLAY_W, CU_DISPLAY_H), _PILImage.LANCZOS)
+        _ss_buf = io.BytesIO()
+        _ss_resized.save(_ss_buf, format="JPEG", quality=80)
+        screenshot_bytes = _ss_buf.getvalue()
+        # Scale factors: Claude coords (1280x720) → native region pixels
+        scale_x = region['width'] / CU_DISPLAY_W
+        scale_y = region['height'] / CU_DISPLAY_H
+        logger.info(f"[Computer Use] Step {actions_taken + 1}: screenshot taken ({CU_DISPLAY_W}x{CU_DISPLAY_H})")
+
+        # 2. Send to server
+        payload = {
+            'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'),
+            'job_id': job_id,
+            'messages': messages,
+            'display_width': CU_DISPLAY_W,
+            'display_height': CU_DISPLAY_H,
+        }
+
+        try:
+            response = requests.post(
+                f"{server_url}/api/ams/computer-use-step",
+                json=payload,
+                timeout=60
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            logger.error(f"[Computer Use] Server request failed: {e}")
+            break
+
+        if not data.get('success'):
+            logger.error(f"[Computer Use] Server error: {data.get('error')}")
+            break
+
+        # Update conversation history
+        messages = data.get('messages', [])
+        actions = data.get('actions', [])
+        is_done = data.get('is_done', False)
+        assistant_text = data.get('assistant_text', '')
+
+        if assistant_text:
+            logger.info(f"[Computer Use] Claude says: {assistant_text[:100]}")
+
+        if is_done:
+            logger.info(f"[Computer Use] Claude indicated done. Total actions: {actions_taken}")
+            return True
+
+        if not actions:
+            # Claude responded without tool_use — task is complete
+            logger.info(f"[Computer Use] No more actions — task complete. Total actions: {actions_taken}")
+            return actions_taken > 0
+
+        # 3. Execute each action
+        for action in actions:
+            action_type = action.get('action', '')
+            logger.info(f"[Computer Use] Executing: {action_type} {action}")
+
+            try:
+                _execute_computer_action(action, region, scale_x, scale_y)
+                actions_taken += 1
+            except Exception as e:
+                logger.error(f"[Computer Use] Action failed: {e}")
+
+            time.sleep(0.1)  # small delay between actions
+
+        # Small delay before next screenshot to let the UI update
+        time.sleep(0.3)
+
+    logger.info(f"[Computer Use] Loop ended. {actions_taken} actions taken in {time.time() - start_time:.1f}s")
+    return actions_taken > 0
+
+
+def _execute_computer_action(action: dict, region: dict, scale_x: float, scale_y: float):
+    """Execute a single computer-use action from Claude.
+    scale_x/scale_y convert from Claude's 1280x720 coords to native region pixels."""
+    action_type = action.get('action', '')
+    coordinate = action.get('coordinate')  # [x, y] in 1280x720 space
+
+    if action_type == 'screenshot':
+        # Claude just wants a new screenshot — we'll take one next iteration
+        return
+
+    elif action_type in ('left_click', 'click'):
+        if coordinate:
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.click(abs_x, abs_y)
+            logger.info(f"  → click at ({abs_x}, {abs_y})")
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'double_click':
+        if coordinate:
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.doubleClick(abs_x, abs_y)
+            logger.info(f"  → double_click at ({abs_x}, {abs_y})")
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'triple_click':
+        if coordinate:
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.click(abs_x, abs_y, clicks=3)
+            logger.info(f"  → triple_click at ({abs_x}, {abs_y})")
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'right_click':
+        if coordinate:
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.rightClick(abs_x, abs_y)
+            time.sleep(CLICK_DELAY)
+
+    elif action_type == 'type':
+        text = action.get('text', '')
+        if text:
+            pyperclip.copy(text)
+            pyautogui.hotkey(*PASTE_HOTKEY)
+            logger.info(f"  → type (paste): '{text[:50]}'")
+            time.sleep(0.05)
+
+    elif action_type == 'key':
+        key = action.get('text', '')
+        if key:
+            # Handle special keys and combos
+            if '+' in key:
+                keys = [k.strip().lower() for k in key.split('+')]
+                pyautogui.hotkey(*keys)
+            else:
+                pyautogui.press(key.lower())
+            logger.info(f"  → key: {key}")
+
+    elif action_type == 'scroll':
+        direction = action.get('scroll_direction', action.get('direction', 'down'))
+        amount = action.get('scroll_amount', action.get('amount', 5))
+        if coordinate:
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.click(abs_x, abs_y)  # Focus the area first
+            time.sleep(0.05)
+        # Full-page scroll: try pagedown (Windows), then Fn+Down (Mac)
+        if direction == 'down':
+            pyautogui.press('pagedown')
+            time.sleep(0.05)
+            pyautogui.hotkey('fn', 'down')
+        elif direction == 'up':
+            pyautogui.press('pageup')
+            time.sleep(0.05)
+            pyautogui.hotkey('fn', 'up')
+        logger.info(f"  → scroll {direction} (pagedown + fn+arrow)")
+        time.sleep(0.3)
+
+    elif action_type == 'mouse_move':
+        if coordinate:
+            abs_x = int(coordinate[0] * scale_x) + region['x']
+            abs_y = int(coordinate[1] * scale_y) + region['y']
+            pyautogui.moveTo(abs_x, abs_y)
+
+    elif action_type == 'wait':
+        duration = action.get('duration', 1)
+        time.sleep(min(duration, 5))  # Cap at 5s
+        logger.info(f"  → wait {duration}s")
+
+    else:
+        logger.warning(f"  → Unknown action type: {action_type}")
+
+
 def get_tb_coords(server_url: str, screenshot_bytes: bytes,
                           json_data: dict, already_filled: set, job_id: int = None) -> dict:
     """
@@ -692,119 +902,30 @@ def tb_fill(tb_dict: dict, region: dict, scale: float, job_id: int = None) -> se
         base_x = int(info["x"] / scale) + region["x"]
         base_y = int(info["y"] / scale) + region["y"]
 
-        field_filled = False
+        # Apply +18px offset by default (Claude points at labels, not inputs)
+        abs_x = base_x
+        abs_y = base_y + 18
 
-        # ── ATTEMPT 0: Accessibility API (macOS) ─────────────────────────────
-        # Snap to the nearest text field and set its value directly.
-        if _AX_AVAILABLE:
-            ax_ok, ax_info = ax_fill_field(base_x, base_y, value)
-            if ax_ok:
-                logger.info(
-                    f"✓ FILLED '{label}' | via AX | {ax_info} | "
-                    f"value='{value}' | coords=({base_x},{base_y})"
-                )
-                click_log.append({
-                    "label": label, "abs_x": base_x, "abs_y": base_y,
-                    "status": "hit", "attempt": 0, "value": value, "method": "ax",
-                })
-                filled.add(label)
-                field_filled = True
-            else:
-                logger.info(
-                    f"  AX did not succeed for '{label}' ({ax_info}) — falling back to click+paste"
-                )
-
-        # ── FALLBACK: click + Cmd+A + paste with retries ─────────────────────
-        # Retry offsets: try center, then below (labels usually above field),
-        # then above, then sideways. Larger offsets to actually land on the box.
-        retry_offsets = [(0, 0), (0, 18), (0, -18), (15, 0), (-15, 0)]
-
-        for attempt_idx, (dx, dy) in enumerate(retry_offsets):
-            if field_filled:
-                break
-            attempt = attempt_idx + 1
-            if attempt > MAX_FIELD_RETRIES:
-                break
-            abs_x = base_x + dx
-            abs_y = base_y + dy
-
-            try:
-                pyautogui.click(abs_x, abs_y)
-                time.sleep(CLICK_DELAY)
-                pyautogui.hotkey(*SELECT_HOTKEY)
-
-                if REMOTE_MODE:
-                    # Remote mode: typewrite keystrokes (no clipboard access)
-                    pyautogui.typewrite(value, interval=TYPEWRITE_INTERVAL)
-                else:
-                    pyperclip.copy(value)
-                    pyautogui.hotkey(*PASTE_HOTKEY)
-                time.sleep(FILL_DELAY)
-
-                if REMOTE_MODE:
-                    # Skip verification in remote mode — clipboard isn't shared
-                    logger.info(
-                        f"✓ FILLED '{label}' (remote, unverified) | attempt {attempt} (offset {dx},{dy}) | "
-                        f"value='{value}' | coords=({abs_x},{abs_y})"
-                    )
-                    click_log.append({
-                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
-                        "status": "hit", "attempt": attempt, "value": value, "method": "typewrite",
-                    })
-                    filled.add(label)
-                    field_filled = True
-                    pyautogui.click(safe_x, safe_y)
-                    time.sleep(0.03)
-                    break
-
-                # Verify the paste landed
-                verdict = verify_field_filled(value)
-
-                if verdict == "hit":
-                    logger.info(
-                        f"✓ FILLED '{label}' | attempt {attempt} (offset {dx},{dy}) | "
-                        f"value='{value}' | coords=({abs_x},{abs_y})"
-                    )
-                    click_log.append({
-                        "label": label, "abs_x": abs_x, "abs_y": abs_y,
-                        "status": "hit", "attempt": attempt, "value": value, "method": "click",
-                    })
-                    filled.add(label)
-                    field_filled = True
-                    # Click safe spot to deselect before moving to next field
-                    pyautogui.click(safe_x, safe_y)
-                    time.sleep(0.03)
-                    break
-                else:
-                    logger.warning(
-                        f"✗ MISS '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} (offset {dx},{dy}) | "
-                        f"verdict={verdict} | value='{value}' | coords=({abs_x},{abs_y})"
-                    )
-                    # Capture a thumbnail of the miss area
-                    capture_miss_thumbnail(abs_x, abs_y, label, attempt, region)
-                    # Press Escape to deselect / dismiss anything before retry
-                    pyautogui.press("escape")
-                    time.sleep(0.05)
-                    # Click safe spot to reset focus
-                    pyautogui.click(safe_x, safe_y)
-                    time.sleep(0.05)
-
-            except Exception as e:
-                logger.error(
-                    f"✗ EXCEPTION '{label}' | attempt {attempt}/{MAX_FIELD_RETRIES} | "
-                    f"coords=({abs_x},{abs_y}) | error: {e}"
-                )
-                pyautogui.click(safe_x, safe_y)
-                time.sleep(0.05)
-
-        if not field_filled:
-            logger.error(
-                f"✗✗ FAILED '{label}' after all attempts | "
-                f"value='{value}' | base_coords=({base_x},{base_y})"
+        # Just click + paste — no select-all, no verification, no AX
+        try:
+            pyautogui.click(abs_x, abs_y)
+            time.sleep(CLICK_DELAY)
+            pyperclip.copy(value)
+            pyautogui.hotkey(*PASTE_HOTKEY)
+            time.sleep(FILL_DELAY)
+            logger.info(
+                f"✓ FILLED '{label}' | value='{value}' | coords=({abs_x},{abs_y})"
             )
             click_log.append({
-                "label": label, "abs_x": base_x, "abs_y": base_y,
-                "status": "miss", "attempt": MAX_FIELD_RETRIES, "value": value,
+                "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                "status": "hit", "value": value,
+            })
+            filled.add(label)
+        except Exception as e:
+            logger.error(f"✗ FAILED '{label}' | coords=({abs_x},{abs_y}) | error: {e}")
+            click_log.append({
+                "label": label, "abs_x": abs_x, "abs_y": abs_y,
+                "status": "miss", "value": value,
             })
             failed.add(label)
 
@@ -1340,7 +1461,22 @@ def run_job(job: dict, server_url: str):
     # Define the work function to run in a thread
     def do_work():
         try:
-            success = run_vision_job(server_url, json_data, region, job_id=job_id)
+            # ── Pass 1: Vision/coordinates for textboxes (fast) ──
+            print(f"\n  Pass 1: Filling textboxes via vision...")
+            vision_success = run_vision_job(server_url, json_data, region, job_id=job_id)
+            if vision_success:
+                logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) succeeded")
+            else:
+                logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) filled nothing — continuing to pass 2")
+
+            # ── Pass 2: Computer-use for dropdowns, scrolling, anything missed ──
+            print(f"  Pass 2: Handling dropdowns and scrolling via computer-use...")
+            cu_success = run_computer_use_job(server_url, region, job_id=job_id)
+            if cu_success:
+                logger.info(f"[Job {job_id}] Pass 2 (computer-use) succeeded")
+
+            # Overall success if either pass did something
+            success = vision_success or cu_success
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")

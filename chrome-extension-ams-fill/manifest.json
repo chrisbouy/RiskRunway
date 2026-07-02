@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "RiskRunway AMS Fill",
+  "version": "1.0.0",
+  "description": "Automatically fills web-based AMS forms with quote data from RiskRunway",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:*/*",
+      "https://*.riskrunway.com/*"
+    ]
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
