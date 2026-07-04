@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>InsureTech Pro — New Policy</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: #fafbfc; color: #1f2937; }
+  .app-bar { background: #4338ca; color: white; padding: 10px 20px; font-size: 14px; font-weight: 600; }
+  .container { max-width: 900px; margin: 24px auto; padding: 0 20px; }
+  .card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .card h3 { font-size: 13px; color: #6366f1; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 11px; font-weight: 600; color: #4b5563; }
+  .form-group input, .form-group select {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 10px;
+    font-size: 13px; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus {
+    outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+</style>
+</head>
+<body>
+<div class="app-bar">InsureTech Pro — New Policy Submission</div>
+<div class="container">
+
+  <!-- This simulates a React-style controlled form where setting .value directly
+       doesn't trigger React's state update. We use a MutationObserver to detect
+       programmatic changes and validate that events are dispatched correctly. -->
+
+  <div class="card">
+    <h3>Insured Details</h3>
+    <div class="grid">
+      <div class="form-group">
+        <label>Insured Name</label>
+        <input type="text" data-field="insuredName" id="insuredName">
+      </div>
+      <div class="form-group">
+        <label>DBA / Trade Name</label>
+        <input type="text" data-field="dba" id="dba">
+      </div>
+      <div class="form-group">
+        <label>Address</label>
+        <input type="text" data-field="address" id="address">
+      </div>
+      <div class="form-group">
+        <label>City</label>
+        <input type="text" data-field="city" id="city">
+      </div>
+      <div class="form-group">
+        <label>State</label>
+        <select data-field="state" id="state">
+          <option value="">Select...</option>
+          <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+          <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+          <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+          <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+          <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+          <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+          <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+          <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+          <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+          <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+          <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+          <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+          <option>WI</option><option>WY</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Zip Code</label>
+        <input type="text" data-field="zip" id="zip">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Coverage Information</h3>
+    <div class="grid">
+      <div class="form-group">
+        <label>Carrier</label>
+        <input type="text" data-field="carrier" id="carrier">
+      </div>
+      <div class="form-group">
+        <label>Policy Number</label>
+        <input type="text" data-field="policyNumber" id="policyNumber">
+      </div>
+      <div class="form-group">
+        <label>Line of Business</label>
+        <select data-field="lob" id="lob">
+          <option value="">Select...</option>
+          <option value="gl">General Liability</option>
+          <option value="auto">Commercial Auto</option>
+          <option value="wc">Workers Compensation</option>
+          <option value="prop">Commercial Property</option>
+          <option value="umb">Umbrella/Excess</option>
+          <option value="pl">Professional Liability</option>
+          <option value="cyber">Cyber Liability</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Effective Date</label>
+        <input type="text" data-field="effectiveDate" id="effectiveDate">
+      </div>
+      <div class="form-group">
+        <label>Expiration Date</label>
+        <input type="text" data-field="expirationDate" id="expirationDate">
+      </div>
+      <div class="form-group">
+        <label>Annual Premium</label>
+        <input type="text" data-field="premium" id="premium">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Agency / Producer</h3>
+    <div class="grid">
+      <div class="form-group">
+        <label>Producer</label>
+        <input type="text" data-field="producer" id="producer">
+      </div>
+      <div class="form-group">
+        <label>Wholesale Broker</label>
+        <input type="text" data-field="broker" id="broker">
+      </div>
+      <div class="form-group">
+        <label>Commission %</label>
+        <input type="text" data-field="commission" id="commission">
+      </div>
+    </div>
+  </div>
+
+  <!-- Status display — simulates React state tracking -->
+  <div id="stateDisplay" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:12px;font-size:11px;font-family:monospace;color:#6b7280;margin-top:8px;">
+    Form state: waiting for input...
+  </div>
+</div>
+
+<script>
+  // Simulates React's controlled input behavior
+  // If .value is set without proper event dispatch, this won't update
+  const formState = {};
+  const stateDisplay = document.getElementById('stateDisplay');
+
+  document.querySelectorAll('[data-field]').forEach(el => {
+    // Only update state when proper events fire (like React's onChange)
+    el.addEventListener('input', (e) => {
+      formState[el.dataset.field] = el.value;
+      updateDisplay();
+    });
+    el.addEventListener('change', (e) => {
+      formState[el.dataset.field] = el.value;
+      updateDisplay();
+    });
+  });
+
+  function updateDisplay() {
+    const entries = Object.entries(formState).filter(([k,v]) => v);
+    if (entries.length === 0) {
+      stateDisplay.textContent = 'Form state: waiting for input...';
+    } else {
+      stateDisplay.textContent = 'Form state: ' + entries.map(([k,v]) => `${k}="${v}"`).join(', ');
+    }
+  }
+</script>
+</body>
+</html>

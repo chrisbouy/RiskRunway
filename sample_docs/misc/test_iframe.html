@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Applied Online — Policy Module</title>
+<style>
+  body { font-family: Verdana, sans-serif; background: #e8e8e8; margin: 0; padding: 0; }
+  .toolbar { background: #2c3e50; color: white; padding: 8px 16px; font-size: 12px; }
+  .toolbar span { margin-right: 20px; }
+  .content { padding: 16px; }
+  h3 { color: #2c3e50; font-size: 14px; margin-bottom: 8px; }
+  iframe { width: 100%; height: 600px; border: 1px solid #aaa; background: white; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span>Applied Online</span>
+  <span>Module: Policy Entry</span>
+  <span>User: demo_agent</span>
+</div>
+<div class="content">
+  <h3>Policy Entry Form (loaded in iframe)</h3>
+  <!-- Form lives inside an iframe — simulates embedded AMS module -->
+  <iframe id="policyFrame" srcdoc="
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+      body { font-family: Verdana, sans-serif; font-size: 12px; padding: 16px; }
+      table { border-collapse: collapse; width: 100%; }
+      td { padding: 6px 8px; vertical-align: top; }
+      td.lbl { font-weight: bold; color: #333; width: 130px; text-align: right; padding-right: 12px; }
+      input, select { width: 100%; padding: 4px 6px; border: 1px solid #999; font-size: 12px; }
+      .section { background: #f5f5f5; font-weight: bold; padding: 8px; margin: 12px 0 4px; border-left: 3px solid #2c3e50; }
+    </style>
+    </head>
+    <body>
+      <div class='section'>Insured Information</div>
+      <table>
+        <tr><td class='lbl'>Insured Name:</td><td><input type='text' name='ins_name'></td>
+            <td class='lbl'>DBA:</td><td><input type='text' name='ins_dba'></td></tr>
+        <tr><td class='lbl'>Address:</td><td colspan='3'><input type='text' name='ins_addr'></td></tr>
+        <tr><td class='lbl'>City:</td><td><input type='text' name='ins_city'></td>
+            <td class='lbl'>State:</td><td><select name='ins_state'>
+              <option value=''>--</option>
+              <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+              <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+              <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+              <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+              <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+              <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+              <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+              <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+              <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+              <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+              <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+              <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+              <option>WI</option><option>WY</option>
+            </select></td></tr>
+        <tr><td class='lbl'>Zip:</td><td><input type='text' name='ins_zip'></td>
+            <td class='lbl'>Phone:</td><td><input type='text' name='ins_phone'></td></tr>
+      </table>
+
+      <div class='section'>Policy Details</div>
+      <table>
+        <tr><td class='lbl'>Carrier:</td><td><input type='text' name='pol_carrier'></td>
+            <td class='lbl'>Policy No:</td><td><input type='text' name='pol_number'></td></tr>
+        <tr><td class='lbl'>Eff Date:</td><td><input type='text' name='pol_eff'></td>
+            <td class='lbl'>Exp Date:</td><td><input type='text' name='pol_exp'></td></tr>
+        <tr><td class='lbl'>Premium:</td><td><input type='text' name='pol_premium'></td>
+            <td class='lbl'>LOB:</td><td><select name='pol_lob'>
+              <option value=''>--</option>
+              <option>GL</option><option>Auto</option><option>WC</option>
+              <option>Property</option><option>Umbrella</option><option>PL</option>
+            </select></td></tr>
+      </table>
+
+      <div class='section'>Producer</div>
+      <table>
+        <tr><td class='lbl'>Producer:</td><td><input type='text' name='producer'></td>
+            <td class='lbl'>Broker:</td><td><input type='text' name='broker'></td></tr>
+      </table>
+    </body>
+    </html>
+  "></iframe>
+</div>
+</body>
+</html>
