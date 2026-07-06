@@ -104,9 +104,134 @@ def create_app():
                                 
                                 print(f"[EMAIL SCRAPER] OAuth fetched {len(emails)} emails from {account.email_address}")
                                 
-                                # Process emails (match to submissions, save to DB)
-                                # For now just count - full integration would reuse email_client.py logic
-                                oauth_result = {'success': True, 'accounts': len(accounts), 'emails': len(emails)}
+                                # Process emails: filter by broker OR insured name, then trigger SMS alerts
+                                from app.models import Broker, Submission
+                                
+                                # Get broker emails for this user
+                                user_brokers = db_session.query(Broker).filter(
+                                    Broker.user_id == account.user_id,
+                                    Broker.is_enabled == True,
+                                    Broker.email.isnot(None)
+                                ).all()
+                                broker_email_set = set(b.email.strip().lower() for b in user_brokers if b.email)
+                                
+                                # Get insured name variants for this user's submissions
+                                user_submissions = db_session.query(Submission).filter(
+                                    Submission.assigned_to == account.user_id
+                                ).all()
+                                
+                                insured_variants = set()
+                                for sub in user_submissions:
+                                    if sub.insured_name:
+                                        # Simple variant: lowercase full name and significant words
+                                        name_lower = sub.insured_name.strip().lower()
+                                        insured_variants.add(name_lower)
+                                        for word in name_lower.split():
+                                            if len(word) > 3:
+                                                insured_variants.add(word)
+                                
+                                # Filter emails: from a broker OR mentions an insured name
+                                own_email = (account.email_address or '').strip().lower()
+                                matched_emails = []
+                                for em in emails:
+                                    from_email = (em.from_email or '').strip().lower() if hasattr(em, 'from_email') else ''
+                                    
+                                    # Skip emails from self
+                                    if from_email == own_email:
+                                        continue
+                                    
+                                    # Check if from a broker
+                                    is_from_broker = from_email in broker_email_set
+                                    
+                                    # Check if subject/body mentions an insured name
+                                    subject = (em.subject or '').lower() if hasattr(em, 'subject') else ''
+                                    body = (em.body_text or '').lower() if hasattr(em, 'body_text') else ''
+                                    combined = f"{subject} {body}"
+                                    mentions_insured = any(v in combined for v in insured_variants if len(v) > 3)
+                                    
+                                    if is_from_broker or mentions_insured:
+                                        matched_emails.append(em)
+                                
+                                print(f"[EMAIL SCRAPER] {len(matched_emails)} emails matched (broker or insured name) out of {len(emails)}")
+                                oauth_result = {'success': True, 'accounts': len(accounts), 'emails': len(emails), 'matched': len(matched_emails)}
+                                
+                                # Send SMS alerts for matched emails
+                                if matched_emails and app.config.get('SMS_ALERTS_ENABLED', False):
+                                    try:
+                                        from app.sms_client import create_sms_client, build_email_alert_text
+                                        from app.models import User, SmsAlert
+                                        
+                                        sms = create_sms_client(app.config)
+                                        if sms:
+                                            user = db_session.query(User).filter_by(id=account.user_id).first()
+                                            if user and user.phone_number and user.sms_alerts_enabled:
+                                                # Dedup: check which message_ids we've already alerted on
+                                                already_alerted_msg_ids = set(
+                                                    row[0] for row in db_session.query(SmsAlert.alert_text).filter(
+                                                        SmsAlert.user_id == user.id
+                                                    ).all()
+                                                )  # We'll use message_id in alert text for dedup
+                                                
+                                                # Better dedup: track by a hash of from+subject+date
+                                                import hashlib
+                                                existing_alert_hashes = set()
+                                                existing_alerts = db_session.query(SmsAlert).filter(
+                                                    SmsAlert.user_id == user.id
+                                                ).all()
+                                                for ea in existing_alerts:
+                                                    if ea.alert_text:
+                                                        existing_alert_hashes.add(hashlib.md5(ea.alert_text.encode()).hexdigest())
+                                                
+                                                alerts_sent = 0
+                                                for em in matched_emails:
+                                                    from_name = em.from_name if hasattr(em, 'from_name') else ''
+                                                    from_email_addr = em.from_email if hasattr(em, 'from_email') else ''
+                                                    subject = em.subject if hasattr(em, 'subject') else ''
+                                                    att_count = len(em.attachments) if hasattr(em, 'attachments') else 0
+                                                    
+                                                    # Find which submission this matches (if any)
+                                                    matched_sub = None
+                                                    subj_lower = (subject or '').lower()
+                                                    for sub in user_submissions:
+                                                        if sub.insured_name and sub.insured_name.lower() in subj_lower:
+                                                            matched_sub = sub
+                                                            break
+                                                    
+                                                    # Build alert text
+                                                    parts = []
+                                                    if matched_sub:
+                                                        parts.append(f"📬 {matched_sub.insured_name}")
+                                                    else:
+                                                        parts.append("📬 New email")
+                                                    parts.append(f"From: {from_name or from_email_addr}")
+                                                    if subject:
+                                                        subj_short = subject[:60] + "..." if len(subject) > 60 else subject
+                                                        parts.append(f"Re: {subj_short}")
+                                                    if att_count > 0:
+                                                        parts.append(f"({att_count} attachment{'s' if att_count > 1 else ''})")
+                                                    parts.append("")
+                                                    parts.append("Reply:")
+                                                    parts.append("1) Process")
+                                                    parts.append("2) Skip")
+                                                    alert_text = '\n'.join(parts)
+                                                    
+                                                    # Dedup check
+                                                    alert_hash = hashlib.md5(alert_text.encode()).hexdigest()
+                                                    if alert_hash in existing_alert_hashes:
+                                                        continue
+                                                    
+                                                    sms.send_alert(
+                                                        user=user,
+                                                        message=alert_text,
+                                                        submission_id=matched_sub.id if matched_sub else None
+                                                    )
+                                                    existing_alert_hashes.add(alert_hash)
+                                                    alerts_sent += 1
+                                                
+                                                if alerts_sent > 0:
+                                                    print(f"[SMS ALERTS] Sent {alerts_sent} text alert(s) to {user.phone_number}")
+                                    except Exception as sms_err:
+                                        print(f"[SMS ALERTS] Error in background alert: {sms_err}")
                                 
                                 
                             except Exception as account_err:
@@ -168,68 +293,6 @@ def create_app():
                 print(f"[EMAIL SCRAPER] Failed to log action: {log_error}")
             finally:
                 db_session.close()
-
-            # === SMS ALERTS ===
-            # After scraping, check for new matched emails and send SMS alerts
-            if app.config.get('SMS_ALERTS_ENABLED', False):
-                try:
-                    from app.sms_client import create_sms_client, build_email_alert_text
-                    from app.models import EmailMessage, SmsAlert, User, Submission
-
-                    sms = create_sms_client(app.config)
-                    if sms:
-                        sms_session = get_session()
-                        try:
-                            # Find emails matched in the last polling interval that haven't been alerted yet
-                            cutoff = datetime.now() - timedelta(
-                                minutes=app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5) + 1
-                            )
-                            new_matched_emails = sms_session.query(EmailMessage).filter(
-                                EmailMessage.submission_id.isnot(None),
-                                EmailMessage.created_at >= cutoff
-                            ).all()
-
-                            # Get already-alerted email IDs to avoid duplicates
-                            already_alerted = set(
-                                row[0] for row in sms_session.query(SmsAlert.email_id).filter(
-                                    SmsAlert.email_id.isnot(None)
-                                ).all()
-                            )
-
-                            alerts_sent = 0
-                            for email_msg in new_matched_emails:
-                                if email_msg.id in already_alerted:
-                                    continue
-
-                                # Find the assigned user for this submission
-                                submission = sms_session.query(Submission).filter_by(
-                                    id=email_msg.submission_id
-                                ).first()
-                                if not submission or not submission.assigned_to:
-                                    continue
-
-                                user = sms_session.query(User).filter_by(
-                                    id=submission.assigned_to
-                                ).first()
-                                if not user or not user.phone_number or not user.sms_alerts_enabled:
-                                    continue
-
-                                # Build and send alert
-                                alert_text = build_email_alert_text(email_msg, submission)
-                                sms.send_alert(
-                                    user=user,
-                                    message=alert_text,
-                                    email_id=email_msg.id,
-                                    submission_id=submission.id
-                                )
-                                alerts_sent += 1
-
-                            if alerts_sent > 0:
-                                print(f"[SMS ALERTS] Sent {alerts_sent} text alert(s)")
-                        finally:
-                            sms_session.close()
-                except Exception as sms_err:
-                    print(f"[SMS ALERTS] Error sending alerts: {sms_err}")
 
     # Start scheduler if email polling is enabled
     if app.config.get('EMAIL_POLLING_ENABLED', False):

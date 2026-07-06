@@ -25,7 +25,8 @@
   "externally_connectable": {
     "matches": [
       "http://localhost:*/*",
-      "https://*.riskrunway.com/*"
+      "https://*.riskrunway.com/*",
+      "https://*.risk-runway.com/*"
     ]
   },
   "icons": {
