@@ -37,8 +37,14 @@ jobs:
 
       - name: Force ECS redeployment
         run: |
+          LATEST_TD=$(aws ecs describe-task-definition \
+            --task-definition riskrunway-mapper \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text \
+            --region us-east-1)
           aws ecs update-service \
             --cluster riskrunway \
             --service riskrunway-service \
+            --task-definition "$LATEST_TD" \
             --force-new-deployment \
             --region us-east-1
