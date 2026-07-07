@@ -134,7 +134,7 @@ class BedrockClient(LLMClient):
     def __init__(self, model="us.anthropic.claude-haiku-4-5-20251001-v1:0", region="us-east-1"):
         self.model = model
         self.region = region
-        self.client = boto3.client("bedrock-runtime", region_name=self.region)
+        self.client = boto3.client("bedrock-runtime", region_name=self.region) 
 
     def generate_json(self, prompt: str) -> dict:
         response = self.client.converse(
