@@ -223,7 +223,9 @@ def create_app():
                                                     sms.send_alert(
                                                         user=user,
                                                         message=alert_text,
-                                                        submission_id=matched_sub.id if matched_sub else None
+                                                        submission_id=matched_sub.id if matched_sub else None,
+                                                        provider_message_id=em.message_id if hasattr(em, 'message_id') else None,
+                                                        connected_account_id=account.id
                                                     )
                                                     existing_alert_hashes.add(alert_hash)
                                                     alerts_sent += 1

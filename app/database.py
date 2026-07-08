@@ -378,6 +378,11 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('email_messages', 'is_deleted', 'BOOLEAN DEFAULT FALSE')
         _safe_add_column('email_messages', 'connected_account_id', 'INTEGER')
 
+    # sms_alerts
+    if 'sms_alerts' in table_names:
+        _safe_add_column('sms_alerts', 'provider_message_id', 'VARCHAR(500)')
+        _safe_add_column('sms_alerts', 'connected_account_id', 'INTEGER')
+
 
 def _ensure_audit_log_delete_constraints(conn, inspector):
     """Keep audit history when its submission or quote is deleted."""

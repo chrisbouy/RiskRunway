@@ -687,6 +687,10 @@ class SmsAlert(Base):
     outbound_sid = Column(String(100), nullable=True)  # SID of the alert we sent
     inbound_sid = Column(String(100), nullable=True)   # SID of the agent's reply
 
+    # Email reference for on-demand re-fetch (no email stored in DB)
+    provider_message_id = Column(String(500), nullable=True)  # Microsoft Graph / Gmail message ID
+    connected_account_id = Column(Integer, ForeignKey('connected_accounts.id'), nullable=True)  # Which OAuth account to use
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     replied_at = Column(DateTime, nullable=True)

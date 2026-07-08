@@ -806,6 +806,36 @@ class OutlookOAuthService:
             return base64.b64decode(content_bytes)
         
         return b''
+
+    # Aliases for sms_client compatibility
+    def get_message_attachments(self, access_token: str, message_id: str) -> List[Dict]:
+        """
+        List all attachments for a specific message (metadata only, no content).
+        """
+        response = requests.get(
+            f'https://graph.microsoft.com/v1.0/me/messages/{message_id}/attachments',
+            headers={'Authorization': f'Bearer {access_token}'},
+            params={'$select': 'id,name,contentType,size'}
+        )
+
+        if response.status_code != 200:
+            logger.error(f"Failed to list attachments for message {message_id}: {response.text}")
+            return []
+
+        data = response.json()
+        attachments = []
+        for att in data.get('value', []):
+            attachments.append({
+                'attachment_id': att.get('id', ''),
+                'filename': att.get('name', ''),
+                'content_type': att.get('contentType', ''),
+                'size': att.get('size', 0)
+            })
+        return attachments
+
+    def download_attachment(self, access_token: str, message_id: str, attachment_id: str) -> bytes:
+        """Alias for fetch_attachments for sms_client compatibility."""
+        return self.fetch_attachments(access_token, message_id, attachment_id)
     
     def _parse_outlook_message(self, message: Dict, access_token: str = None) -> Optional[UnifiedEmail]:
         """

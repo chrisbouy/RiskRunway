@@ -36,7 +36,9 @@ class SmsClient:
         user: User,
         message: str,
         email_id: Optional[int] = None,
-        submission_id: Optional[int] = None
+        submission_id: Optional[int] = None,
+        provider_message_id: Optional[str] = None,
+        connected_account_id: Optional[int] = None
     ) -> Optional[SmsAlert]:
         """
         Send an SMS alert to an agent and create a tracking record.
@@ -63,6 +65,8 @@ class SmsClient:
                 alert_text=message,
                 status=SmsAlertStatus.SENT,
                 outbound_sid=twilio_message.sid,
+                provider_message_id=provider_message_id,
+                connected_account_id=connected_account_id,
                 expires_at=datetime.utcnow() + timedelta(hours=self.ALERT_EXPIRY_HOURS)
             )
             db_session.add(alert)
@@ -182,86 +186,143 @@ class SmsClient:
 
     def _process_quote(self, alert: SmsAlert, db_session) -> str:
         """
-        Download the email's attachment(s) and run through the quote parsing pipeline.
-        This is the 'Process' action — triggered by replying '1'.
+        Re-fetch the email's attachment(s) from Outlook on demand and run through the quote parser.
+        No email content is stored in the database — we fetch live from the provider.
         """
-        if not alert.email_id:
+        if not alert.provider_message_id or not alert.connected_account_id:
             return "No email linked to this alert — can't process."
 
-        from app.models import EmailAttachment
-
-        email_msg = db_session.query(EmailMessage).filter_by(id=alert.email_id).first()
-        if not email_msg:
-            return "Email not found."
-
-        # Get attachments for this email
-        attachments = db_session.query(EmailAttachment).filter_by(email_id=email_msg.id).all()
-        if not attachments:
-            return "No attachments found on this email to process."
-
-        # Filter to quote-like files (PDF, Excel, Word)
-        quote_attachments = [
-            att for att in attachments
-            if att.filename.lower().endswith(('.pdf', '.xlsx', '.xls', '.docx', '.doc'))
-        ]
-
-        if not quote_attachments:
-            return "No PDF/Excel attachments to parse."
-
-        submission_id = alert.submission_id or email_msg.submission_id
+        submission_id = alert.submission_id
         if not submission_id:
             return "No submission linked — can't determine where to file this quote."
 
-        processed = 0
-        errors = []
+        try:
+            from flask import current_app
+            from app.models import ConnectedAccount, EmailProvider, Quote, QuoteStatus
+            from app.oauth_services import get_oauth_service
+            from datetime import timedelta
+            import json as json_module
+            import uuid
 
-        for att in quote_attachments:
-            try:
-                # If attachment hasn't been downloaded yet, we need to fetch it
-                if not att.file_path or not os.path.exists(att.file_path):
-                    # Try to download via OAuth
-                    downloaded_path = self._download_attachment(att, email_msg, db_session)
-                    if not downloaded_path:
-                        errors.append(f"{att.filename}: download failed")
-                        continue
-                    att.file_path = downloaded_path
+            # Get the connected account
+            account = db_session.query(ConnectedAccount).filter_by(id=alert.connected_account_id).first()
+            if not account:
+                return "Email account not found. May need to reconnect."
+
+            # Get OAuth service and refresh token
+            config = {
+                'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID', ''),
+                'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET', ''),
+                'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI', ''),
+                'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID', ''),
+                'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET', ''),
+                'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI', ''),
+                'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common'),
+            }
+
+            provider_name = 'gmail' if account.provider == EmailProvider.GMAIL else 'outlook'
+            service = get_oauth_service(provider_name, config)
+
+            tokens = account.get_decrypted_tokens()
+            access_token = tokens.get('access_token')
+            refresh_token = tokens.get('refresh_token')
+
+            # Refresh token
+            if refresh_token:
+                try:
+                    new_tokens = service.refresh_access_token(refresh_token)
+                    account.set_encrypted_tokens(new_tokens)
+                    access_token = new_tokens.get('access_token')
                     db_session.commit()
+                except Exception:
+                    pass
 
-                # Run through quote parser
-                from app.parsers.two_pass_parser import process_quote_two_pass
+            if not access_token:
+                return "Email token expired. Reconnect your email in Risk Runway."
 
-                result = process_quote_two_pass(att.file_path, [])
+            # Fetch attachments for this specific message
+            attachments = service.get_message_attachments(
+                access_token=access_token,
+                message_id=alert.provider_message_id
+            )
 
-                if result and result.get('pass2_normalized'):
-                    # Create a Quote record
-                    from app.models import Quote, QuoteStatus
-                    import json as json_module
+            if not attachments:
+                return "No attachments found on this email."
 
-                    parsed_data = result['pass2_normalized']
-                    carrier_name = parsed_data.get('carrier_name') or parsed_data.get('carrier', {}).get('name')
+            # Filter to quote-like files
+            quote_attachments = [
+                att for att in attachments
+                if att.get('filename', '').lower().endswith(('.pdf', '.xlsx', '.xls', '.docx', '.doc'))
+            ]
 
-                    quote = Quote(
-                        submission_id=submission_id,
-                        carrier_name=carrier_name,
-                        raw_document_path=att.file_path,
-                        extracted_json=json_module.dumps(parsed_data),
-                        pass1_layout_json=json_module.dumps(result.get('pass1_layout')) if result.get('pass1_layout') else None,
-                        status=QuoteStatus.RECEIVED
+            if not quote_attachments:
+                return "No PDF/Excel attachments to parse."
+
+            upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+            os.makedirs(upload_folder, exist_ok=True)
+
+            processed = 0
+            errors = []
+
+            for att in quote_attachments:
+                try:
+                    # Download attachment content
+                    content = service.download_attachment(
+                        access_token=access_token,
+                        message_id=alert.provider_message_id,
+                        attachment_id=att.get('attachment_id') or att.get('id')
                     )
-                    db_session.add(quote)
-                    db_session.commit()
-                    processed += 1
 
-            except Exception as e:
-                logger.error(f"Error processing attachment {att.filename}: {e}")
-                errors.append(f"{att.filename}: {str(e)[:50]}")
+                    if not content:
+                        errors.append(f"{att.get('filename')}: download failed")
+                        continue
 
-        if processed > 0 and not errors:
-            return f"✅ Processed {processed} quote{'s' if processed > 1 else ''}. Check Risk Runway for details."
-        elif processed > 0 and errors:
-            return f"✅ Processed {processed}, but {len(errors)} failed: {'; '.join(errors[:2])}"
-        else:
-            return f"❌ Processing failed: {'; '.join(errors[:2])}"
+                    # Save to temp file
+                    safe_filename = f"{uuid.uuid4()}_{att.get('filename', 'doc.pdf')}"
+                    file_path = os.path.join(upload_folder, safe_filename)
+                    with open(file_path, 'wb') as f:
+                        f.write(content)
+
+                    # Run through quote parser
+                    from app.parsers.two_pass_parser import process_quote_two_pass
+
+                    result = process_quote_two_pass(file_path, [])
+
+                    if result and result.get('pass2_normalized'):
+                        parsed_data = result['pass2_normalized']
+                        carrier_name = parsed_data.get('carrier_name') or parsed_data.get('carrier', {}).get('name')
+
+                        quote = Quote(
+                            submission_id=submission_id,
+                            carrier_name=carrier_name,
+                            raw_document_path=file_path,
+                            extracted_json=json_module.dumps(parsed_data),
+                            pass1_layout_json=json_module.dumps(result.get('pass1_layout')) if result.get('pass1_layout') else None,
+                            status=QuoteStatus.RECEIVED
+                        )
+                        db_session.add(quote)
+                        db_session.commit()
+                        processed += 1
+                    else:
+                        # Clean up temp file if parsing failed
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        errors.append(f"{att.get('filename')}: parsing returned no data")
+
+                except Exception as e:
+                    logger.error(f"Error processing attachment {att.get('filename')}: {e}")
+                    errors.append(f"{att.get('filename')}: {str(e)[:50]}")
+
+            if processed > 0 and not errors:
+                return f"✅ Processed {processed} quote{'s' if processed > 1 else ''}. Check Risk Runway for details."
+            elif processed > 0 and errors:
+                return f"✅ Processed {processed}, but {len(errors)} failed: {'; '.join(errors[:2])}"
+            else:
+                return f"❌ Processing failed: {'; '.join(errors[:2])}"
+
+        except Exception as e:
+            logger.error(f"Error in _process_quote: {e}")
+            return f"❌ Error: {str(e)[:100]}"
 
     def _download_attachment(self, attachment, email_msg, db_session) -> Optional[str]:
         """
