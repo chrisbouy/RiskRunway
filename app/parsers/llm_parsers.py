@@ -141,7 +141,7 @@ class BedrockClient(LLMClient):
             modelId=self.model,
             messages=[
                 {
-                    "role": "user",
+                    "role": "user", 
                     "content": [
                         {"text": prompt}
                     ]
