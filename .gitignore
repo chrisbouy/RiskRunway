@@ -81,3 +81,6 @@ launcher/build/
 
 # AWS infrastructure snapshot (sensitive config)
 aws_snapshot/
+
+# ECS task definition output (contains secrets)
+scripts/task_def_classic.json

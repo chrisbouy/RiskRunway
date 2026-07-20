@@ -531,7 +531,7 @@ def _send_password_reset_email(to_email, user_name, reset_url):
         </p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;" />
         <p style="color: #9ca3af; font-size: 12px;">
-            Risk Runway — Insurance Premium Finance System
+            Risk Runway — The submission-to-bind pipeline tool
         </p>
     </div>
     """
