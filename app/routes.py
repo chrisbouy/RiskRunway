@@ -5390,6 +5390,8 @@ def submit_to_market(submission_id):
                         d for d in all_documents if d.document_type in [DocumentType.APPLICATION, DocumentType.SOV, DocumentType.LOSS_RUN]
                     ]
 
+                    print(f"[SUBMIT TO MARKET] broker={broker.name}, document_ids={document_ids}, doc_map_keys={list(doc_map.keys())}, resolved={len(documents)} docs")
+
                     subject = f"Insurance Submission - {submission.insured_name}"
 
                     _send_email_via_oauth(
@@ -5509,8 +5511,26 @@ def _send_email_via_oauth(to_email, subject, body, documents=None, raw_attachmen
             if documents:
                 attachment_list = []
                 for doc in documents:
-                    file_path = None
-                    if doc.storage_provider == 'local':
+                    file_data = None
+
+                    if doc.storage_provider == 's3':
+                        # Download from S3
+                        try:
+                            import boto3
+                            s3_client = boto3.client(
+                                's3',
+                                region_name=current_app.config.get('S3_REGION') or None,
+                                endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                            )
+                            bucket = current_app.config.get('S3_BUCKET')
+                            response = s3_client.get_object(Bucket=bucket, Key=doc.storage_key)
+                            file_data = response['Body'].read()
+                        except Exception as e:
+                            print(f"[EMAIL] Failed to download from S3: {doc.storage_key} - {e}")
+                            continue
+
+                    elif doc.storage_provider == 'local':
+                        file_path = None
                         if doc.storage_key.startswith(current_app.config['UPLOAD_FOLDER']):
                             file_path = doc.storage_key
                         else:
@@ -5519,13 +5539,17 @@ def _send_email_via_oauth(to_email, subject, body, documents=None, raw_attachmen
                                 doc.storage_key
                             )
 
-                    if file_path and os.path.exists(file_path):
-                        with open(file_path, 'rb') as f:
-                            file_data = f.read()
+                        if file_path and os.path.exists(file_path):
+                            with open(file_path, 'rb') as f:
+                                file_data = f.read()
+                        else:
+                            print(f"[EMAIL] File not found for document {doc.id}: {file_path}")
+                            continue
 
-                        mime_type = mimetypes.guess_type(doc.original_filename or file_path)[0] or 'application/octet-stream'
+                    if file_data:
+                        mime_type = mimetypes.guess_type(doc.original_filename or '')[0] or 'application/octet-stream'
                         attachment_list.append({
-                            'filename': doc.original_filename or os.path.basename(file_path),
+                            'filename': doc.original_filename or os.path.basename(doc.storage_key),
                             'content_base64': base64.b64encode(file_data).decode(),
                             'content_type': mime_type
                         })
