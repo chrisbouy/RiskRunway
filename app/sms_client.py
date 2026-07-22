@@ -290,7 +290,10 @@ class SmsClient:
 
                     if result and result.get('pass2_normalized'):
                         parsed_data = result['pass2_normalized']
-                        carrier_name = parsed_data.get('carrier_name') or parsed_data.get('carrier', {}).get('name')
+                        carrier_name = None
+                        if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
+                            first_policy = parsed_data['policies'][0]
+                            carrier_name = first_policy.get('carrier')
 
                         quote = Quote(
                             submission_id=submission_id,
