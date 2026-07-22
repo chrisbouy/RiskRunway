@@ -165,22 +165,13 @@ def create_app():
                                         if sms:
                                             user = db_session.query(User).filter_by(id=account.user_id).first()
                                             if user and user.phone_number and user.sms_alerts_enabled:
-                                                # Dedup: check which message_ids we've already alerted on
+                                                # Dedup: check which provider_message_ids we've already alerted on
                                                 already_alerted_msg_ids = set(
-                                                    row[0] for row in db_session.query(SmsAlert.alert_text).filter(
-                                                        SmsAlert.user_id == user.id
+                                                    row[0] for row in db_session.query(SmsAlert.provider_message_id).filter(
+                                                        SmsAlert.user_id == user.id,
+                                                        SmsAlert.provider_message_id.isnot(None)
                                                     ).all()
-                                                )  # We'll use message_id in alert text for dedup
-                                                
-                                                # Better dedup: track by a hash of from+subject+date
-                                                import hashlib
-                                                existing_alert_hashes = set()
-                                                existing_alerts = db_session.query(SmsAlert).filter(
-                                                    SmsAlert.user_id == user.id
-                                                ).all()
-                                                for ea in existing_alerts:
-                                                    if ea.alert_text:
-                                                        existing_alert_hashes.add(hashlib.md5(ea.alert_text.encode()).hexdigest())
+                                                )
                                                 
                                                 alerts_sent = 0
                                                 for em in matched_emails:
@@ -188,6 +179,11 @@ def create_app():
                                                     from_email_addr = em.from_email if hasattr(em, 'from_email') else ''
                                                     subject = em.subject if hasattr(em, 'subject') else ''
                                                     att_count = len(em.attachments) if hasattr(em, 'attachments') else 0
+                                                    msg_id = em.message_id if hasattr(em, 'message_id') else None
+                                                    
+                                                    # Skip if we already alerted on this exact email
+                                                    if msg_id and msg_id in already_alerted_msg_ids:
+                                                        continue
                                                     
                                                     # Find which submission this matches (if any)
                                                     matched_sub = None
@@ -215,19 +211,14 @@ def create_app():
                                                     parts.append("2) Skip")
                                                     alert_text = '\n'.join(parts)
                                                     
-                                                    # Dedup check
-                                                    alert_hash = hashlib.md5(alert_text.encode()).hexdigest()
-                                                    if alert_hash in existing_alert_hashes:
-                                                        continue
-                                                    
                                                     sms.send_alert(
                                                         user=user,
                                                         message=alert_text,
                                                         submission_id=matched_sub.id if matched_sub else None,
-                                                        provider_message_id=em.message_id if hasattr(em, 'message_id') else None,
+                                                        provider_message_id=msg_id,
                                                         connected_account_id=account.id
                                                     )
-                                                    existing_alert_hashes.add(alert_hash)
+                                                    already_alerted_msg_ids.add(msg_id)
                                                     alerts_sent += 1
                                                 
                                                 if alerts_sent > 0:
