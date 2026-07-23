@@ -1409,8 +1409,8 @@
                         <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">◀️</span> Set Back to Quoting</button>
                         <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Mark as Bound</button>
                         <button id="downloadCsvBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
-                        <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🔗</span> Export to AMS</button>
-                        <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed; display: none;" disabled><span style="font-size: 1.2em;">🤖</span> AI Fill (Computer Use)</button>
+                        <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🔗</span> Export to Web-Based AMS</button>
+                        <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🤖</span> Export to Desktop AMS</button>
                     </div>
                 </div>
             </div>
@@ -4408,6 +4408,55 @@ Thank you for your attention to this matter.`;
                 btn.style.background = '#059669';
             }, 3000);
         }
+
+        // ─── Export to Desktop AMS Click Handler ─────────────────────────────────
+        document.getElementById('exportToAmsCUBtn').addEventListener('click', async function() {
+            const btn = document.getElementById('exportToAmsCUBtn');
+            btn.disabled = true;
+            btn.textContent = 'Creating job...';
+
+            try {
+                // Create the job on the server
+                const response = await fetch('/api/ams-export/jobs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        submission_id: submissionId,
+                        quote_id: null
+                    })
+                });
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to create AMS export job');
+                }
+
+                const jobId = data.job.id;
+                const serverUrl = window.location.origin;
+
+                btn.textContent = 'Opening desktop agent...';
+
+                const protocolUrl = `riskrunway://export?job_id=${jobId}&server=${encodeURIComponent(serverUrl)}`;
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = protocolUrl;
+                document.body.appendChild(iframe);
+                setTimeout(() => document.body.removeChild(iframe), 1000);
+
+                btn.textContent = 'Check your desktop...';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span style="font-size: 1.2em;">🤖</span> Export to Desktop AMS';
+                    btn.style.background = '#7c3aed';
+                }, 5000);
+
+            } catch (error) {
+                console.error('Error starting desktop AMS export:', error);
+                alert('Error starting desktop AMS export: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<span style="font-size: 1.2em;">🤖</span> Export to Desktop AMS';
+            }
+        });
 
         // ============================================================================
         // SEND FOLLOW-UP(S) FUNCTIONALITY
