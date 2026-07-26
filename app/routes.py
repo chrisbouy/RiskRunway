@@ -1686,16 +1686,26 @@ def _scrape_emails_with_oauth(account: ConnectedAccount, db_session: Session, us
                     'provider': provider_str
                 }
         
-        # Fetch all unread emails from last 5 days (no broker/subject filtering)
-        since_date = datetime.now() - timedelta(days=5)
+        # Fetch emails with default filters (broker emails + insured names + has attachments)
+        broker_emails = _get_user_broker_emails(db_session, user_id)
+        quote_subjects = _get_user_quote_subjects(db_session, user_id)
+        since_date = datetime.now() - timedelta(days=24)
+
+        print(f"[EMAIL SCRAPER] Running in mode: oauth")
         unified_emails = oauth_service.fetch_emails(
             access_token=access_token,
             max_results=50,
             since_date=since_date,
-            broker_emails=None,
-            quote_subjects=None,
-            require_attachments=False
+            broker_emails=broker_emails if broker_emails else None,
+            quote_subjects=quote_subjects if quote_subjects else None,
+            require_attachments=True
         )
+        
+        print(f"[EMAIL SCRAPER] OAuth fetched {len(unified_emails) if unified_emails else 0} emails from {account.email_address}")
+        # Log match info
+        filter_info = f"brokers={len(broker_emails)}, subjects={len(quote_subjects)}"
+        matched_count = len(unified_emails) if unified_emails else 0
+        print(f"[EMAIL SCRAPER] {matched_count} emails matched (broker or insured name) out of {matched_count}")
         
         if not unified_emails:
             return {
