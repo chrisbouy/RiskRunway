@@ -1351,15 +1351,56 @@ def delete_document(document_id):
 @bp.route('/api/quote/<int:quote_id>/file', methods=['GET'])
 @login_required
 def view_quote_file(quote_id):
-    """Open the original uploaded quote file."""
+    """Open the original uploaded quote file via the Document storage system."""
     db_session = get_session()
     try:
         quote = db_session.query(Quote).filter_by(id=quote_id).first()
         if not quote:
             return "Quote not found", 404
-        if not quote.raw_document_path or not os.path.exists(quote.raw_document_path):
-            return "Quote file missing", 404
-        return send_file(quote.raw_document_path, as_attachment=False, download_name=os.path.basename(quote.raw_document_path))
+
+        # First try the Document table (the permanent storage record)
+        doc = db_session.query(Document).filter_by(
+            quote_id=quote_id,
+            document_type=DocumentType.QUOTE
+        ).order_by(Document.version.desc()).first()
+
+        if doc:
+            if doc.storage_provider == 's3':
+                try:
+                    import boto3
+                    from io import BytesIO
+                    bucket = current_app.config.get('S3_BUCKET')
+                    client = boto3.client(
+                        's3',
+                        region_name=current_app.config.get('S3_REGION') or None,
+                        endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                    )
+                    obj = client.get_object(Bucket=bucket, Key=doc.storage_key)
+                    file_data = obj['Body'].read()
+                    return send_file(
+                        BytesIO(file_data),
+                        as_attachment=False,
+                        download_name=doc.original_filename,
+                        mimetype=doc.content_type or 'application/pdf'
+                    )
+                except Exception as err:
+                    print(f"[QUOTE VIEW] S3 download failed: {err}")
+                    return "Quote file download failed", 500
+
+            # Local storage
+            local_root = current_app.config.get('UPLOAD_FOLDER')
+            if doc.storage_key.startswith(local_root):
+                local_path = doc.storage_key
+            else:
+                local_path = os.path.join(local_root, doc.storage_key)
+            if os.path.exists(local_path):
+                return send_file(local_path, as_attachment=False, download_name=doc.original_filename, mimetype=doc.content_type or 'application/pdf')
+
+        # Fallback: try legacy raw_document_path directly
+        if quote.raw_document_path and os.path.exists(quote.raw_document_path):
+            return send_file(quote.raw_document_path, as_attachment=False, download_name=os.path.basename(quote.raw_document_path))
+
+        return "Quote file missing", 404
     finally:
         db_session.close()
 
