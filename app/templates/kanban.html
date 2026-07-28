@@ -767,6 +767,112 @@
         .corr-body::-webkit-scrollbar-thumb:hover {
             background: #9ca3af;
         }
+
+        /* Settings dropdown panel */
+        .settings-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            width: 100%;
+            background: var(--rail-bg);
+            border: 1px solid var(--rail-border);
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            padding: 8px;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 200;
+        }
+        .settings-panel.active { display: flex; }
+
+        .settings-panel .left-checkbox-row,
+        .settings-panel .left-btn,
+        .settings-panel .btn-config {
+            margin: 0;
+        }
+
+        .settings-panel .settings-divider {
+            height: 1px;
+            background: var(--rail-border);
+            margin: 4px 0;
+        }
+
+        .settings-trigger {
+            position: relative;
+        }
+
+        /* Widgets */
+        .rail-widget {
+            background: var(--rail-section-bg);
+            border: 1px solid var(--rail-border);
+            border-radius: 5px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .rail-widget-title {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--rail-muted);
+            margin-bottom: 2px;
+        }
+
+        .widget-item {
+            font-size: 10px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            color: var(--rail-text);
+            padding: 4px 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.03);
+            cursor: pointer;
+            transition: background 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+        }
+        .widget-item:hover { background: rgba(255,255,255,0.08); }
+
+        .widget-item-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .widget-item-badge {
+            font-size: 9px;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+
+        .badge-warning {
+            background: rgba(250, 204, 21, 0.2);
+            color: #facc15;
+        }
+        .badge-critical {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+        .badge-info {
+            background: rgba(96, 165, 250, 0.2);
+            color: #93c5fd;
+        }
+
+        .widget-empty {
+            font-size: 10px;
+            color: var(--rail-muted);
+            font-style: italic;
+            padding: 4px 6px;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -777,10 +883,10 @@
             </div>
             <div class="left-divider"></div>
 
-            <span id="count-submission" class="stage-count">Submission: 0</span>
-            <span id="count-quoting" class="stage-count">Quoting: 0</span>
-            <span id="count-bind" class="stage-count">Bound: 0</span>
-            <div class="left-divider"></div>
+            <!-- Hidden counters so JS doesn't break -->
+            <span id="count-submission" class="stage-count" style="display:none;">Submission: 0</span>
+            <span id="count-quoting" class="stage-count" style="display:none;">Quoting: 0</span>
+            <span id="count-bind" class="stage-count" style="display:none;">Bound: 0</span>
 
             <button id="newSubmissionBtn" class="left-btn btn-new">+ New Risk(s)</button>
             <button id="importFromEpicBtn" class="left-btn btn-config" style="margin-top: 4px; display: none;">
@@ -792,9 +898,7 @@
                 Import from Epic
             </button>
 
-            <!-- Email Scraping Section -->
-            <div class="left-divider" style="margin-top: 8px;"></div>
-            <button id="checkEmailsBtn" class="left-btn btn-config">
+            <button id="checkEmailsBtn" class="left-btn btn-config" style="margin-top: 4px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                     <polyline points="22,6 12,13 2,6"></polyline>
@@ -803,19 +907,51 @@
             </button>
             <span id="newMessageCount" class="hidden">0</span>
 
-            <!-- Config Section -->
+            <div class="settings-trigger" style="margin-top: 4px;">
+                <button id="settingsToggleBtn" class="left-btn btn-config">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    Settings
+                </button>
+                <div id="settingsPanel" class="settings-panel">
+                    <label class="left-checkbox-row">
+                        <input type="checkbox" id="filterMyCards">
+                        <span>My Cards Only</span>
+                    </label>
+                    <button id="configureBrokersBtn" class="left-btn btn-config">Configure Brokers</button>
+                    <button id="smsSettingsBtn" class="left-btn btn-config">📱 SMS Alerts</button>
+                    <button id="userGuideBtn" class="left-btn btn-config">📖 User Guide</button>
+                    <button id="reportBugBtn" class="left-btn btn-config" style="color: #f07070;">🐛 Report Bug</button>
+                    <div class="settings-divider"></div>
+                    <div class="user-block" style="border-top: none; padding-top: 4px;">
+                        <div class="user-label">Logged in as</div>
+                        <div id="currentUserName" class="user-name"></div>
+                        <div id="currentUserRole" class="user-role"></div>
+                    </div>
+                    <button id="logoutBtn" class="left-btn btn-logout">Logout</button>
+                </div>
+            </div>
+
             <div class="left-divider" style="margin-top: 8px;"></div>
-            <label class="left-checkbox-row">
-                <input type="checkbox" id="filterMyCards">
-                <span>My Cards Only</span>
-            </label>
-            <button id="configureBrokersBtn" class="left-btn btn-config">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m0 6l4.2 4.2M23 12h-6m-6 0H1m18.2-5.2l-4.2 4.2m0 6l4.2 4.2"></path>
-                </svg>
-                Configure Brokers
-            </button>
+
+            <!-- Expiring Soon Widget -->
+            <div class="rail-widget">
+                <div class="rail-widget-title">⏰ Expiring Soon</div>
+                <div id="widgetExpiring">
+                    <div class="widget-empty">No upcoming expirations</div>
+                </div>
+            </div>
+
+            <!-- Needs Attention Widget -->
+            <div class="rail-widget" style="margin-top: 6px;">
+                <div class="rail-widget-title">⚠️ Needs Attention</div>
+                <div id="widgetAttention">
+                    <div class="widget-empty">All caught up</div>
+                </div>
+            </div>
+
             <!-- Spacer to push bottom items down -->
             <div style="flex: 1;"></div>
 
@@ -826,14 +962,7 @@
                 </select>
             </div>
 
-            <div class="user-block">
-                <div class="user-label">Logged in as</div>
-                <div id="currentUserName" class="user-name"></div>
-                <div id="currentUserRole" class="user-role"></div>
-            </div>
-            <button id="smsSettingsBtn" class="left-btn" style="margin-top:6px; font-size:11px;">📱 SMS Alerts</button>
             <a href="/privacy" class="text-center text-xs text-gray-400 hover:text-gray-200 transition-colors" style="margin-top:4px; display:block;">Privacy Policy</a>
-            <button id="logoutBtn" class="left-btn btn-logout" style="margin-top:6px;">Logout</button>
         </aside>
 
         <main class="board-panel">
@@ -1579,6 +1708,7 @@
                 if (data.success) {
                     submissions = data.submissions;
                     renderKanban();
+                    updateWidgets();
                 }
             } catch (error) {
                 console.error('Error loading submissions:', error);
@@ -1605,6 +1735,93 @@
             filterMyCards = this.checked;
             loadSubmissions();
         });
+
+        // Settings panel toggle
+        document.getElementById('settingsToggleBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.getElementById('settingsPanel').classList.toggle('active');
+        });
+        document.addEventListener('click', function(e) {
+            const panel = document.getElementById('settingsPanel');
+            const trigger = document.querySelector('.settings-trigger');
+            if (!trigger.contains(e.target)) {
+                panel.classList.remove('active');
+            }
+        });
+
+        // User Guide - open the fixed panel (reuses submission.html pattern)
+        document.getElementById('userGuideBtn').addEventListener('click', function() {
+            document.getElementById('kanbanGuidePanel').classList.add('open');
+            document.getElementById('settingsPanel').classList.remove('active');
+        });
+        document.getElementById('kanbanGuideCloseBtn').addEventListener('click', function() {
+            document.getElementById('kanbanGuidePanel').classList.remove('open');
+        });
+        // Smooth scroll for TOC links
+        document.querySelector('#kanbanGuidePanel .guide-body').addEventListener('click', function(e) {
+            var link = e.target.closest('a[href^="#kg-"]');
+            if (link) {
+                e.preventDefault();
+                var target = document.getElementById(link.getAttribute('href').slice(1));
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+
+        // Report Bug from settings
+        document.getElementById('reportBugBtn').addEventListener('click', function() {
+            document.getElementById('settingsPanel').classList.remove('active');
+            alert('Bug reporting from the kanban board is coming soon. For now, open a submission and use Report Bug from there.');
+        });
+
+        // Widget population (runs after submissions load)
+        function updateWidgets() {
+            const now = new Date();
+            const expContainer = document.getElementById('widgetExpiring');
+            const attContainer = document.getElementById('widgetAttention');
+
+            // Expiring soon: submissions with effective_date within next 30 days
+            const expiring = submissions.filter(s => {
+                if (!s.effective_date) return false;
+                const eff = new Date(s.effective_date);
+                const diffDays = (eff - now) / (1000 * 60 * 60 * 24);
+                return diffDays >= 0 && diffDays <= 30;
+            }).sort((a, b) => new Date(a.effective_date) - new Date(b.effective_date)).slice(0, 5);
+
+            if (expiring.length === 0) {
+                expContainer.innerHTML = '<div class="widget-empty">No upcoming expirations</div>';
+            } else {
+                expContainer.innerHTML = expiring.map(s => {
+                    const eff = new Date(s.effective_date);
+                    const diffDays = Math.ceil((eff - now) / (1000 * 60 * 60 * 24));
+                    const badgeClass = diffDays <= 7 ? 'badge-critical' : 'badge-warning';
+                    const label = diffDays === 0 ? 'Today' : diffDays + 'd';
+                    return '<a href="/submission/' + s.id + '" class="widget-item"><span class="widget-item-name">' + (s.insured_name || 'Unnamed') + '</span><span class="widget-item-badge ' + badgeClass + '">' + label + '</span></a>';
+                }).join('');
+            }
+
+            // Needs attention: submissions in quoting stage with no quotes, or stale (no activity > 7 days)
+            const attention = submissions.filter(s => {
+                const stageKey = getStageKey(s);
+                if (stageKey === 'quoting' && (!s.quotes_count || s.quotes_count === 0)) return true;
+                if (s.updated_at) {
+                    const updated = new Date(s.updated_at);
+                    const staleDays = (now - updated) / (1000 * 60 * 60 * 24);
+                    if (staleDays > 7 && stageKey !== 'bind') return true;
+                }
+                return false;
+            }).slice(0, 5);
+
+            if (attention.length === 0) {
+                attContainer.innerHTML = '<div class="widget-empty">All caught up</div>';
+            } else {
+                attContainer.innerHTML = attention.map(s => {
+                    const stageKey = getStageKey(s);
+                    let reason = 'Stale';
+                    if (stageKey === 'quoting' && (!s.quotes_count || s.quotes_count === 0)) reason = 'No quotes';
+                    return '<a href="/submission/' + s.id + '" class="widget-item"><span class="widget-item-name">' + (s.insured_name || 'Unnamed') + '</span><span class="widget-item-badge badge-info">' + reason + '</span></a>';
+                }).join('');
+            }
+        }
 
         function renderKanban() {
             const rows = document.getElementById('runwayRows');
@@ -4735,5 +4952,258 @@
             });
         })();
     </script>
+
+<!-- User Guide Panel (fixed overlay) -->
+<style>
+    #kanbanGuidePanel {
+        position: fixed;
+        top: 0;
+        right: -440px;
+        width: 420px;
+        height: 100vh;
+        background: #1a1a1a;
+        border-left: 1px solid #2a2a2a;
+        display: flex;
+        flex-direction: column;
+        z-index: 9000;
+        box-shadow: -4px 0 20px rgba(0,0,0,0.4);
+        transition: right 0.3s ease;
+    }
+    #kanbanGuidePanel.open { right: 0; }
+    #kanbanGuidePanel .guide-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #2a2a2a;
+        flex-shrink: 0;
+        background: #0f0f0f;
+    }
+    #kanbanGuidePanel .guide-header h2 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #e5e5e5;
+        margin: 0;
+    }
+    #kanbanGuidePanel .guide-close-btn {
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #e5e5e5;
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 1.2rem;
+        line-height: 1;
+    }
+    #kanbanGuidePanel .guide-close-btn:hover { background: rgba(255,255,255,0.2); }
+    #kanbanGuidePanel .guide-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 1.25rem;
+        font-size: 0.813rem;
+        line-height: 1.6;
+        color: #a0a0a0;
+    }
+    #kanbanGuidePanel .guide-body h2 {
+        font-size: 1rem; font-weight: 700; color: #60a5fa;
+        margin: 1.5rem 0 0.5rem 0; padding-bottom: 0.25rem;
+        border-bottom: 1px solid #2a2a2a;
+    }
+    #kanbanGuidePanel .guide-body h2:first-child { margin-top: 0; }
+    #kanbanGuidePanel .guide-body h3 { font-size: 0.875rem; font-weight: 600; color: #e5e5e5; margin: 1rem 0 0.375rem 0; }
+    #kanbanGuidePanel .guide-body p { margin: 0.5rem 0; }
+    #kanbanGuidePanel .guide-body ul, #kanbanGuidePanel .guide-body ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+    #kanbanGuidePanel .guide-body li { margin: 0.25rem 0; }
+    #kanbanGuidePanel .guide-body strong { color: #e5e5e5; font-weight: 600; }
+    #kanbanGuidePanel .guide-body code { background: #2a2a2a; padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem; font-family: 'IBM Plex Mono', monospace; }
+    #kanbanGuidePanel .guide-toc { background: #2a2a2a; border: 1px solid #333; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; }
+    #kanbanGuidePanel .guide-toc h3 { font-size: 0.813rem; font-weight: 700; color: #e5e5e5; margin: 0 0 0.5rem 0; text-transform: uppercase; letter-spacing: 0.05em; }
+    #kanbanGuidePanel .guide-toc ol { margin: 0; padding-left: 1.25rem; }
+    #kanbanGuidePanel .guide-toc li { margin: 0.25rem 0; }
+    #kanbanGuidePanel .guide-toc a { color: #60a5fa; text-decoration: none; }
+    #kanbanGuidePanel .guide-toc a:hover { color: #93c5fd; text-decoration: underline; }
+    #kanbanGuidePanel .guide-body table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.75rem; }
+    #kanbanGuidePanel .guide-body table th, #kanbanGuidePanel .guide-body table td { padding: 0.375rem 0.5rem; border: 1px solid #2a2a2a; text-align: left; }
+    #kanbanGuidePanel .guide-body table th { background: #2a2a2a; font-weight: 600; color: #e5e5e5; }
+</style>
+
+<aside id="kanbanGuidePanel">
+    <div class="guide-header">
+        <h2>User Guide</h2>
+        <button id="kanbanGuideCloseBtn" class="guide-close-btn" title="Close Guide">&times;</button>
+    </div>
+    <div class="guide-body">
+        <nav class="guide-toc">
+            <h3>Table of Contents</h3>
+            <ol>
+                <li><a href="#kg-getting-started">Getting Started</a></li>
+                <li><a href="#kg-connecting-inbox">Connecting Your Outlook Inbox</a></li>
+                <li><a href="#kg-submission-board">Understanding the Submission Board</a></li>
+                <li><a href="#kg-new-risk">Creating a New Risk (Submission)</a></li>
+                <li><a href="#kg-configure-brokers">Configuring Your Brokers</a></li>
+                <li><a href="#kg-submit-to-market">Submitting to Market</a></li>
+                <li><a href="#kg-check-email">Checking Email &amp; Auto-Importing Quotes</a></li>
+                <li><a href="#kg-comparing-quotes">Comparing Quotes</a></li>
+                <li><a href="#kg-correspondence">Saving Correspondence</a></li>
+                <li><a href="#kg-binding">Moving to Binding</a></li>
+                <li><a href="#kg-export-ams">Exporting to Your AMS</a></li>
+                <li><a href="#kg-sms">SMS Alerts</a></li>
+                <li><a href="#kg-report-bug">Reporting a Bug</a></li>
+                <li><a href="#kg-data-accuracy">Data Accuracy &amp; Your Responsibility</a></li>
+            </ol>
+        </nav>
+
+        <h2 id="kg-getting-started">1. Getting Started</h2>
+        <p><strong>Browser requirements:</strong> Chrome is strongly suggested if you plan to use the AMS data transfer.</p>
+
+        <h2 id="kg-connecting-inbox">2. Connecting Your Outlook Inbox</h2>
+        <p>RiskRunway connects to your Outlook (or Gmail) inbox so it can automatically detect incoming quotes and broker replies. This uses OAuth — a secure, standard way of granting an app limited access to your email without giving it your password.</p>
+        <h3>To connect:</h3>
+        <ol>
+            <li>Click <strong>Check Email</strong> for the first time — this will trigger the setup/authorization flow</li>
+            <li>You'll be redirected to a Microsoft (or Google) sign-in screen</li>
+            <li>Sign in with your normal work email credentials and approve the requested permissions</li>
+            <li>This is a one-time setup — once authorized, RiskRunway remembers the connection</li>
+        </ol>
+        <h3>What RiskRunway does — and doesn't — do with your inbox:</h3>
+        <ul>
+            <li>It <strong>reads</strong> emails to detect quotes and broker replies matching your configured brokers (see Section 5)</li>
+            <li>It does <strong>not</strong> move, delete, or file your emails</li>
+            <li>The only change it makes is marking an email read/unread so you can tell what's already been processed</li>
+            <li>To re-process an email, right-click it in your inbox and mark it unread again, then click <strong>Check Email</strong></li>
+        </ul>
+        <h3>If your company uses a VPN or locked-down network:</h3>
+        <ul>
+            <li>Loading the RiskRunway site itself may require your IT/network admin to allow <code>app.risk-runway.com</code> through any web filtering</li>
+            <li>If your Microsoft 365 admin restricts third-party app approvals, they may need to separately approve RiskRunway's access in your Microsoft 365 admin settings (this is different from network/VPN access — see your IT admin if the OAuth screen fails or is blocked)</li>
+        </ul>
+        <p><strong>Filtering what gets pulled in:</strong> By default, RiskRunway looks back 24 days for emails from your configured brokers. You can adjust this from the filter button on the New Messages popup.</p>
+
+        <h2 id="kg-submission-board">3. Understanding the Submission Board</h2>
+        <p>Submissions move through a Kanban-style board with these stages:</p>
+        <table>
+            <thead><tr><th>Stage</th><th>What it means</th></tr></thead>
+            <tbody>
+                <tr><td>New Risk</td><td>A submission has been created but not yet sent to any broker/MGA</td></tr>
+                <tr><td>Quoting</td><td>Submission has been sent out and you're waiting on / comparing quotes</td></tr>
+                <tr><td>Binding</td><td>A quote has been selected and you're finalizing the bind</td></tr>
+                <tr><td>Bound</td><td>Policy is bound; ready for export to your AMS</td></tr>
+            </tbody>
+        </table>
+        <p>Each card represents one submission for one insured, for one coverage type. If a client has multiple lines of business with different effective dates, they get separate cards — use the coverage type field/dropdown on the card to tell them apart.</p>
+
+        <h2 id="kg-new-risk">4. Creating a New Risk (Submission)</h2>
+        <p>You have two ways to start a submission:</p>
+        <h3>Option A — Manual entry</h3>
+        <ol>
+            <li>Click <strong>New Risk</strong></li>
+            <li>Enter the insured's name and select the coverage type</li>
+            <li>Click <strong>Create Submission</strong></li>
+        </ol>
+        <h3>Option B — Drag and drop a document</h3>
+        <ol>
+            <li>Click <strong>New Risk</strong></li>
+            <li>Drag in an existing application (e.g. an ACORD 125) or even an existing quote — RiskRunway will parse it and auto-fill the submission card</li>
+            <li>You can drop in multiple documents at once to create several submissions in one step</li>
+        </ol>
+        <p><strong>Note:</strong> RiskRunway does not generate the ACORD forms for you — those still come from your AMS. RiskRunway picks up from there: once you have the completed application on hand, drag it in to start the submission.</p>
+        <p>Once created, you can attach additional supporting documents to the card via the <strong>Documents</strong> dropdown on the card.</p>
+
+        <h2 id="kg-configure-brokers">5. Configuring Your Brokers</h2>
+        <p>Before you can submit to market, you need to set up the brokers/MGAs you work with.</p>
+        <ol>
+            <li>Go to <strong>Configure Brokers</strong> (in Settings)</li>
+            <li>For each broker/MGA, enter: Name, Email address, Delivery method</li>
+            <li>Save</li>
+        </ol>
+
+        <h2 id="kg-submit-to-market">6. Submitting to Market</h2>
+        <p>Once your submission card has the application and supporting docs attached:</p>
+        <ol>
+            <li>Open the card and click <strong>Submit to Market</strong></li>
+            <li>Select which configured broker(s)/MGA(s) to send it to</li>
+            <li>Review (and edit, if needed) the message that will be sent</li>
+            <li>Send</li>
+        </ol>
+        <p>The email will appear to the broker as coming from your own connected Outlook address — not a generic RiskRunway address.</p>
+        <p>Once sent, the card automatically moves into the <strong>Quoting</strong> stage.</p>
+
+        <h2 id="kg-check-email">7. Checking Email &amp; Auto-Importing Quotes</h2>
+        <p>When a broker replies with a quote:</p>
+        <ol>
+            <li>Click <strong>Check Email</strong></li>
+            <li>RiskRunway scans your inbox for replies matching your configured brokers</li>
+            <li>Matches appear in a review pop-up — click on one to see what was found</li>
+            <li>Click <strong>Process</strong> to parse the quote and attach it to the correct submission card</li>
+        </ol>
+        <ul>
+            <li>Checking email does not remove anything from your actual inbox — it only marks matched emails as read</li>
+            <li>If a quote didn't get picked up, double check the sender's email matches what's configured for that broker</li>
+            <li>You'll get an SMS text alert when a new matching email comes in (see Section 12)</li>
+        </ul>
+
+        <h2 id="kg-comparing-quotes">8. Comparing Quotes</h2>
+        <p>Once quotes come in, they appear attached to the submission card. Open the card to compare:</p>
+        <ul>
+            <li>Each quote shows key parsed fields: carrier, premium, tax, fees, effective/expiration dates, limits, etc.</li>
+            <li>You must narrow down to a single selected quote per coverage type before the card can move to Binding.</li>
+        </ul>
+
+        <h2 id="kg-correspondence">9. Saving Correspondence</h2>
+        <ol>
+            <li>From the email view, click <strong>Save as Correspondence</strong></li>
+            <li>Choose which submission card to save it to</li>
+            <li>RiskRunway cleans up the thread with AI — splitting it into individual messages and giving it a readable summary</li>
+        </ol>
+
+        <h2 id="kg-binding">10. Moving to Binding</h2>
+        <p>Once a single quote is selected, click <strong>Into Bind</strong> (or drag the card) to move it to Binding.</p>
+        <p>Once the broker confirms the bind, click <strong>Mark as Bound</strong>.</p>
+
+        <h2 id="kg-export-ams">11. Exporting to Your AMS</h2>
+        <p>RiskRunway fills in the screen you're looking at — you review and save. You are always the final check.</p>
+        <h3>A. Web-based AMS</h3>
+        <ol>
+            <li>From a Bound card, click <strong>Export to AMS</strong> → <strong>Web-based</strong></li>
+            <li>Select the browser tab where your AMS is open</li>
+            <li>RiskRunway fills in fields automatically via the Chrome extension</li>
+            <li>Review every field before saving</li>
+        </ol>
+        <h3>B. Desktop AMS</h3>
+        <ol>
+            <li>From a Bound card, click <strong>Export to AMS</strong> → <strong>Desktop</strong></li>
+            <li>Place the AMS Agent popup on the target window and click <strong>'Push Data Here'</strong></li>
+            <li>Review every field before saving</li>
+        </ol>
+
+        <h2 id="kg-sms">12. SMS Alerts</h2>
+        <ol>
+            <li>Go to <strong>SMS Alerts</strong> (in Settings)</li>
+            <li>Enter your phone number including country code, e.g. <code>+12255551234</code></li>
+            <li>Click <strong>Send Test</strong> to confirm, then <strong>Save</strong></li>
+        </ol>
+
+        <h2 id="kg-report-bug">13. Reporting a Bug</h2>
+        <ol>
+            <li>Open a submission and click the hamburger menu → <strong>Report Bug</strong></li>
+            <li>Use the drawing tool to highlight the area</li>
+            <li>Add a description and click <strong>Send Bug Report</strong></li>
+        </ol>
+
+        <h2 id="kg-data-accuracy">14. Data Accuracy &amp; Your Responsibility</h2>
+        <p>RiskRunway helps extract, organize, and transfer your quote data — but <strong>you are always the final check</strong> before anything is saved in your AMS or anywhere else.</p>
+        <p>Users are solely responsible for reviewing, verifying, and confirming all information before finalizing or submitting data within any external system.</p>
+        <ul>
+            <li>RiskRunway functions as an assistive tool, not a system of record</li>
+            <li>You are responsible for ensuring data accuracy prior to submission</li>
+            <li>RiskRunway is not liable for errors, omissions, or discrepancies resulting from the use of extracted or transferred data</li>
+        </ul>
+    </div>
+</aside>
+
 </body>
 </html>
