@@ -7332,6 +7332,97 @@ def send_follow_up(submission_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/api/submission/<int:submission_id>/request_to_bind', methods=['POST'])
+@login_required
+def request_to_bind(submission_id):
+    """
+    Send a request-to-bind email to the winning quote's broker.
+    Sends all selected documents as attachments along with the bind request body.
+    """
+    try:
+        data = request.get_json()
+        broker_id = data.get('broker_id')
+        body_text = (data.get('body') or '').strip()
+        document_ids = data.get('document_ids', [])
+
+        if not broker_id:
+            return jsonify({'success': False, 'error': 'No broker specified'}), 400
+        if not body_text:
+            return jsonify({'success': False, 'error': 'Email body is required'}), 400
+
+        user_id = session.get('user_id')
+        db_session = get_session()
+        try:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            signature = (user.signature or '').strip() if user else ''
+
+            submission = db_session.query(Submission).filter_by(id=submission_id).first()
+            if not submission:
+                return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+            broker = db_session.query(Broker).filter_by(
+                id=broker_id, user_id=user_id, is_enabled=True
+            ).first()
+            if not broker:
+                return jsonify({'success': False, 'error': 'Broker not found'}), 404
+            if not broker.email:
+                return jsonify({'success': False, 'error': 'Broker has no email address configured'}), 400
+
+            # Resolve documents to attach
+            all_documents = db_session.query(Document).filter(
+                Document.submission_id == submission_id
+            ).all()
+            doc_map = {doc.id: doc for doc in all_documents}
+
+            documents = [doc_map[did] for did in document_ids if did in doc_map] if document_ids else all_documents
+
+            # Build full body with signature
+            full_body = body_text
+            if signature:
+                full_body += f"\n\n{signature}"
+
+            subject = f"Request to Bind - {submission.insured_name}"
+
+            _send_email_via_oauth(
+                to_email=broker.email,
+                subject=subject,
+                body=full_body,
+                documents=documents
+            )
+
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='request_to_bind_sent',
+                user=session.get('username'),
+                submission_id=submission_id,
+                details=f"Request to bind sent to {broker.name} ({broker.email})"
+            )
+
+            db_session.commit()
+
+            return jsonify({
+                'success': True,
+                'broker_name': broker.name,
+                'broker_email': broker.email
+            })
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Error sending request to bind for submission {submission_id}: {error_msg}")
+            if 're-connect' in error_msg.lower() or 'token' in error_msg.lower() or 'no connected email' in error_msg.lower():
+                return jsonify({
+                    'success': False,
+                    'needs_reauth': True,
+                    'provider': 'outlook',
+                    'error': error_msg
+                })
+            return jsonify({'success': False, 'error': error_msg}), 500
+        finally:
+            db_session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================

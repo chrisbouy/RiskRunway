@@ -1749,21 +1749,29 @@
             }
         });
 
-        // User Guide - open the fixed panel (reuses submission.html pattern)
+        // User Guide - open the fixed panel (deferred because panel HTML is after script)
         document.getElementById('userGuideBtn').addEventListener('click', function() {
             document.getElementById('kanbanGuidePanel').classList.add('open');
             document.getElementById('settingsPanel').classList.remove('active');
         });
-        document.getElementById('kanbanGuideCloseBtn').addEventListener('click', function() {
-            document.getElementById('kanbanGuidePanel').classList.remove('open');
-        });
-        // Smooth scroll for TOC links
-        document.querySelector('#kanbanGuidePanel .guide-body').addEventListener('click', function(e) {
-            var link = e.target.closest('a[href^="#kg-"]');
-            if (link) {
-                e.preventDefault();
-                var target = document.getElementById(link.getAttribute('href').slice(1));
-                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.addEventListener('DOMContentLoaded', function() {
+            var closeBtn = document.getElementById('kanbanGuideCloseBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    document.getElementById('kanbanGuidePanel').classList.remove('open');
+                });
+            }
+            // Smooth scroll for TOC links
+            var guideBody = document.querySelector('#kanbanGuidePanel .guide-body');
+            if (guideBody) {
+                guideBody.addEventListener('click', function(e) {
+                    var link = e.target.closest('a[href^="#kg-"]');
+                    if (link) {
+                        e.preventDefault();
+                        var target = document.getElementById(link.getAttribute('href').slice(1));
+                        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
             }
         });
 

@@ -1531,6 +1531,7 @@
                 <div style="padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
                     <!-- Action buttons centered -->
                     <div style="display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 0.875rem;">
+                        <button id="requestToBindBtn" style="background: #d97706; color: white;"><span style="font-size: 1.2em;">📨</span> Request to Bind</button>
                         <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">◀️</span> Set Back to Quoting</button>
                         <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Mark as Bound</button>
                         <button id="downloadCsvBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
@@ -1618,6 +1619,49 @@
             <div class="flex justify-end gap-2 pt-3 border-t border-gray-200">
                 <button id="cancelSubmitToMarket" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
                 <button id="sendToMarketsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Request to Bind Modal -->
+    <div id="requestToBindModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">Request to Bind</h2>
+                <button id="closeRequestToBindModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">Requesting binding for <strong id="requestToBindInsuredName"></strong></p>
+
+            <!-- Matched Broker Info -->
+            <div id="requestToBindBrokerInfo" class="mb-4">
+                <!-- Broker info will be rendered here -->
+            </div>
+
+            <div id="noBindBrokerMessage" class="text-gray-500 text-sm mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded" style="display:none;">
+                <strong>Could not auto-match broker.</strong> The winning quote's broker could not be matched to your configured brokers. Please select manually:
+                <select id="bindBrokerManualSelect" class="mt-2 w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                    <option value="">-- Select a broker --</option>
+                </select>
+            </div>
+
+            <!-- Email Body -->
+            <div class="mb-4">
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Email Body</label>
+                <textarea id="requestToBindBody" class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900" rows="8"></textarea>
+            </div>
+
+            <!-- Attachments -->
+            <div class="mb-4">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Attachments</label>
+                <div id="requestToBindDocsList" class="space-y-1">
+                    <!-- Document checkboxes will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex justify-end gap-2 pt-3 border-t border-gray-200">
+                <button id="cancelRequestToBind" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
+                <button id="sendRequestToBindBtn" class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">Send Request to Bind</button>
             </div>
         </div>
     </div>
@@ -3493,6 +3537,259 @@ Thank you for your attention to this matter.`;
                 alert(error.message || 'Error submitting to market');
                 btn.disabled = false;
                 btn.textContent = previousText;
+            }
+        });
+
+
+
+        // ===== Request to Bind Modal Logic =====
+        let requestToBindBrokerId = null;
+
+        document.getElementById('requestToBindBtn').addEventListener('click', async function() {
+            // Check for connected email account before opening the modal
+            try {
+                const accountsResp = await fetch('/api/oauth/accounts');
+                const accountsData = await accountsResp.json();
+                if (!accountsData.success || !accountsData.accounts || accountsData.accounts.length === 0) {
+                    alert('Please connect your email account first (Settings > Connect Email).');
+                    return;
+                }
+                const hasActive = accountsData.accounts.some(a => a.status === 'active');
+                if (!hasActive) {
+                    alert('Your email account needs to be reconnected. Please go to Settings > Connect Email.');
+                    return;
+                }
+            } catch (e) {
+                console.error('Error checking email accounts:', e);
+            }
+
+            document.getElementById('requestToBindInsuredName').textContent = submissionData?.insured_name || 'Unknown';
+            await loadRequestToBindBroker();
+            loadRequestToBindDocs();
+            document.getElementById('requestToBindModal').classList.remove('hidden');
+        });
+
+        document.getElementById('cancelRequestToBind').addEventListener('click', () => {
+            document.getElementById('requestToBindModal').classList.add('hidden');
+        });
+
+        document.getElementById('closeRequestToBindModal').addEventListener('click', () => {
+            document.getElementById('requestToBindModal').classList.add('hidden');
+        });
+
+        document.getElementById('requestToBindModal').addEventListener('click', function(e) {
+            if (e.target === this) document.getElementById('requestToBindModal').classList.add('hidden');
+        });
+
+        function getWinningQuoteBrokerName() {
+            // Get the winning quote's broker from parsed data
+            const wonQuoteIds = new Set(
+                quotes.filter(q => q.quote_outcome === 'WON').map(q => q.id)
+            );
+
+            // Find the winning quote's parsed data
+            for (const quote of quotes) {
+                if (wonQuoteIds.has(quote.id)) {
+                    const parsed = quote.parsed_data || {};
+                    const broker = parsed.general_agent_or_wholesale_broker;
+                    if (broker) {
+                        return {
+                            name: broker.name || null,
+                            email: broker.email || broker.contact_email || null
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function matchBrokerToConfigured(brokerInfo, configuredBrokers) {
+            if (!brokerInfo) return null;
+
+            // Try to match by email first (most reliable)
+            if (brokerInfo.email) {
+                const emailLower = brokerInfo.email.toLowerCase().trim();
+                const emailMatch = configuredBrokers.find(b =>
+                    b.email && b.email.toLowerCase().trim() === emailLower
+                );
+                if (emailMatch) return emailMatch;
+            }
+
+            // Try to match by name (fuzzy - contains match)
+            if (brokerInfo.name) {
+                const nameLower = brokerInfo.name.toLowerCase().trim();
+                const nameMatch = configuredBrokers.find(b => {
+                    if (!b.name) return false;
+                    const configNameLower = b.name.toLowerCase().trim();
+                    return configNameLower === nameLower ||
+                           configNameLower.includes(nameLower) ||
+                           nameLower.includes(configNameLower);
+                });
+                if (nameMatch) return nameMatch;
+            }
+
+            return null;
+        }
+
+        function getDefaultBindRequestBody(brokerName) {
+            const insuredName = submissionData?.insured_name || 'our client';
+
+            // Get winning quote details
+            const wonQuoteIds = new Set(quotes.filter(q => q.quote_outcome === 'WON').map(q => q.id));
+            let quoteDetails = '';
+
+            for (const quote of quotes) {
+                if (wonQuoteIds.has(quote.id)) {
+                    const parsed = quote.parsed_data || {};
+                    if (parsed.policies && Array.isArray(parsed.policies)) {
+                        quoteDetails = parsed.policies.map(p =>
+                            `  - Coverage: ${p.coverage_type || 'N/A'}\n` +
+                            `    Carrier: ${p.carrier || 'N/A'}\n` +
+                            `    Policy #: ${p.policy_number || 'Pending'}\n` +
+                            `    Effective: ${p.effective_date || 'N/A'} – ${p.expiration_date || 'N/A'}\n` +
+                            `    Premium: ${p.annual_premium || 'N/A'}`
+                        ).join('\n\n');
+                    }
+                    break;
+                }
+            }
+
+            return `Dear ${brokerName},
+
+We would like to request binding of the following coverage for ${insuredName}:
+
+${quoteDetails || '(Quote details)'}
+
+Please find all submission documents attached. Please confirm binding and provide the binder/certificate at your earliest convenience.
+
+Thank you for your attention to this matter.`;
+        }
+
+        async function loadRequestToBindBroker() {
+            try {
+                const response = await fetch('/api/brokers');
+                const data = await response.json();
+                if (!data.success) return;
+
+                const emailBrokers = data.brokers.filter(b => !b.is_portal && b.email);
+                const brokerInfo = getWinningQuoteBrokerName();
+                const matchedBroker = matchBrokerToConfigured(brokerInfo, emailBrokers);
+
+                const infoDiv = document.getElementById('requestToBindBrokerInfo');
+                const noMatchDiv = document.getElementById('noBindBrokerMessage');
+                const manualSelect = document.getElementById('bindBrokerManualSelect');
+                const bodyTextarea = document.getElementById('requestToBindBody');
+
+                if (matchedBroker) {
+                    requestToBindBrokerId = matchedBroker.id;
+                    noMatchDiv.style.display = 'none';
+                    infoDiv.innerHTML = `
+                        <div class="border border-green-200 rounded p-3 bg-green-50">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-green-600 font-semibold text-sm">✓ Matched Broker</span>
+                            </div>
+                            <div class="text-sm text-gray-800">
+                                <strong>${escapeHtml(matchedBroker.name || matchedBroker.email)}</strong>
+                                <span class="text-gray-500 ml-2">(${escapeHtml(matchedBroker.email)})</span>
+                            </div>
+                            ${brokerInfo?.name ? `<div class="text-xs text-gray-500 mt-1">Matched from quote: "${escapeHtml(brokerInfo.name)}"</div>` : ''}
+                        </div>
+                    `;
+                    bodyTextarea.value = getDefaultBindRequestBody(matchedBroker.name || matchedBroker.email);
+                } else {
+                    requestToBindBrokerId = null;
+                    infoDiv.innerHTML = '';
+                    noMatchDiv.style.display = 'block';
+
+                    // Populate manual select dropdown
+                    manualSelect.innerHTML = '<option value="">-- Select a broker --</option>' +
+                        emailBrokers.map(b => `<option value="${b.id}">${escapeHtml(b.name || b.email)} (${escapeHtml(b.email)})</option>`).join('');
+
+                    manualSelect.onchange = function() {
+                        const selectedId = parseInt(this.value);
+                        if (selectedId) {
+                            requestToBindBrokerId = selectedId;
+                            const selectedBroker = emailBrokers.find(b => b.id === selectedId);
+                            bodyTextarea.value = getDefaultBindRequestBody(selectedBroker?.name || selectedBroker?.email || 'Broker');
+                        } else {
+                            requestToBindBrokerId = null;
+                        }
+                    };
+
+                    bodyTextarea.value = getDefaultBindRequestBody(brokerInfo?.name || 'Broker');
+                }
+            } catch (error) {
+                console.error('Error loading brokers for bind request:', error);
+            }
+        }
+
+        function loadRequestToBindDocs() {
+            const docsList = document.getElementById('requestToBindDocsList');
+            const allDocs = submissionDocuments || [];
+
+            if (allDocs.length === 0) {
+                docsList.innerHTML = '<p class="text-xs text-gray-500">No documents available.</p>';
+                return;
+            }
+
+            docsList.innerHTML = allDocs.map(doc => `
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" class="rtb-doc-checkbox" data-doc-id="${doc.id}" checked>
+                    ${escapeHtml(doc.name || doc.original_filename || 'file')}
+                    <span class="text-xs text-gray-400">(${doc.document_type || 'Other'})</span>
+                </label>
+            `).join('');
+        }
+
+        document.getElementById('sendRequestToBindBtn').addEventListener('click', async function() {
+            if (!requestToBindBrokerId) {
+                alert('Please select a broker to send the bind request to.');
+                return;
+            }
+
+            const body = document.getElementById('requestToBindBody').value.trim();
+            if (!body) {
+                alert('Please enter an email body.');
+                return;
+            }
+
+            // Gather selected document IDs
+            const documentIds = [];
+            document.querySelectorAll('.rtb-doc-checkbox:checked').forEach(cb => {
+                documentIds.push(parseInt(cb.dataset.docId));
+            });
+
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch(`/api/submission/${submissionId}/request_to_bind`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        broker_id: requestToBindBrokerId,
+                        body: body,
+                        document_ids: documentIds
+                    })
+                });
+
+                const data = await response.json();
+                if (!data.success && data.needs_reauth) {
+                    await handleNeedsReauth(data.provider || 'outlook');
+                    return;
+                }
+                if (data.success) {
+                    alert('Request to bind sent successfully!');
+                    document.getElementById('requestToBindModal').classList.add('hidden');
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Request to Bind';
             }
         });
 
