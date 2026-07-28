@@ -29,7 +29,7 @@ from app.database import (
     get_available_databases,
     is_database_switching_enabled
 )
-from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus, AmsExportJob
+from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus, AmsExportJob, AppetiteRule, SmsAlert
 from app.email_scraper import EmailScraper  # IMAP-based scraping (active)
 from app.email_client import EmailClient, create_email_client  # OAuth (future)
 from app.oauth_services import get_oauth_service
@@ -902,6 +902,68 @@ def report_submission_bug(submission_id):
             return jsonify({'success': True})
         finally:
             db_session.close()
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# GENERAL BUG REPORT (from Kanban board or other non-submission pages)
+# ============================================================================
+
+@bp.route('/api/report_bug', methods=['POST'])
+@login_required
+def report_general_bug():
+    """Create and send a general bug report email (not tied to a specific submission)."""
+    try:
+        data = request.get_json() or {}
+        description = (data.get('description') or '').strip()
+        page_url = data.get('page_url', '')
+        page = data.get('page', 'unknown')
+
+        if not description:
+            return jsonify({'success': False, 'error': 'Description is required'}), 400
+
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        reporter = session.get('username', 'unknown')
+
+        report_body = (
+            f"Bug reported by: {reporter}\n"
+            f"Reported at: {timestamp}\n"
+            f"Page: {page}\n"
+            f"Page URL: {page_url}\n\n"
+            f"Bug Description:\n{description}\n"
+        )
+
+        subject = f"[RiskRunway Bug] General - {page} - {reporter}"
+
+        # Send without screenshot
+        import requests as http_requests
+        api_key = current_app.config.get('RESEND_API_KEY')
+        from_email = current_app.config.get('RESEND_FROM_EMAIL', 'noreply@risk-runway.com')
+        recipient = current_app.config.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
+
+        if not api_key:
+            return jsonify({'success': False, 'error': 'RESEND_API_KEY is not configured'}), 500
+
+        response = http_requests.post(
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'from': f'Risk Runway <{from_email}>',
+                'to': [recipient],
+                'subject': subject,
+                'text': report_body,
+            }
+        )
+
+        if response.status_code not in (200, 201):
+            return jsonify({'success': False, 'error': f'Email send failed: {response.text}'}), 500
+
+        return jsonify({'success': True})
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -5203,6 +5265,23 @@ def get_admin_data():
         # Get all documents
         documents_query = session.query(Document).order_by(Document.created_at.desc()).all()
         documents = [d.to_dict() for d in documents_query]
+
+        # Get all appetite rules
+        appetite_rules_query = session.query(AppetiteRule).all()
+        appetite_rules = [r.to_dict() for r in appetite_rules_query]
+
+        # Get all AMS export jobs
+        ams_export_jobs_query = session.query(AmsExportJob).order_by(AmsExportJob.created_at.desc()).limit(100).all()
+        ams_export_jobs = [j.to_dict() for j in ams_export_jobs_query]
+
+        # Get all SMS alerts
+        sms_alerts_query = session.query(SmsAlert).order_by(SmsAlert.created_at.desc()).limit(100).all()
+        sms_alerts = [a.to_dict() for a in sms_alerts_query]
+
+        # Get all connected accounts
+        connected_accounts_query = session.query(ConnectedAccount).all()
+        connected_accounts = [c.to_dict() for c in connected_accounts_query]
+
         session.close()
 
         return jsonify({
@@ -5213,7 +5292,11 @@ def get_admin_data():
             'brokers': brokers,
             'email_messages': email_messages,
             'email_attachments': email_attachments,
-            'documents': documents,  # Add this line
+            'documents': documents,
+            'appetite_rules': appetite_rules,
+            'ams_export_jobs': ams_export_jobs,
+            'sms_alerts': sms_alerts,
+            'connected_accounts': connected_accounts,
             'audit_log': audit_data
         })
     except Exception as e:

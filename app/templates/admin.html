@@ -42,6 +42,9 @@
                     <button onclick="setQuery('DELETE FROM submissions')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE submissions</button>
                     <button onclick="setQuery('DELETE FROM audit_log')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE audit_log</button>
                     <button onclick="setQuery('DELETE FROM brokers')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE brokers</button>
+                    <button onclick="setQuery('DELETE FROM appetite_rules')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE appetite_rules</button>
+                    <button onclick="setQuery('DELETE FROM ams_export_jobs')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE ams_export_jobs</button>
+                    <button onclick="setQuery('DELETE FROM sms_alerts')" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE sms_alerts</button>
                     <button onclick="setQuery(&quot;DELETE FROM users WHERE role != 'ADMIN'&quot;)" class="px-2 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">DELETE non-admin users</button>
                 </div>
             </div>
@@ -57,16 +60,18 @@
 
         <!-- Submissions Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Submissions</h2>
+                <button onclick="quickDelete('submissions')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="submissionsTableContainer"></div>
         </div>
 
         <!-- Quotes Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Quotes</h2>
+                <button onclick="quickDelete('quotes')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="quotesTableContainer"></div>
         </div>
@@ -76,6 +81,7 @@
             <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Connected Accounts (OAuth)</h2>
                 <div class="flex gap-2">
+                    <button onclick="quickDelete('connected_accounts')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
                     <button onclick="connectOAuth('gmail')" class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">Connect Gmail</button>
                     <button onclick="connectOAuth('outlook')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">Connect Outlook</button>
                 </div>
@@ -91,47 +97,82 @@
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
             <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Users</h2>
-                <button id="addUserBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">+ Add User</button>
+                <div class="flex gap-2">
+                    <button onclick="quickDelete('users', &quot;DELETE FROM users WHERE role != 'ADMIN'&quot;)" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete Non-Admin</button>
+                    <button id="addUserBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">+ Add User</button>
+                </div>
             </div>
             <div class="overflow-x-auto" id="usersTableContainer"></div>
         </div>
 
         <!-- Brokers Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Brokers</h2>
+                <button onclick="quickDelete('brokers')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="brokersTableContainer"></div>
         </div>
 
         <!-- Email Messages Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Email Messages (Last 100)</h2>
+                <button onclick="quickDelete('email_messages')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="emailMessagesTableContainer"></div>
         </div>
 
         <!-- Email Attachments Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Email Attachments (Last 100)</h2>
+                <button onclick="quickDelete('email_attachments')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="emailAttachmentsTableContainer"></div>
         </div>
 
         <!-- Documents Table -->
         <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Documents</h2>
+                <button onclick="quickDelete('documents')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="documentsTableContainer"></div>
         </div>
 
+        <!-- Appetite Rules Table -->
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-white">Appetite Rules</h2>
+                <button onclick="quickDelete('appetite_rules')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
+            </div>
+            <div class="overflow-x-auto" id="appetiteRulesTableContainer"></div>
+        </div>
+
+        <!-- AMS Export Jobs Table -->
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-white">AMS Export Jobs (Last 100)</h2>
+                <button onclick="quickDelete('ams_export_jobs')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
+            </div>
+            <div class="overflow-x-auto" id="amsExportJobsTableContainer"></div>
+        </div>
+
+        <!-- SMS Alerts Table -->
+        <div class="bg-gray-900 rounded-lg shadow mb-6 border border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-white">SMS Alerts (Last 100)</h2>
+                <button onclick="quickDelete('sms_alerts')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
+            </div>
+            <div class="overflow-x-auto" id="smsAlertsTableContainer"></div>
+        </div>
+
         <!-- Audit Log Table -->
         <div class="bg-gray-900 rounded-lg shadow border border-gray-700">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                 <h2 class="text-xl font-semibold text-white">Audit Log (Last 50)</h2>
+                <button onclick="quickDelete('audit_logs')" class="px-3 py-1 text-xs font-mono bg-gray-800 border border-red-900 text-red-400 rounded hover:bg-red-950">🗑 Delete All</button>
             </div>
             <div class="overflow-x-auto" id="auditTableContainer"></div>
         </div>
@@ -210,6 +251,9 @@
                     renderGenericTable('emailMessagesTableContainer', data.email_messages);
                     renderGenericTable('emailAttachmentsTableContainer', data.email_attachments || []);
                     renderGenericTable('documentsTableContainer', data.documents || []);
+                    renderGenericTable('appetiteRulesTableContainer', data.appetite_rules || []);
+                    renderGenericTable('amsExportJobsTableContainer', data.ams_export_jobs || []);
+                    renderGenericTable('smsAlertsTableContainer', data.sms_alerts || []);
                     renderGenericTable('auditTableContainer', data.audit_log);
                 }
             } catch (error) {
@@ -499,6 +543,28 @@
                 }
             } catch (error) {
                 alert('Error deactivating user: ' + error.message);
+            }
+        }
+
+        async function quickDelete(tableName, customSql) {
+            const sql = customSql || `DELETE FROM ${tableName}`;
+            if (!confirm(`⚠️ Are you sure you want to run:\n\n${sql}\n\nThis cannot be undone!`)) return;
+
+            try {
+                const response = await fetch('/api/admin/sql', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sql})
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    loadData();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
             }
         }
 

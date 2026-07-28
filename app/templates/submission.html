@@ -1174,6 +1174,130 @@
             font-size: 0.813rem;
             font-weight: 500;
         }
+
+        /* User Guide Panel - fixed overlay, does not affect page layout */
+        #userGuidePanel {
+            position: fixed;
+            top: 0;
+            right: -440px;
+            width: 420px;
+            height: 100vh;
+            background: var(--card-bg, #1a1a1a);
+            border-left: 1px solid var(--border-color, #2a2a2a);
+            display: flex;
+            flex-direction: column;
+            z-index: 9000;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.4);
+            transition: right 0.3s ease;
+        }
+        #userGuidePanel.open {
+            right: 0;
+        }
+        .guide-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color, #2a2a2a);
+            flex-shrink: 0;
+            background: var(--header-gradient-start, #0f0f0f);
+        }
+        .guide-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary, #e5e5e5);
+            margin: 0;
+        }
+        .guide-close-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: var(--text-primary, #e5e5e5);
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+            transition: background 0.15s;
+        }
+        .guide-close-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .guide-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1.25rem;
+            font-size: 0.813rem;
+            line-height: 1.6;
+            color: var(--color-neutral-700, #c0c0c0);
+        }
+        .guide-body h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--color-primary-light, #60a5fa);
+            margin: 1.5rem 0 0.5rem 0;
+            padding-bottom: 0.25rem;
+            border-bottom: 1px solid var(--border-color, #2a2a2a);
+        }
+        .guide-body h2:first-child { margin-top: 0; }
+        .guide-body h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary, #e5e5e5);
+            margin: 1rem 0 0.375rem 0;
+        }
+        .guide-body p { margin: 0.5rem 0; }
+        .guide-body ul, .guide-body ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+        .guide-body li { margin: 0.25rem 0; }
+        .guide-body strong { color: var(--text-primary, #e5e5e5); font-weight: 600; }
+        .guide-body code {
+            background: var(--color-neutral-100, #2a2a2a);
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        .guide-toc {
+            background: var(--color-neutral-100, #2a2a2a);
+            border: 1px solid var(--border-color, #2a2a2a);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.25rem;
+        }
+        .guide-toc h3 {
+            font-size: 0.813rem;
+            font-weight: 700;
+            color: var(--text-primary, #e5e5e5);
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .guide-toc ol { margin: 0; padding-left: 1.25rem; }
+        .guide-toc li { margin: 0.25rem 0; }
+        .guide-toc a {
+            color: var(--color-primary-light, #60a5fa);
+            text-decoration: none;
+        }
+        .guide-toc a:hover { color: #93c5fd; text-decoration: underline; }
+        .guide-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.5rem 0;
+            font-size: 0.75rem;
+        }
+        .guide-body table th, .guide-body table td {
+            padding: 0.375rem 0.5rem;
+            border: 1px solid var(--border-color, #2a2a2a);
+            text-align: left;
+        }
+        .guide-body table th {
+            background: var(--color-neutral-100, #2a2a2a);
+            font-weight: 600;
+            color: var(--text-primary, #e5e5e5);
+        }
     </style>
 </head>
 <body>
@@ -1219,6 +1343,7 @@
                         </div>
                         <button id="deleteSubmissionBtn" class="menu-action-btn">Delete Submission</button>
                         <button id="reportBugBtn" class="menu-action-btn">Report Bug</button>
+                        <button id="userGuideBtn" class="menu-action-btn">User Guide</button>
                         <button id="logoutBtn" class="menu-action-btn">Logout</button>
                     </div>
                 </div>
@@ -4770,5 +4895,227 @@ Thank you for your attention to this matter.`;
         <p class="text-sm text-gray-500">This may take a few moments</p>
     </div>
 </div>
+
+<!-- User Guide Panel -->
+<aside id="userGuidePanel">
+    <div class="guide-header">
+        <h2>User Guide</h2>
+        <button id="guideCloseBtn" class="guide-close-btn" title="Close Guide">&times;</button>
+    </div>
+    <div class="guide-body">
+        <nav class="guide-toc">
+            <h3>Table of Contents</h3>
+            <ol>
+                <li><a href="#guide-getting-started">Getting Started</a></li>
+                <li><a href="#guide-connecting-inbox">Connecting Your Outlook Inbox</a></li>
+                <li><a href="#guide-submission-board">Understanding the Submission Board</a></li>
+                <li><a href="#guide-new-risk">Creating a New Risk (Submission)</a></li>
+                <li><a href="#guide-configure-brokers">Configuring Your Brokers</a></li>
+                <li><a href="#guide-submit-to-market">Submitting to Market</a></li>
+                <li><a href="#guide-check-email">Checking Email &amp; Auto-Importing Quotes</a></li>
+                <li><a href="#guide-comparing-quotes">Comparing Quotes</a></li>
+                <li><a href="#guide-correspondence">Saving Correspondence</a></li>
+                <li><a href="#guide-binding">Moving to Binding</a></li>
+                <li><a href="#guide-export-ams">Exporting to Your AMS</a></li>
+                <li><a href="#guide-sms">SMS Alerts</a></li>
+                <li><a href="#guide-report-bug">Reporting a Bug</a></li>
+                <li><a href="#guide-data-accuracy">Data Accuracy &amp; Your Responsibility</a></li>
+            </ol>
+        </nav>
+
+        <h2 id="guide-getting-started">1. Getting Started</h2>
+        <p><strong>Browser requirements:</strong> Chrome is strongly suggested if you plan to use the AMS data transfer.</p>
+
+        <h2 id="guide-connecting-inbox">2. Connecting Your Outlook Inbox</h2>
+        <p>RiskRunway connects to your Outlook (or Gmail) inbox so it can automatically detect incoming quotes and broker replies. This uses OAuth — a secure, standard way of granting an app limited access to your email without giving it your password.</p>
+        <h3>To connect:</h3>
+        <ol>
+            <li>Click <strong>Check Email</strong> for the first time — this will trigger the setup/authorization flow</li>
+            <li>You'll be redirected to a Microsoft (or Google) sign-in screen</li>
+            <li>Sign in with your normal work email credentials and approve the requested permissions</li>
+            <li>This is a one-time setup — once authorized, RiskRunway remembers the connection</li>
+        </ol>
+        <h3>What RiskRunway does — and doesn't — do with your inbox:</h3>
+        <ul>
+            <li>It <strong>reads</strong> emails to detect quotes and broker replies matching your configured brokers (see Section 5)</li>
+            <li>It does <strong>not</strong> move, delete, or file your emails</li>
+            <li>The only change it makes is marking an email read/unread so you can tell what's already been processed</li>
+            <li>To re-process an email, right-click it in your inbox and mark it unread again, then click <strong>Check Email</strong></li>
+        </ul>
+        <h3>If your company uses a VPN or locked-down network:</h3>
+        <ul>
+            <li>Loading the RiskRunway site itself may require your IT/network admin to allow <code>app.risk-runway.com</code> through any web filtering</li>
+            <li>If your Microsoft 365 admin restricts third-party app approvals, they may need to separately approve RiskRunway's access in your Microsoft 365 admin settings (this is different from network/VPN access — see your IT admin if the OAuth screen fails or is blocked)</li>
+        </ul>
+        <p><strong>Filtering what gets pulled in:</strong> By default, RiskRunway looks back 24 days for emails from your configured brokers. You can adjust this from the filter button on the New Messages popup.</p>
+
+        <h2 id="guide-submission-board">3. Understanding the Submission Board</h2>
+        <p>Submissions move through a Kanban-style board with these stages:</p>
+        <table>
+            <thead><tr><th>Stage</th><th>What it means</th></tr></thead>
+            <tbody>
+                <tr><td>New Risk</td><td>A submission has been created but not yet sent to any broker/MGA</td></tr>
+                <tr><td>Quoting</td><td>Submission has been sent out and you're waiting on / comparing quotes</td></tr>
+                <tr><td>Binding</td><td>A quote has been selected and you're finalizing the bind</td></tr>
+                <tr><td>Bound</td><td>Policy is bound; ready for export to your AMS</td></tr>
+            </tbody>
+        </table>
+        <p>Each card represents one submission for one insured, for one coverage type. If a client has multiple lines of business with different effective dates (e.g. Workers' Comp effective Jan 1, Property effective Jan 15), they get separate cards — use the coverage type field/dropdown on the card to tell them apart.</p>
+
+        <h2 id="guide-new-risk">4. Creating a New Risk (Submission)</h2>
+        <p>You have two ways to start a submission:</p>
+        <h3>Option A — Manual entry</h3>
+        <ol>
+            <li>Click <strong>New Risk</strong></li>
+            <li>Enter the insured's name and select the coverage type</li>
+            <li>Click <strong>Create Submission</strong></li>
+        </ol>
+        <h3>Option B — Drag and drop a document</h3>
+        <ol>
+            <li>Click <strong>New Risk</strong></li>
+            <li>Drag in an existing application (e.g. an ACORD 125) or even an existing quote — RiskRunway will parse it and auto-fill the submission card</li>
+            <li>You can drop in multiple documents at once to create several submissions in one step</li>
+        </ol>
+        <p><strong>Note:</strong> RiskRunway does not generate the ACORD 125/126/140 forms for you — those still come from your AMS (EasyApps, Epic, etc.) as they do today. RiskRunway picks up from there: once you have the completed application on hand (from your AMS or your hard drive), drag it in to start the submission.</p>
+        <p>Once created, you can attach additional supporting documents to the card — loss runs, statements of value, supplemental forms, etc. — via the <strong>Documents</strong> dropdown on the card.</p>
+
+        <h2 id="guide-configure-brokers">5. Configuring Your Brokers</h2>
+        <p>Before you can submit to market, you need to set up the brokers/MGAs you work with.</p>
+        <ol>
+            <li>Go to <strong>Configure Brokers</strong></li>
+            <li>For each broker/MGA, enter:
+                <ul><li>Name</li><li>Email address</li><li>Delivery method: Email or Portal</li></ul>
+            </li>
+            <li>Save</li>
+        </ol>
+
+        <h2 id="guide-submit-to-market">6. Submitting to Market</h2>
+        <p>Once your submission card has the application and supporting docs attached:</p>
+        <ol>
+            <li>Open the card and click <strong>Submit to Market</strong></li>
+            <li>Select which configured broker(s)/MGA(s) to send it to</li>
+            <li>Review (and edit, if needed) the message that will be sent — this is what the broker will see, along with the attached documents</li>
+            <li>Send</li>
+        </ol>
+        <p>The email will appear to the broker as coming from your own connected Outlook address — not a generic RiskRunway address.</p>
+        <p>Once sent, the card automatically moves into the <strong>Quoting</strong> stage. (You can also skip this and move a card into Quoting manually if you're submitting outside the app.)</p>
+
+        <h2 id="guide-check-email">7. Checking Email &amp; Auto-Importing Quotes</h2>
+        <p>When a broker replies with a quote:</p>
+        <ol>
+            <li>Click <strong>Check Email</strong></li>
+            <li>RiskRunway scans your inbox for replies matching your configured brokers or matching an existing submission card</li>
+            <li>Matches appear in a review pop-up — click on one to see what was found</li>
+            <li>Click <strong>Process</strong> to parse the quote and attach it to the correct submission card</li>
+        </ol>
+        <p><strong>Notes:</strong></p>
+        <ul>
+            <li>Checking email does not remove anything from your actual inbox — it only marks matched emails as read</li>
+            <li>If a quote didn't get picked up, double check the sender's email matches what's configured for that broker in Section 5</li>
+            <li>You'll also get an SMS text alert when a new matching email comes in (see Section 12), even if you're away from your desk</li>
+        </ul>
+
+        <h2 id="guide-comparing-quotes">8. Comparing Quotes</h2>
+        <p>Once quotes come in, they appear attached to the submission card. Open the card to compare:</p>
+        <ul>
+            <li>Each quote shows key parsed fields: carrier, premium, tax, fees, effective/expiration dates, limits, etc.</li>
+            <li>You can have multiple quotes on a card while comparing. You must narrow down to a single selected quote per coverage type before the card can move to Binding.</li>
+        </ul>
+
+        <h2 id="guide-correspondence">9. Saving Correspondence</h2>
+        <p>If an email thread with a broker has important context you want documented on a submission (not just a throwaway reply):</p>
+        <ol>
+            <li>From the email view, click <strong>Save as Correspondence</strong></li>
+            <li>Choose which submission card to save it to</li>
+            <li>RiskRunway cleans up the thread with AI — splitting it into individual messages and giving the whole thread a readable name/summary, so it's easier to scan later than raw email formatting</li>
+        </ol>
+        <p>The saved correspondence appears under that card's <strong>Documents</strong> dropdown alongside your other attachments.</p>
+
+        <h2 id="guide-binding">10. Moving to Binding</h2>
+        <p>Once a single quote is selected for a coverage type, click <strong>Into Bind</strong> (or drag the card manually) to move it to the Binding stage.</p>
+        <p>If you still need to send a formal bind request to your broker/MGA (with any required subjectivities/supplemental forms), do that the same way you always have — via email — and attach the confirmation into the card once you have it.</p>
+        <p>Once the broker confirms the bind and you've received the binder/invoice (and eventually the policy + dec page), click <strong>Mark as Bound</strong>.</p>
+
+        <h2 id="guide-export-ams">11. Exporting to Your AMS</h2>
+        <p>RiskRunway does not directly write into any AMS — instead, it fills in the screen you're looking at, and you review and save it yourself. You are always the final check before anything is saved.</p>
+        <h3>A. Web-based AMS</h3>
+        <ol>
+            <li>From a Bound card, click <strong>Export to AMS</strong></li>
+            <li>Choose <strong>Web-based</strong></li>
+            <li>This uses the Chrome extension — a list of your currently open browser tabs will appear</li>
+            <li>Select the tab where your AMS is open</li>
+            <li>RiskRunway will fill in the fields it can find on that screen automatically</li>
+            <li>Review every field before saving — carefully check premiums, limits, coverage terms, and named insured details in particular</li>
+        </ol>
+        <h3>B. Desktop AMS</h3>
+        <ol>
+            <li>From a Bound card, click <strong>Export to AMS</strong></li>
+            <li>Choose <strong>Desktop</strong></li>
+            <li>This uses the AMS Com local agent installed on your computer (see the setup guide for installation and Mac permission steps)</li>
+            <li>An AMS Agent popup will appear. Place this popup on the target AMS window and click <strong>'Push Data Here'</strong></li>
+            <li>Once it's complete, review every field before saving</li>
+        </ol>
+        <p><strong>Reminder:</strong> Quote PDFs over 5 pages may not parse reliably (see Section 14).</p>
+
+        <h2 id="guide-sms">12. SMS Alerts</h2>
+        <p>RiskRunway can text you when a matching broker email comes in, so you don't have to be at your desk.</p>
+        <h3>To set up:</h3>
+        <ol>
+            <li>Go to <strong>SMS Alerts</strong>, bottom-left of main screen</li>
+            <li>Enter your phone number including the country code, e.g. <code>+12255551234</code></li>
+            <li>Click <strong>Send Test</strong> to confirm it's working</li>
+            <li>Click <strong>Save</strong></li>
+        </ol>
+        <p>Once set up, any email matching your configured brokers (Section 5) will trigger a text summary — even before you click Check Email yourself. You can reply to the text or open the app to process it.</p>
+
+        <h2 id="guide-report-bug">13. Reporting a Bug</h2>
+        <p>If something looks wrong or broken:</p>
+        <ol>
+            <li>Click the menu icon (top right, "hamburger" icon)</li>
+            <li>Click <strong>Report Bug</strong></li>
+            <li>This takes a screenshot of your current screen</li>
+            <li>Use the drawing tool to circle or highlight the area you're referring to</li>
+            <li>Add a description of the issue at the bottom</li>
+            <li>Click <strong>Send Bug Report</strong></li>
+        </ol>
+        <p>This is the fastest way to get an issue in front of the RiskRunway team — no need to email or call separately.</p>
+
+        <h2 id="guide-data-accuracy">14. Data Accuracy &amp; Your Responsibility</h2>
+        <p>RiskRunway helps extract, organize, and transfer your quote data — but <strong>you are always the final check</strong> before anything is saved in your AMS or anywhere else.</p>
+        <p><strong>Review Before Submission:</strong> RiskRunway is assisting with data entry based on extracted and user-provided information. Please verify all values in the target system before saving.</p>
+        <h3>Data Entry Assistance &amp; User Responsibility</h3>
+        <p>RiskRunway provides tools to assist with extracting, organizing, and transferring insurance-related data. While we aim to improve efficiency and reduce manual effort, RiskRunway does not guarantee the accuracy, completeness, or correctness of any extracted or transferred data.</p>
+        <p>All data populated into third-party systems, including Agency Management Systems (AMS), is generated based on document parsing, user inputs, and automated processes that may be subject to errors or misinterpretation.</p>
+        <p><strong>Users are solely responsible for reviewing, verifying, and confirming all information before finalizing, saving, or submitting data within any external system.</strong></p>
+        <p>RiskRunway does not directly write, save, or persist data within third-party systems. All final actions, including confirmation and submission, are performed by the user within their own environment.</p>
+        <p>By using this feature, you acknowledge and accept that:</p>
+        <ul>
+            <li>RiskRunway functions as an assistive tool, not a system of record</li>
+            <li>You are responsible for ensuring data accuracy prior to submission</li>
+            <li>RiskRunway is not liable for errors, omissions, or discrepancies resulting from the use of extracted or transferred data</li>
+        </ul>
+        <p>We strongly recommend implementing internal review procedures for all policy-critical information, including premiums, limits, coverage terms, and named insured details.</p>
+    </div>
+</aside>
+
+<script>
+    // User Guide panel handlers
+    document.getElementById('userGuideBtn').addEventListener('click', function() {
+        document.getElementById('userGuidePanel').classList.add('open');
+        document.getElementById('headerMenu').classList.remove('active');
+    });
+    document.getElementById('guideCloseBtn').addEventListener('click', function() {
+        document.getElementById('userGuidePanel').classList.remove('open');
+    });
+    // Smooth scroll for TOC links
+    document.querySelector('#userGuidePanel .guide-body').addEventListener('click', function(e) {
+        var link = e.target.closest('a[href^="#guide-"]');
+        if (link) {
+            e.preventDefault();
+            var target = document.getElementById(link.getAttribute('href').slice(1));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+</script>
 </body>
 </html>
