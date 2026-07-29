@@ -424,6 +424,14 @@
             cursor: grabbing;
         }
 
+        /* Bound submissions get a green border, regardless of how they were bound
+           (manual "Mark as Bound" or an incoming binder confirmation email) */
+        .submission-card.is-bound {
+            border-color: var(--green);
+            border-width: 2px;
+            box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.3);
+        }
+
         .card-name {
             font-size: 12px;
             font-weight: 600;
@@ -2452,7 +2460,11 @@
 
         function createSubmissionCard(submission, stageKey) {
             const card = document.createElement('div');
-            card.className = 'submission-card';
+            // Bound status is shown with a green border regardless of how the submission
+            // was bound (manual "Mark as Bound" click, or an incoming binder confirmation
+            // email parsed from the New Messages popup) — both set status to Sent to Finance.
+            const isBound = submission.is_bound || submission.status === 'Sent to Finance';
+            card.className = 'submission-card' + (isBound ? ' is-bound' : '');
             card.dataset.submissionId = submission.id;
             card.draggable = true;
 

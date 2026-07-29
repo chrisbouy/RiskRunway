@@ -1026,8 +1026,9 @@
         }
 
         #closeBugModalBtn {
-            background: var(--color-neutral-500);
+            background: var(--color-neutral-300);
             color: white;
+            border: 1px solid var(--color-neutral-400);
         }
 
         /* Stage-based layout */
@@ -1531,12 +1532,17 @@
                 <div style="padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
                     <!-- Action buttons centered -->
                     <div style="display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 0.875rem;">
-                        <button id="requestToBindBtn" style="background: #d97706; color: white;"><span style="font-size: 1.2em;">📨</span> Request to Bind</button>
                         <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">◀️</span> Set Back to Quoting</button>
+                        <button id="requestToBindBtn" style="background: #d97706; color: white;"><span style="font-size: 1.2em;">📨</span> Request to Bind</button>
                         <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Mark as Bound</button>
                         <button id="downloadCsvBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
-                        <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🔗</span> Export to Web-Based AMS</button>
-                        <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed;" disabled><span style="font-size: 1.2em;">🤖</span> Export to Desktop AMS</button>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-neutral-500);">Export:</span>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed; font-size: 0.75rem; padding: 0.25rem 0.75rem;" disabled><span style="font-size: 1.1em;">🔗</span> Web-Based AMS</button>
+                                <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed; font-size: 0.75rem; padding: 0.25rem 0.75rem;" disabled><span style="font-size: 1.1em;">🤖</span> Desktop AMS</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1598,69 +1604,69 @@
     </div>
 
     <!-- Submit to Market Modal -->
-    <div id="submitToMarketModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+    <div id="submitToMarketModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-gray-800">Submit to Market</h2>
-                <button id="closeSubmitToMarketModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <h2 class="text-xl font-bold text-white">Submit to Market</h2>
+                <button id="closeSubmitToMarketModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
             </div>
-            <p class="text-sm text-gray-500 mb-4">Requesting quotes for <strong id="submitToMarketInsuredName"></strong></p>
+            <p class="text-sm text-gray-400 mb-4">Requesting quotes for <strong id="submitToMarketInsuredName" class="text-gray-200"></strong></p>
 
             <!-- Broker List -->
             <div id="submitToMarketBrokersList" class="mb-4 space-y-3">
                 <!-- Broker entries will be rendered here -->
             </div>
 
-            <div id="noSubmitBrokersMessage" class="text-gray-500 text-sm mb-4" style="display:none;">
-                No email brokers configured. <a href="#" id="configureSubmitBrokersLink" class="text-blue-600 hover:underline">Configure brokers</a>
+            <div id="noSubmitBrokersMessage" class="text-gray-400 text-sm mb-4" style="display:none;">
+                No email brokers configured. <a href="#" id="configureSubmitBrokersLink" class="text-blue-400 hover:underline">Configure brokers</a>
             </div>
 
             <!-- Send All Button Row -->
-            <div class="flex justify-end gap-2 pt-3 border-t border-gray-200">
-                <button id="cancelSubmitToMarket" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
+            <div class="flex justify-end gap-2 pt-3 border-t border-gray-600">
+                <button id="cancelSubmitToMarket" class="px-4 py-2 bg-gray-600 text-gray-200 rounded hover:bg-gray-500">Cancel</button>
                 <button id="sendToMarketsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send All</button>
             </div>
         </div>
     </div>
 
     <!-- Request to Bind Modal -->
-    <div id="requestToBindModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+    <div id="requestToBindModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-gray-800">Request to Bind</h2>
-                <button id="closeRequestToBindModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <h2 class="text-xl font-bold text-white">Request to Bind</h2>
+                <button id="closeRequestToBindModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
             </div>
-            <p class="text-sm text-gray-500 mb-4">Requesting binding for <strong id="requestToBindInsuredName"></strong></p>
+            <p class="text-sm text-gray-400 mb-4">Requesting binding for <strong id="requestToBindInsuredName" class="text-gray-200"></strong></p>
 
             <!-- Matched Broker Info -->
             <div id="requestToBindBrokerInfo" class="mb-4">
                 <!-- Broker info will be rendered here -->
             </div>
 
-            <div id="noBindBrokerMessage" class="text-gray-500 text-sm mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded" style="display:none;">
-                <strong>Could not auto-match broker.</strong> The winning quote's broker could not be matched to your configured brokers. Please select manually:
-                <select id="bindBrokerManualSelect" class="mt-2 w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <div id="noBindBrokerMessage" class="text-gray-400 text-sm mb-4 p-3 bg-gray-700 border border-gray-600 rounded" style="display:none;">
+                <strong class="text-gray-200">Could not auto-match broker.</strong> The winning quote's broker could not be matched to your configured brokers. Please select manually:
+                <select id="bindBrokerManualSelect" class="mt-2 w-full border border-gray-600 rounded px-3 py-2 text-sm" style="color: #e5e5e5; background: #374151;">
                     <option value="">-- Select a broker --</option>
                 </select>
             </div>
 
             <!-- Email Body -->
             <div class="mb-4">
-                <label class="block text-sm font-semibold text-gray-700 mb-1">Email Body</label>
-                <textarea id="requestToBindBody" class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900" rows="8"></textarea>
+                <label class="block text-sm font-semibold text-gray-300 mb-1">Email Body</label>
+                <textarea id="requestToBindBody" class="w-full border border-gray-600 rounded px-3 py-2 text-sm" style="color: #e5e5e5; background: #374151;" rows="8"></textarea>
             </div>
 
             <!-- Attachments -->
             <div class="mb-4">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Attachments</label>
+                <label class="block text-sm font-semibold text-gray-300 mb-2">Attachments</label>
                 <div id="requestToBindDocsList" class="space-y-1">
                     <!-- Document checkboxes will be rendered here -->
                 </div>
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex justify-end gap-2 pt-3 border-t border-gray-200">
-                <button id="cancelRequestToBind" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
+            <div class="flex justify-end gap-2 pt-3 border-t border-gray-600">
+                <button id="cancelRequestToBind" class="px-4 py-2 bg-gray-600 text-gray-200 rounded hover:bg-gray-500">Cancel</button>
                 <button id="sendRequestToBindBtn" class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">Send Request to Bind</button>
             </div>
         </div>
@@ -1703,26 +1709,26 @@
 
 
     <!-- Send Follow-up(s) Modal -->
-    <div id="followUpModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+    <div id="followUpModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto border border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-gray-800">Send Follow-up(s)</h2>
-                <button id="closeFollowUpModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <h2 class="text-xl font-bold text-white">Send Follow-up(s)</h2>
+                <button id="closeFollowUpModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
             </div>
-            <p class="text-sm text-gray-500 mb-4" id="followUpSubtitle">Following up on submission for <strong id="followUpInsuredName"></strong></p>
+            <p class="text-sm text-gray-400 mb-4" id="followUpSubtitle">Following up on submission for <strong id="followUpInsuredName" class="text-gray-200"></strong></p>
 
             <!-- Broker List -->
             <div id="followUpBrokersList" class="mb-4 space-y-3">
                 <!-- Broker entries will be rendered here -->
             </div>
 
-            <div id="noFollowUpBrokersMessage" class="text-gray-500 text-sm mb-4" style="display:none;">
-                No email brokers configured. <a href="#" id="configureFollowUpBrokersLink" class="text-blue-600 hover:underline">Configure brokers</a>
+            <div id="noFollowUpBrokersMessage" class="text-gray-400 text-sm mb-4" style="display:none;">
+                No email brokers configured. <a href="#" id="configureFollowUpBrokersLink" class="text-blue-400 hover:underline">Configure brokers</a>
             </div>
 
             <!-- Send All Button Row -->
-            <div class="flex justify-end gap-2 pt-3 border-t border-gray-200">
-                <button id="cancelFollowUpBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
+            <div class="flex justify-end gap-2 pt-3 border-t border-gray-600">
+                <button id="cancelFollowUpBtn" class="px-4 py-2 bg-gray-600 text-gray-200 rounded hover:bg-gray-500">Cancel</button>
                 <button id="sendAllFollowUpsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send All</button>
             </div>
         </div>
@@ -3332,27 +3338,27 @@ Thank you for your attention to this matter.`;
                 const safeEmail = escapeHtml(broker.email);
                 const entry = submitToMarketBrokerEntries[index];
                 const docsHtml = attachableDocs.map(doc => `
-                    <label class="flex items-center gap-1 text-xs text-gray-600">
+                    <label class="flex items-center gap-1 text-xs text-gray-400">
                         <input type="checkbox" class="stm-doc-checkbox" data-index="${index}" data-doc-id="${doc.id}" checked>
                         ${escapeHtml(doc.name || doc.original_filename || 'file')}
                     </label>
                 `).join('');
 
                 return `
-                <div class="border border-gray-200 rounded p-3 bg-gray-50">
+                <div class="border border-gray-600 rounded p-3 bg-gray-700">
                     <div class="flex items-center justify-between mb-2">
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" class="stm-broker-checkbox" data-index="${index}" ${entry.checked ? 'checked' : ''}>
-                            <span class="font-semibold text-sm">${safeName}</span>
-                            <span class="text-xs text-gray-500">(${safeEmail})</span>
+                            <span class="font-semibold text-sm text-gray-200">${safeName}</span>
+                            <span class="text-xs text-gray-400">(${safeEmail})</span>
                         </label>
                         <button class="stm-send-single px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700" data-index="${index}">Send</button>
                     </div>
-                    <textarea class="stm-body w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 mb-2" data-index="${index}" rows="3"></textarea>
+                    <textarea class="stm-body w-full border border-gray-600 rounded px-3 py-2 text-sm text-gray-200 bg-gray-900 mb-2" data-index="${index}" rows="3"></textarea>
                     <div class="flex items-center gap-3 flex-wrap">
-                        <span class="text-xs font-semibold text-gray-600">Attachments:</span>
+                        <span class="text-xs font-semibold text-gray-400">Attachments:</span>
                         ${docsHtml}
-                        <label class="text-xs text-blue-600 cursor-pointer hover:underline">
+                        <label class="text-xs text-blue-400 cursor-pointer hover:underline">
                             + Add file <input type="file" class="stm-add-file hidden" data-index="${index}" accept=".pdf,.png,.jpg,.jpeg">
                         </label>
                     </div>
@@ -3684,13 +3690,13 @@ Thank you for your attention to this matter.`;
                     requestToBindBrokerId = matchedBroker.id;
                     noMatchDiv.style.display = 'none';
                     infoDiv.innerHTML = `
-                        <div class="border border-green-200 rounded p-3 bg-green-50">
+                        <div class="border border-green-700 rounded p-3 bg-green-900 bg-opacity-30">
                             <div class="flex items-center gap-2 mb-1">
-                                <span class="text-green-600 font-semibold text-sm">✓ Matched Broker</span>
+                                <span class="text-green-400 font-semibold text-sm">✓ Matched Broker</span>
                             </div>
-                            <div class="text-sm text-gray-800">
+                            <div class="text-sm text-gray-200">
                                 <strong>${escapeHtml(matchedBroker.name || matchedBroker.email)}</strong>
-                                <span class="text-gray-500 ml-2">(${escapeHtml(matchedBroker.email)})</span>
+                                <span class="text-gray-400 ml-2">(${escapeHtml(matchedBroker.email)})</span>
                             </div>
                             ${brokerInfo?.name ? `<div class="text-xs text-gray-500 mt-1">Matched from quote: "${escapeHtml(brokerInfo.name)}"</div>` : ''}
                         </div>
@@ -3733,10 +3739,10 @@ Thank you for your attention to this matter.`;
             }
 
             docsList.innerHTML = allDocs.map(doc => `
-                <label class="flex items-center gap-2 text-sm text-gray-700">
+                <label class="flex items-center gap-2 text-sm text-gray-300">
                     <input type="checkbox" class="rtb-doc-checkbox" data-doc-id="${doc.id}" checked>
                     ${escapeHtml(doc.name || doc.original_filename || 'file')}
-                    <span class="text-xs text-gray-400">(${doc.document_type || 'Other'})</span>
+                    <span class="text-xs text-gray-500">(${doc.document_type || 'Other'})</span>
                 </label>
             `).join('');
         }
@@ -4020,7 +4026,7 @@ Thank you for your attention to this matter.`;
                     exportBtn.style.cursor = 'pointer';
                     // Update label if this is an Epic submission
                     if (submissionData && submissionData.ams_type === 'epic') {
-                        exportBtn.innerHTML = '<span style="font-size: 1.2em;">🔗</span> Export to Epic';
+                        exportBtn.innerHTML = '<span style="font-size: 1.1em;">🔗</span> Epic';
                     }
                 }
                 if (exportCUBtn) {
@@ -4720,7 +4726,7 @@ Thank you for your attention to this matter.`;
                 if (data.success) {
                     modal.remove();
                     const btn = document.getElementById('exportToAmsBtn');
-                    btn.innerHTML = '<span style="font-size: 1.2em;">✅</span> Exported to Epic';
+                    btn.innerHTML = '<span style="font-size: 1.1em;">✅</span> Exported';
                     btn.style.background = '#065f46';
                     btn.disabled = true;
 
@@ -4970,27 +4976,27 @@ Thank you for your attention to this matter.`;
                 const safeName = escapeHtml(broker.name || broker.email);
                 const safeEmail = escapeHtml(broker.email);
                 const docsHtml = attachableDocs.map(doc => `
-                    <label class="flex items-center gap-1 text-xs text-gray-600">
+                    <label class="flex items-center gap-1 text-xs text-gray-400">
                         <input type="checkbox" class="fu-doc-checkbox" data-index="${index}" data-doc-id="${doc.id}">
                         ${escapeHtml(doc.name || doc.original_filename || 'file')}
                     </label>
                 `).join('');
 
                 return `
-                <div class="border border-gray-200 rounded p-3 bg-gray-50">
+                <div class="border border-gray-600 rounded p-3 bg-gray-700">
                     <div class="flex items-center justify-between mb-2">
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" class="follow-up-broker-checkbox" data-index="${index}" ${entry.checked ? 'checked' : ''}>
-                            <span class="font-semibold text-sm">${safeName}</span>
-                            <span class="text-xs text-gray-500">(${safeEmail})</span>
+                            <span class="font-semibold text-sm text-gray-200">${safeName}</span>
+                            <span class="text-xs text-gray-400">(${safeEmail})</span>
                         </label>
                         <button class="follow-up-send-single px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700" data-index="${index}">Send</button>
                     </div>
-                    <textarea class="follow-up-body w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 mb-2" data-index="${index}" rows="3"></textarea>
+                    <textarea class="follow-up-body w-full border border-gray-600 rounded px-3 py-2 text-sm text-gray-200 bg-gray-900 mb-2" data-index="${index}" rows="3"></textarea>
                     <div class="flex items-center gap-3 flex-wrap">
-                        <span class="text-xs font-semibold text-gray-600">Attachments:</span>
-                        ${docsHtml || '<span class="text-xs text-gray-400">No documents available</span>'}
-                        <label class="text-xs text-blue-600 cursor-pointer hover:underline">
+                        <span class="text-xs font-semibold text-gray-400">Attachments:</span>
+                        ${docsHtml || '<span class="text-xs text-gray-500">No documents available</span>'}
+                        <label class="text-xs text-blue-400 cursor-pointer hover:underline">
                             + Add file <input type="file" class="fu-add-file hidden" data-index="${index}" accept=".pdf,.png,.jpg,.jpeg">
                         </label>
                     </div>

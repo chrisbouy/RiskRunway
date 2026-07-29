@@ -3837,6 +3837,58 @@ def triage_attachment():
                     result_data['carrier_name'] = carrier_name
                     result_data['message'] = f'Quote from {carrier_name or "unknown carrier"} parsed and {"new submission created (moved to Quoting stage)" if is_new_submission else "added to submission (moved to Quoting stage)"}.'
 
+                elif doc_type == 'binder':
+                    # Binder confirmation — mark submission as bound and save as the binding doc.
+                    content_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'application/octet-stream'
+                    term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
+
+                    # Deactivate any prior active binder for this term (single active binder per term)
+                    db_session.query(Document).filter(
+                        Document.submission_id == submission_id,
+                        Document.document_type == DocumentType.BINDER,
+                        Document.term_key == term_key,
+                        Document.is_active == True
+                    ).update({'is_active': False}, synchronize_session=False)
+
+                    doc_key = _build_storage_key(
+                        submission_id, DocumentType.BINDER.name, safe_filename,
+                        session.get('user_id'), submission.insured_name
+                    )
+                    storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
+                    doc = Document(
+                        submission_id=submission_id,
+                        quote_id=None,
+                        document_type=DocumentType.BINDER,
+                        carrier=None,
+                        term_key=term_key,
+                        version=1,
+                        is_active=True,
+                        storage_provider=storage_provider_val,
+                        storage_key=storage_key,
+                        original_filename=safe_filename,
+                        content_type=content_type,
+                        size_bytes=len(attachment_data),
+                        uploaded_by=session.get('username')
+                    )
+                    db_session.add(doc)
+
+                    # Mark submission as bound
+                    submission.status = SubmissionStatus.SENT_TO_FINANCE
+
+                    log_action(
+                        entity_type='submission',
+                        entity_id=submission_id,
+                        action='submission_bound_via_email',
+                        user=session.get('username'),
+                        submission_id=submission_id,
+                        details=f'Binder confirmation received via email ("{filename}"), submission marked as Bound.'
+                    )
+
+                    db_session.commit()
+
+                    result_data['stage'] = 'bind'
+                    result_data['message'] = f'Binder confirmation received — submission marked as Bound.'
+
                 else:
                     # Other document — just save to submission
                     content_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'application/octet-stream'
@@ -3890,7 +3942,7 @@ def _triage_document(filepath: str) -> dict:
 
     Returns:
     {
-        "document_type": "application" | "quote" | "other",
+        "document_type": "application" | "quote" | "binder" | "other",
         "insured_name": str | None,
         "state": str | None,
         "confidence": "high" | "medium" | "low"
@@ -3920,8 +3972,11 @@ def _triage_document(filepath: str) -> dict:
     prompt = dedent(f"""
     You are classifying an insurance document. Based on the text below, determine:
     1. Document type: Is this an APPLICATION (new business submission form, ACORD 125, etc.),
-       a QUOTE (pricing proposal from a carrier with premiums/coverages), or OTHER
-       (correspondence, loss run, binder, SOV, etc.)?
+       a QUOTE (pricing proposal from a carrier with premiums/coverages), a BINDER (confirmation
+       that coverage has been bound/issued — e.g. "binder of insurance", "evidence of coverage",
+       "we are pleased to confirm binding", "coverage is bound effective...", often includes a
+       binder or policy number and confirms the insured is covered), or OTHER (correspondence,
+       loss run, SOV, etc.)?
     2. The insured name (the business or person being insured).
     3. The state (if visible).
 
@@ -3929,14 +3984,17 @@ def _triage_document(filepath: str) -> dict:
     - An APPLICATION typically has fields like "Applicant", "Named Insured", coverage types requested,
       and is a form being filled out to request insurance.
     - A QUOTE typically has carrier name, premium amounts, coverage limits, effective/expiration dates,
-      and is a pricing proposal.
-    - If it's neither clearly an application nor a quote, classify as "other".
+      and is a pricing proposal (not yet bound).
+    - A BINDER confirms coverage has already been bound/issued — look for words like "binder",
+      "bound", "confirmation of coverage", "evidence of insurance", or a binder/policy number
+      being issued as confirmation rather than as a quote.
+    - If it's neither clearly an application, quote, nor binder, classify as "other".
     - For insured name: look for "Named Insured", "Applicant", "Insured", "Account Name".
     - Do NOT confuse agent/broker name with insured name.
 
     Return ONLY valid JSON:
     {{
-        "document_type": "application" | "quote" | "other",
+        "document_type": "application" | "quote" | "binder" | "other",
         "insured_name": "string or null",
         "state": "two-letter state code or null",
         "confidence": "high" | "medium" | "low"
