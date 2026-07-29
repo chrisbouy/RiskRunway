@@ -1531,18 +1531,20 @@
                 </div>
                 <div style="padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
                     <!-- Action buttons centered -->
-                    <div style="display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 0.875rem;">
-                        <button id="moveBackToQuotingBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">◀️</span> Set Back to Quoting</button>
-                        <button id="requestToBindBtn" style="background: #d97706; color: white;"><span style="font-size: 1.2em;">📨</span> Request to Bind</button>
-                        <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Mark as Bound</button>
-                        <button id="downloadCsvBtn" style="background: #2563eb; color: white;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-neutral-500);">Export:</span>
-                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                                <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed; font-size: 0.75rem; padding: 0.25rem 0.75rem;" disabled><span style="font-size: 1.1em;">🔗</span> Web-Based AMS</button>
-                                <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed; font-size: 0.75rem; padding: 0.25rem 0.75rem;" disabled><span style="font-size: 1.1em;">🤖</span> Desktop AMS</button>
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; font-size: 0.875rem;">
+                        <button id="moveBackToQuotingBtn" style="background: none; border: none; color: #2563eb; cursor: pointer; padding: 0.25rem 0; font-size: 0.875rem;"><span style="font-size: 1.2em;">◀️</span> Set Back to Quoting</button>
+                        <div style="display: flex; gap: 1.5rem; align-items: center;">
+                            <button id="requestToBindBtn" style="background: #d97706; color: white;"><span style="font-size: 1.2em;">📨</span> Request to Bind</button>
+                            <button id="markBoundBtn" style="background: #059669; color: white;"><span style="font-size: 1.2em;">🔒</span> Manually Mark as Bound</button>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-neutral-500);">Export:</span>
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <button id="exportToAmsBtn" style="background: #059669; color: white; opacity: 0.5; cursor: not-allowed; font-size: 0.75rem; padding: 0.25rem 0.75rem;" disabled><span style="font-size: 1.1em;">🔗</span> Web-Based AMS</button>
+                                    <button id="exportToAmsCUBtn" style="background: #7c3aed; color: white; opacity: 0.5; cursor: not-allowed; font-size: 0.75rem; padding: 0.25rem 0.75rem;" disabled><span style="font-size: 1.1em;">🤖</span> Desktop AMS</button>
+                                </div>
                             </div>
                         </div>
+                        <button id="downloadCsvBtn" style="background: none; border: none; color: #2563eb; cursor: pointer; padding: 0.25rem 0; font-size: 0.875rem;"><span style="font-size: 1.2em;">📥</span> Download as CSV</button>
                     </div>
                 </div>
             </div>
@@ -4038,7 +4040,7 @@ Thank you for your attention to this matter.`;
                 if (editBtn) editBtn.classList.add('hidden');
                 if (boundLabel) boundLabel.style.display = 'inline';
             } else {
-                btn.textContent = 'Mark as Bound';
+                btn.textContent = 'Manually Mark as Bound';
                 btn.style.background = '#059669';
                 cards.forEach(card => { card.style.borderColor = ''; card.style.borderWidth = ''; });
                 // Disable Export to AMS
@@ -4056,7 +4058,7 @@ Thank you for your attention to this matter.`;
         document.getElementById('markBoundBtn').addEventListener('click', function() {
             const btn = this;
             
-            if (btn.textContent.trim() === 'Mark as Bound') {
+            if (btn.textContent.trim() === 'Manually Mark as Bound') {
                 document.getElementById('statusDropdown').value = 'SENT_TO_FINANCE';
                 document.getElementById('statusDropdown').dispatchEvent(new Event('change'));
             } else {
