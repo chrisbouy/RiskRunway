@@ -2169,8 +2169,11 @@
        //     const bindDocs = submissionDocuments.filter((d) =>
         //        ['Binder', 'Finance Agreement'].includes(d.document_type)
             );
+            const bindDocs = submissionDocuments.filter((d) =>
+                ['Application', 'SOV', 'Loss Run', 'Quote', 'Other', 'Binder', 'Finance Agreement'].includes(d.document_type)
+            );
             renderDocList('stage1DocsList', stage1Docs);
-            renderDocList('bindDocsList', stage1Docs);
+            renderDocList('bindDocsList', bindDocs);
         }
 
         async function uploadSubmissionDocument(file, documentType, extra = {}) {

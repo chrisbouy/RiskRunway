@@ -1815,10 +1815,15 @@
                 }).join('');
             }
 
-            // Needs attention: submissions in quoting stage with no quotes, or stale (no activity > 7 days)
+            // Needs attention: submissions in quoting stage with no quotes, stale (no activity > 7 days), or lapsed renewal countdown
             const attention = submissions.filter(s => {
                 const stageKey = getStageKey(s);
                 if (stageKey === 'quoting' && (!s.quotes_count || s.quotes_count === 0)) return true;
+                // Lapsed renewal: bound submissions past their effective date
+                if (isBoundStatus(s.status) && s.effective_date) {
+                    const daysUntil = getDaysUntilRenewal(s.effective_date);
+                    if (daysUntil !== null && daysUntil < 0) return true;
+                }
                 if (s.updated_at) {
                     const updated = new Date(s.updated_at);
                     const staleDays = (now - updated) / (1000 * 60 * 60 * 24);
@@ -1833,8 +1838,13 @@
                 attContainer.innerHTML = attention.map(s => {
                     const stageKey = getStageKey(s);
                     let reason = 'Stale';
+                    let badgeClass = 'badge-info';
                     if (stageKey === 'quoting' && (!s.quotes_count || s.quotes_count === 0)) reason = 'No quotes';
-                    return '<a href="/submission/' + s.id + '" class="widget-item"><span class="widget-item-name">' + (s.insured_name || 'Unnamed') + '</span><span class="widget-item-badge badge-info">' + reason + '</span></a>';
+                    if (isBoundStatus(s.status) && s.effective_date) {
+                        const daysUntil = getDaysUntilRenewal(s.effective_date);
+                        if (daysUntil !== null && daysUntil < 0) { reason = 'Lapsed'; badgeClass = 'badge-critical'; }
+                    }
+                    return '<a href="/submission/' + s.id + '" class="widget-item"><span class="widget-item-name">' + (s.insured_name || 'Unnamed') + '</span><span class="widget-item-badge ' + badgeClass + '">' + reason + '</span></a>';
                 }).join('');
             }
         }
@@ -2559,8 +2569,12 @@
                     </div>`;
             }
 
+            const coverageTypes = (submission.submission_intake && submission.submission_intake.coverage_types) || [];
+            const coverageHtml = coverageTypes.length ? `<div style="font-size:9px;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(coverageTypes.join(', '))}</div>` : '';
+
             card.innerHTML = `
                 <div class="card-name" title="${escapeHtml(submission.insured_name)}">${submission.ams_type === 'epic' ? '<span style="font-size:9px;background:rgba(96,165,250,0.2);color:#93c5fd;padding:1px 4px;border-radius:2px;margin-right:4px;font-weight:600;">EPIC</span>' : ''}${escapeHtml(submission.insured_name)}</div>
+                ${coverageHtml}
                 ${renewalBadgeHtml}
                 <div class="card-row">
                     <div class="card-left">
@@ -3423,15 +3437,15 @@
                     document.getElementById('selectSubmissionModal').classList.add('hidden');
                     if (currentEmailAction === 'save_attachments') {
                         window._pendingSaveAttachments = null;
-                        // Dismiss the original email
+                        // Remove from list (don't mark as read in provider)
                         if (replyEmailData) {
-                            await dismissEmail(replyEmailData);
+                            removeEmailFromList(replyEmailData);
                         }
                         await loadSubmissions();
                     } else if (currentEmailAction === 'save_correspondence') {
                         alert(data.message || 'Email saved as correspondence.');
-                        // Mark as read in provider and remove from list
-                        await dismissEmail(currentEmailData);
+                        // Remove from list (don't mark as read in provider)
+                        removeEmailFromList(currentEmailData);
                         await loadSubmissions();
                     } else {
                         cachedEmails = cachedEmails.filter(e => e.message_id !== currentEmailData.message_id);
@@ -3557,7 +3571,14 @@
             }
         }
 
-        // Dismiss email — marks as read in provider, removes from memory
+        // Remove email from local list only (does NOT mark as read in provider)
+        function removeEmailFromList(emailData) {
+            cachedEmails = cachedEmails.filter(e => e.message_id !== emailData.message_id);
+            document.getElementById('newMessageCount').textContent = cachedEmails.length;
+            renderEmailList();
+        }
+
+        // Dismiss email — marks as read in provider AND removes from memory
         async function dismissEmail(emailData) {
             try {
                 const response = await fetch('/api/email/dismiss', {
@@ -3573,9 +3594,7 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    cachedEmails = cachedEmails.filter(e => e.message_id !== emailData.message_id);
-                    document.getElementById('newMessageCount').textContent = cachedEmails.length;
-                    renderEmailList();
+                    removeEmailFromList(emailData);
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
@@ -4170,9 +4189,9 @@
                         }
                     }
 
-                    // Dismiss the original email after replying
+                    // Remove from list after replying (don't mark as read in provider)
                     if (replyEmailData) {
-                        await dismissEmail(replyEmailData);
+                        removeEmailFromList(replyEmailData);
                     }
                 } else {
                     alert('Failed to send: ' + (data.error || 'Unknown error'));
@@ -4530,11 +4549,11 @@
                 overlay.classList.add('hidden');
 
                 if (data.success) {
-                    // Success — mark as read and remove from list, then refresh board
+                    // Success — remove from list, then refresh board
                     const stageLabel = data.stage === 'quoting' ? 'Quoting' : 'Submission';
                     let msg = data.message;
                     alert(`✅ ${msg}`);
-                    await dismissEmail(emailData);
+                    removeEmailFromList(emailData);
                     loadSubmissions();
                     return;
                 }
@@ -4641,7 +4660,7 @@
                 if (data.success) {
                     const stageLabel = data.stage === 'quoting' ? 'Quoting' : 'Submission';
                     alert(`✅ ${data.message}\n\nPlaced in: ${stageLabel} stage`);
-                    await dismissEmail(emailData);
+                    removeEmailFromList(emailData);
                     loadSubmissions();
                 } else {
                     alert('Error: ' + (data.error || data.message || 'Processing failed'));
