@@ -4023,7 +4023,7 @@ Thank you for your attention to this matter.`;
             if (status === 'SENT_TO_FINANCE') {
                 btn.textContent = 'Unbind';
                 btn.style.background = '#dc2626';
-                cards.forEach(card => { card.style.borderColor = '#059669'; card.style.borderWidth = '3px'; });
+                cards.forEach(card => { card.style.border = '3px solid #059669'; });
                 // Enable Export to AMS
                 if (exportBtn) {
                     exportBtn.disabled = false;
@@ -4045,12 +4045,17 @@ Thank you for your attention to this matter.`;
             } else {
                 btn.textContent = 'Manually Mark as Bound';
                 btn.style.background = '#059669';
-                cards.forEach(card => { card.style.borderColor = ''; card.style.borderWidth = ''; });
+                cards.forEach(card => { card.style.border = ''; });
                 // Disable Export to AMS
                 if (exportBtn) {
                     exportBtn.disabled = true;
                     exportBtn.style.opacity = '0.5';
                     exportBtn.style.cursor = 'not-allowed';
+                }
+                if (exportCUBtn) {
+                    exportCUBtn.disabled = true;
+                    exportCUBtn.style.opacity = '0.5';
+                    exportCUBtn.style.cursor = 'not-allowed';
                 }
                 // Swap BOUND label back to Edit btn
                 if (editBtn) editBtn.classList.remove('hidden');

@@ -929,7 +929,8 @@
                         <span>My Cards Only</span>
                     </label>
                     <button id="configureBrokersBtn" class="left-btn btn-config">Configure Brokers</button>
-                    <button id="smsSettingsBtn" class="left-btn btn-config">📱 SMS Alerts</button>
+                    <!-- SMS disabled for now -->
+                    <!-- <button id="smsSettingsBtn" class="left-btn btn-config">📱 SMS Alerts</button> -->
                     <button id="userGuideBtn" class="left-btn btn-config">📖 User Guide</button>
                     <button id="reportBugBtn" class="left-btn btn-config" style="color: #f07070;">🐛 Report Bug</button>
                     <div class="settings-divider"></div>
@@ -4919,7 +4920,7 @@
             }
 
             // Open modal
-            openBtn.addEventListener('click', async function() {
+            if (openBtn) openBtn.addEventListener('click', async function() {
                 modal.classList.remove('hidden');
                 // Load current settings
                 try {

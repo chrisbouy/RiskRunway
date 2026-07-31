@@ -27,8 +27,8 @@ def create_app():
     from app.epic_routes import epic_bp
     app.register_blueprint(epic_bp)
 
-    from app.sms_routes import sms_bp
-    app.register_blueprint(sms_bp)
+    # from app.sms_routes import sms_bp
+    # app.register_blueprint(sms_bp)
 
     # Multi-tenant: resolve tenant from hostname on every request
     @app.before_request
