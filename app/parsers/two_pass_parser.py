@@ -274,7 +274,7 @@ PASS2_NORMALIZATION_PROMPT = dedent(
             "down_payment": "number or null",
             "amount_financed": "number or null"
         },
-        "subjectivities": ["array of strings or null - binding requirements/conditions listed on the quote. May appear as 'Subjectivities', 'Binding Requirements', 'Conditions', 'Required Prior to Binding', 'Required to Bind', 'Prior to Binding'. Each item should be a single requirement string (e.g. 'Signed and dated Commercial Auto ACORD Application - PRIOR TO BINDING'). Return null if no subjectivities/binding requirements are listed."]
+        "subjectivities": ["array of strings or null - binding requirements/conditions listed on the quote. May appear as 'Subjectivities', 'Binding Requirements', 'Conditions', 'Required Prior to Binding', 'Required to Bind', 'Prior to Binding'. Each item should be a single requirement string. Strip any trailing timing qualifiers like '- PRIOR TO BINDING', '- PRIOR TO INCEPTION', '- WITHIN 30 DAYS' etc. if ALL items share the same qualifier. If items have DIFFERENT timing qualifiers, keep them. Return null if no subjectivities/binding requirements are listed."]
     }
 
     ═══════════════════════════════════════════════════════════════
