@@ -2220,9 +2220,13 @@
             const parsed = new Date(`${datePart}T00:00:00`);
             if (Number.isNaN(parsed.getTime())) return null;
 
+            // Expiration = effective date + 1 year
+            const expiration = new Date(parsed);
+            expiration.setFullYear(expiration.getFullYear() + 1);
+
             const now = new Date();
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+            return Math.ceil((expiration.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
         }
 
         function getRenewalCountdown(submission, stageKey, daysUntilRenewal) {
