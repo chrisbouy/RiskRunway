@@ -245,6 +245,8 @@ class Quote(Base):
 
     status = Column(Enum(QuoteStatus), default=QuoteStatus.RECEIVED, nullable=False)
     quote_outcome = Column(String(20), nullable=True)  # WON or LOST (set when moving to bind)
+    subjectivities_json = Column(Text, nullable=True)  # JSON array of binding requirements extracted from quote
+    subjectivities_checked = Column(Text, nullable=True)  # JSON array of booleans tracking which subjectivities are satisfied
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
@@ -269,6 +271,8 @@ class Quote(Base):
             # 'comparison_group': self.comparison_group,
             'status': self.status.value if self.status else None,
             'quote_outcome': self.quote_outcome,
+            'subjectivities_json': self.subjectivities_json,
+            'subjectivities_checked': self.subjectivities_checked,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

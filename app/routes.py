@@ -4498,6 +4498,10 @@ def upload_quote():
                 )
                 print(f"Created new submission {submission_id}")
 
+            # Extract subjectivities from parsed data (binding requirements)
+            subjectivities = parsed_data.get('subjectivities')
+            subjectivities_json_str = json.dumps(subjectivities) if subjectivities else None
+
             # Create quote record with three-pass data
             quote_id = create_quote(
                 submission_id=submission_id,
@@ -4505,6 +4509,7 @@ def upload_quote():
                 raw_document_path=filepath,
                 extracted_json=json.dumps(parsed_data),
                 pass1_layout_json=json.dumps(layout_data),
+                subjectivities_json=subjectivities_json_str,
                 # pass3_intent_json=json.dumps(intent_data),
                 # quote_intent=intent_data.get('quote_intent'),
                 # comparison_group=','.join(intent_data.get('comparison_groups', [])),
@@ -5190,6 +5195,10 @@ def update_quote_data(quote_id):
 
             quote.extracted_json = json.dumps(parsed_data)
 
+            # Sync subjectivities column from parsed data
+            subjectivities = parsed_data.get('subjectivities')
+            quote.subjectivities_json = json.dumps(subjectivities) if subjectivities else None
+
             policies = parsed_data.get('policies') if isinstance(parsed_data.get('policies'), list) else []
             first_policy = policies[0] if policies else {}
             if isinstance(first_policy, dict):
@@ -5211,6 +5220,36 @@ def update_quote_data(quote_id):
             quote_id=quote_id,
             details='Admin updated parsed quote data'
         )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/quote/<int:quote_id>/subjectivities', methods=['PUT'])
+@login_required
+def update_quote_subjectivities(quote_id):
+    """Update subjectivities list or checked state for a quote."""
+    try:
+        data = request.get_json() or {}
+        db_session = get_session()
+        try:
+            quote = db_session.query(Quote).filter_by(id=quote_id).first()
+            if not quote:
+                return jsonify({'success': False, 'error': 'Quote not found'}), 404
+
+            # Update subjectivities list if provided
+            if 'subjectivities' in data:
+                subjectivities = data['subjectivities']
+                quote.subjectivities_json = json.dumps(subjectivities) if subjectivities else None
+
+            # Update checked state if provided
+            if 'checked' in data:
+                quote.subjectivities_checked = json.dumps(data['checked'])
+
+            db_session.commit()
+        finally:
+            db_session.close()
 
         return jsonify({'success': True})
     except Exception as e:

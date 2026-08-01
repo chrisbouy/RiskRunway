@@ -343,6 +343,8 @@ def _add_missing_columns(engine, inspector):
     # quotes
     if 'quotes' in table_names:
         _safe_add_column('quotes', 'quote_outcome', 'VARCHAR(20)')
+        _safe_add_column('quotes', 'subjectivities_json', 'TEXT')
+        _safe_add_column('quotes', 'subjectivities_checked', 'TEXT')
 
     # submissions
     if 'submissions' in table_names:
@@ -495,7 +497,7 @@ def create_submission(insured_name, effective_date, state=None, user=None, assig
 
 
 def create_quote(submission_id, carrier_name, raw_document_path, extracted_json, user=None,
-                 pass1_layout_json=None):
+                 pass1_layout_json=None, subjectivities_json=None):
     """Create a new quote and log the action."""
     session = get_session()
     try:
@@ -505,6 +507,7 @@ def create_quote(submission_id, carrier_name, raw_document_path, extracted_json,
             raw_document_path=raw_document_path,
             extracted_json=extracted_json,
             pass1_layout_json=pass1_layout_json,
+            subjectivities_json=subjectivities_json,
             status=QuoteStatus.RECEIVED
         )
         session.add(quote)

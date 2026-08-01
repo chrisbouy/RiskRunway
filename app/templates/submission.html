@@ -273,8 +273,8 @@
         }
 
         table tbody tr:hover {
-            background: var(--table-row-hover);
-            transform: translateX(2px);
+            background: none;
+            transform: none;
         }
 
         table tbody tr:last-child {
@@ -1525,6 +1525,15 @@
                 </div>
             </div>
 
+            <!-- Subjectivities Checklist (Bind Stage) -->
+            <div id="bindSubjectivitiesCard" class="card" style="margin-bottom: 1rem; display: none;">
+                <div class="card-header">
+                    <h2 class="card-title">📋 Binding Requirements (Subjectivities)</h2>
+                </div>
+                <div id="bindSubjectivitiesContent" style="padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                </div>
+            </div>
+
             <div class="card" style="margin-bottom: 1rem;">
                 <div class="card-header">
                     <h2 class="card-title">Bind Actions</h2>
@@ -1732,6 +1741,25 @@
             <div class="flex justify-end gap-2 pt-3 border-t border-gray-600">
                 <button id="cancelFollowUpBtn" class="px-4 py-2 bg-gray-600 text-gray-200 rounded hover:bg-gray-500">Cancel</button>
                 <button id="sendAllFollowUpsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subjectivities Modal -->
+    <div id="subjectivitiesModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-white">Subjectivities / Binding Requirements</h2>
+                <button id="closeSubjectivitiesModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+            <p class="text-sm text-gray-400 mb-3" id="subjectivitiesCarrierLabel"></p>
+            <div id="subjectivitiesList" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+            <div id="subjectivitiesEmpty" class="text-sm text-gray-500 italic" style="display:none;">No subjectivities listed on this quote. Agency defaults apply (signed ACORD application, quote copy).</div>
+            <div style="margin-top: 1rem; border-top: 1px solid #374151; padding-top: 0.75rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <input type="text" id="addSubjectivityInput" placeholder="Add custom requirement..." style="flex:1; font-size: 0.813rem; padding: 0.375rem 0.5rem; background: #1f2937; border: 1px solid #4b5563; border-radius: 0.25rem; color: #e5e7eb;">
+                    <button id="addSubjectivityBtn" style="font-size: 0.75rem; padding: 0.375rem 0.75rem; background: #2563eb; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">Add</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2951,6 +2979,30 @@
                 });
 
                 tbody.appendChild(row);
+
+                // Add subjectivities link row below the quote row
+                if (quoteId) {
+                    const subRow = document.createElement('tr');
+                    subRow.className = colorClass;
+                    if (quoteId) subRow.dataset.quoteId = String(quoteId);
+                    if (!isVisible) subRow.classList.add('row-muted');
+                    const subCell = document.createElement('td');
+                    subCell.colSpan = visibleIndices.length;
+                    subCell.style.cssText = 'padding: 0 0.5rem 0.4rem; border-top: none;';
+                    const subLink = document.createElement('button');
+                    subLink.style.cssText = 'background:none; border:none; color:#1f2937; cursor:pointer; font-size:0.7rem; padding:0; text-decoration:underline; font-style:italic; font-weight:normal;';
+                    const quoteObj = quotes.find(q => q.id === quoteId);
+                    const hasSubs = quoteObj && quoteObj.subjectivities_json;
+                    let subCount = 0;
+                    if (hasSubs) {
+                        try { subCount = JSON.parse(quoteObj.subjectivities_json).length; } catch(e) {}
+                    }
+                    subLink.textContent = subCount > 0 ? `📋 Subjectivities (${subCount})` : '📋 Subjectivities';
+                    subLink.onclick = (e) => { e.stopPropagation(); openSubjectivitiesModal(quoteId); };
+                    subCell.appendChild(subLink);
+                    subRow.appendChild(subCell);
+                    tbody.appendChild(subRow);
+                }
             });
         }
 
@@ -3131,7 +3183,208 @@
                 `;
             }
 
+            // Populate bind stage subjectivities checklist
+            populateBindSubjectivities();
         }
+
+        // ===== Subjectivities Logic =====
+        const DEFAULT_SUBJECTIVITIES = [
+            'Signed ACORD Application',
+            'Copy of Quote'
+        ];
+
+        function getSubjectivitiesForQuote(quoteId) {
+            const quote = quotes.find(q => q.id === quoteId);
+            if (!quote) return [];
+            if (quote.subjectivities_json) {
+                try {
+                    const parsed = JSON.parse(quote.subjectivities_json);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                } catch(e) {}
+            }
+            // Fallback: check extracted_json
+            if (quote.extracted_json) {
+                try {
+                    const extracted = typeof quote.extracted_json === 'string' ? JSON.parse(quote.extracted_json) : quote.extracted_json;
+                    if (Array.isArray(extracted.subjectivities) && extracted.subjectivities.length > 0) return extracted.subjectivities;
+                } catch(e) {}
+            }
+            return [];
+        }
+
+        function getCheckedStateForQuote(quoteId) {
+            const quote = quotes.find(q => q.id === quoteId);
+            if (!quote || !quote.subjectivities_checked) return [];
+            try { return JSON.parse(quote.subjectivities_checked); } catch(e) { return []; }
+        }
+
+        function openSubjectivitiesModal(quoteId) {
+            const modal = document.getElementById('subjectivitiesModal');
+            const listEl = document.getElementById('subjectivitiesList');
+            const emptyEl = document.getElementById('subjectivitiesEmpty');
+            const carrierLabel = document.getElementById('subjectivitiesCarrierLabel');
+            const addInput = document.getElementById('addSubjectivityInput');
+
+            modal.dataset.quoteId = quoteId;
+            const quote = quotes.find(q => q.id === quoteId);
+            carrierLabel.textContent = quote ? `Carrier: ${quote.carrier_name || 'Unknown'}` : '';
+
+            const subs = getSubjectivitiesForQuote(quoteId);
+            listEl.innerHTML = '';
+
+            if (subs.length === 0) {
+                emptyEl.style.display = 'block';
+                listEl.style.display = 'none';
+            } else {
+                emptyEl.style.display = 'none';
+                listEl.style.display = 'flex';
+                subs.forEach((item, idx) => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.375rem 0.5rem; background:#1f2937; border-radius:0.25rem; font-size:0.813rem; color:#e5e7eb;';
+                    row.innerHTML = `
+                        <span style="flex:1;">${escapeHtml(item)}</span>
+                        <button class="remove-sub-btn" data-idx="${idx}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:0.75rem;" title="Remove">✕</button>
+                    `;
+                    listEl.appendChild(row);
+                });
+            }
+
+            // Wire remove buttons
+            listEl.querySelectorAll('.remove-sub-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    const currentSubs = getSubjectivitiesForQuote(quoteId);
+                    currentSubs.splice(idx, 1);
+                    await saveSubjectivities(quoteId, currentSubs);
+                    openSubjectivitiesModal(quoteId); // refresh
+                };
+            });
+
+            addInput.value = '';
+            modal.classList.remove('hidden');
+        }
+
+        async function saveSubjectivities(quoteId, subsList) {
+            // Update local state
+            const quote = quotes.find(q => q.id === quoteId);
+            if (quote) {
+                quote.subjectivities_json = JSON.stringify(subsList);
+            }
+            // Persist to server
+            await fetch(`/api/quote/${quoteId}/subjectivities`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subjectivities: subsList })
+            });
+        }
+
+        async function saveSubjectivitiesChecked(quoteId, checkedArr) {
+            const quote = quotes.find(q => q.id === quoteId);
+            if (quote) {
+                quote.subjectivities_checked = JSON.stringify(checkedArr);
+            }
+            await fetch(`/api/quote/${quoteId}/subjectivities`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ checked: checkedArr })
+            });
+        }
+
+        function populateBindSubjectivities() {
+            const card = document.getElementById('bindSubjectivitiesCard');
+            const content = document.getElementById('bindSubjectivitiesContent');
+            if (!card || !content) return;
+
+            // Get the winning quote(s)
+            const wonQuoteIds = new Set(quotes.filter(q => q.quote_outcome === 'WON').map(q => q.id));
+            const relevantQuotes = wonQuoteIds.size > 0
+                ? quotes.filter(q => wonQuoteIds.has(q.id))
+                : quotes;
+
+            if (!relevantQuotes.length) {
+                card.style.display = 'none';
+                return;
+            }
+
+            let hasAny = false;
+            content.innerHTML = '';
+
+            relevantQuotes.forEach(quote => {
+                let subs = getSubjectivitiesForQuote(quote.id);
+                if (subs.length === 0) {
+                    subs = [...DEFAULT_SUBJECTIVITIES];
+                }
+                hasAny = true;
+                const checked = getCheckedStateForQuote(quote.id);
+
+                const section = document.createElement('div');
+                section.style.cssText = 'margin-bottom: 0.5rem;';
+                if (relevantQuotes.length > 1) {
+                    const label = document.createElement('div');
+                    label.style.cssText = 'font-size:0.7rem; font-weight:600; color:var(--color-neutral-500); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.25rem;';
+                    label.textContent = quote.carrier_name || 'Quote';
+                    section.appendChild(label);
+                }
+
+                subs.forEach((item, idx) => {
+                    const row = document.createElement('label');
+                    row.style.cssText = 'display:flex; align-items:center; gap:0.5rem; font-size:0.813rem; color:var(--text-primary, #e5e7eb); cursor:pointer; padding: 0.25rem 0;';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = !!checked[idx];
+                    cb.style.cssText = 'accent-color: #059669; width:16px; height:16px;';
+                    cb.onchange = () => {
+                        const currentChecked = getCheckedStateForQuote(quote.id);
+                        // Ensure array is long enough
+                        while (currentChecked.length < subs.length) currentChecked.push(false);
+                        currentChecked[idx] = cb.checked;
+                        saveSubjectivitiesChecked(quote.id, currentChecked);
+                    };
+                    const span = document.createElement('span');
+                    span.textContent = item;
+                    if (checked[idx]) {
+                        span.style.textDecoration = 'line-through';
+                        span.style.opacity = '0.6';
+                    }
+                    cb.addEventListener('change', () => {
+                        span.style.textDecoration = cb.checked ? 'line-through' : 'none';
+                        span.style.opacity = cb.checked ? '0.6' : '1';
+                    });
+                    row.appendChild(cb);
+                    row.appendChild(span);
+                    section.appendChild(row);
+                });
+
+                content.appendChild(section);
+            });
+
+            card.style.display = hasAny ? 'block' : 'none';
+        }
+
+        // Subjectivities modal event handlers
+        document.getElementById('closeSubjectivitiesModal').addEventListener('click', () => {
+            document.getElementById('subjectivitiesModal').classList.add('hidden');
+        });
+        document.getElementById('subjectivitiesModal').addEventListener('click', function(e) {
+            if (e.target === this) this.classList.add('hidden');
+        });
+        document.getElementById('addSubjectivityBtn').addEventListener('click', async () => {
+            const input = document.getElementById('addSubjectivityInput');
+            const val = input.value.trim();
+            if (!val) return;
+            const quoteId = parseInt(document.getElementById('subjectivitiesModal').dataset.quoteId);
+            const currentSubs = getSubjectivitiesForQuote(quoteId);
+            currentSubs.push(val);
+            await saveSubjectivities(quoteId, currentSubs);
+            openSubjectivitiesModal(quoteId); // refresh
+            populateBindSubjectivities(); // refresh bind checklist if visible
+        });
+        document.getElementById('addSubjectivityInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('addSubjectivityBtn').click();
+            }
+        });
 
 
 
