@@ -578,6 +578,8 @@
             margin-top: 2px;
         }
         .docs-dropdown.open .docs-dropdown-menu { display: block; }
+        .docs-dropdown.open { z-index: 100; position: relative; }
+        .submission-card:has(.docs-dropdown.open) { z-index: 100; }
         .docs-dropdown-item {
             display: flex;
             align-items: center;
@@ -1958,8 +1960,8 @@
             const payload = {
                 default_required_docs: checkedDocs,
                 custom_required_docs: quoteSettingsData.custom_required_docs || [],
-                renewal_highlight_threshold: parseInt(document.getElementById('renewalThresholdInput').value) || 20,
-                quote_compare_threshold: parseInt(document.getElementById('quoteCompareThresholdInput').value) || 20
+                renewal_highlight_threshold: parseInt(document.getElementById('renewalThresholdInput').value, 10),
+                quote_compare_threshold: parseInt(document.getElementById('quoteCompareThresholdInput').value, 10)
             };
 
             try {
@@ -2015,7 +2017,7 @@
             // Needs attention: submissions in quoting stage with no quotes, stale (no activity > 7 days), or lapsed renewal countdown
             const attention = submissions.filter(s => {
                 const stageKey = getStageKey(s);
-                if (stageKey === 'quoting' && (!s.quotes_count || s.quotes_count === 0)) return true;
+                if (stageKey === 'quoting' && (!s.quote_count || s.quote_count === 0)) return true;
                 // Lapsed renewal: bound submissions past their effective date
                 if (isBoundStatus(s.status) && s.effective_date) {
                     const daysUntil = getDaysUntilRenewal(s.effective_date);
@@ -2036,7 +2038,7 @@
                     const stageKey = getStageKey(s);
                     let reason = 'Stale';
                     let badgeClass = 'badge-info';
-                    if (stageKey === 'quoting' && (!s.quotes_count || s.quotes_count === 0)) reason = 'No quotes';
+                    if (stageKey === 'quoting' && (!s.quote_count || s.quote_count === 0)) reason = 'No quotes';
                     if (isBoundStatus(s.status) && s.effective_date) {
                         const daysUntil = getDaysUntilRenewal(s.effective_date);
                         if (daysUntil !== null && daysUntil < 0) { reason = 'Lapsed'; badgeClass = 'badge-critical'; }

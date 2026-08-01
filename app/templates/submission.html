@@ -3063,11 +3063,129 @@
                         td.innerHTML = `<span class="field-value">${cellValue === 'null' ? '<span class="text-gray-400">null</span>' : cellValue}</span>`;
                         td.onclick = () => copyToClipboard(cellValue, td);
                     }
+                    td.dataset.colKey = col.key;
                     row.appendChild(td);
                 });
 
                 tbody.appendChild(row);
             });
+
+            // Highlight numeric differences between quotes exceeding threshold
+            highlightQuoteDifferences(quotes, tbody, visibleIndices, allColumns);
+        }
+
+        function highlightQuoteDifferences(quotes, tbody, visibleIndices, allColumns) {
+            // Store for re-application after settings load
+            window._lastHighlightArgs = { quotes, tbody, visibleIndices, allColumns };
+
+            // Numeric columns eligible for highlighting
+            const numericKeys = new Set(['premium', 'tax', 'fee', 'brokerFee']);
+            const numericVisibleIndices = visibleIndices.filter(i => numericKeys.has(allColumns[i].key));
+            if (numericVisibleIndices.length === 0 || quotes.length < 2) return;
+
+            const threshold = quoteCompareThreshold;
+            const rows = tbody.querySelectorAll('tr');
+
+            // Group quotes by coverage type for same-coverage comparison
+            const coverageGroups = {};
+            quotes.forEach((q, idx) => {
+                const cov = (q.coverage || 'unknown').toLowerCase().trim();
+                if (!coverageGroups[cov]) coverageGroups[cov] = [];
+                coverageGroups[cov].push({ quote: q, rowIdx: idx });
+            });
+
+            // For each coverage group with 2+ quotes, compare values
+            Object.values(coverageGroups).forEach(group => {
+                if (group.length < 2) return;
+
+                numericVisibleIndices.forEach(colIdx => {
+                    const key = allColumns[colIdx].key;
+                    // Get all numeric values in this group for this column
+                    const values = group.map(g => ({
+                        val: toNumber(g.quote[key]),
+                        rowIdx: g.rowIdx
+                    })).filter(v => v.val !== null);
+
+                    if (values.length < 2) return;
+
+                    const min = Math.min(...values.map(v => v.val));
+                    const max = Math.max(...values.map(v => v.val));
+                    if (min === 0 && max === 0) return;
+
+                    const base = min !== 0 ? min : max;
+                    const pctDiff = Math.abs(max - min) / Math.abs(base) * 100;
+
+                    if (pctDiff > threshold) {
+                        // Highlight the higher value cells in red, lower in green
+                        values.forEach(v => {
+                            const row = rows[v.rowIdx];
+                            if (!row) return;
+                            // Find the td by column position in visible indices
+                            const tdIdx = visibleIndices.indexOf(colIdx);
+                            const td = row.children[tdIdx];
+                            if (!td) return;
+
+                            if (v.val === max) {
+                                td.style.background = 'rgba(239, 68, 68, 0.15)';
+                                td.style.borderLeft = '3px solid #ef4444';
+                            } else if (v.val === min) {
+                                td.style.background = 'rgba(34, 197, 94, 0.15)';
+                                td.style.borderLeft = '3px solid #22c55e';
+                            }
+                        });
+                    }
+                });
+            });
+
+            // If only one quote per coverage (different coverages), compare all quotes
+            const allSingle = Object.values(coverageGroups).every(g => g.length === 1);
+            if (allSingle && quotes.length >= 2) {
+                numericVisibleIndices.forEach(colIdx => {
+                    const key = allColumns[colIdx].key;
+                    const values = quotes.map((q, idx) => ({
+                        val: toNumber(q[key]),
+                        rowIdx: idx
+                    })).filter(v => v.val !== null);
+
+                    if (values.length < 2) return;
+
+                    const min = Math.min(...values.map(v => v.val));
+                    const max = Math.max(...values.map(v => v.val));
+                    if (min === 0 && max === 0) return;
+
+                    const base = min !== 0 ? min : max;
+                    const pctDiff = Math.abs(max - min) / Math.abs(base) * 100;
+
+                    if (pctDiff > threshold) {
+                        values.forEach(v => {
+                            const row = rows[v.rowIdx];
+                            if (!row) return;
+                            const tdIdx = visibleIndices.indexOf(colIdx);
+                            const td = row.children[tdIdx];
+                            if (!td) return;
+
+                            if (v.val === max) {
+                                td.style.background = 'rgba(239, 68, 68, 0.15)';
+                                td.style.borderLeft = '3px solid #ef4444';
+                            } else if (v.val === min) {
+                                td.style.background = 'rgba(34, 197, 94, 0.15)';
+                                td.style.borderLeft = '3px solid #22c55e';
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        function reapplyQuoteHighlighting() {
+            if (!window._lastHighlightArgs) return;
+            const { quotes, tbody, visibleIndices, allColumns } = window._lastHighlightArgs;
+            // Clear existing highlights first
+            tbody.querySelectorAll('td').forEach(td => {
+                td.style.background = '';
+                td.style.borderLeft = '';
+            });
+            highlightQuoteDifferences(quotes, tbody, visibleIndices, allColumns);
         }
 
         function toNumber(value) {
@@ -3193,15 +3311,30 @@
             'Copy of Quote'
         ];
 
+        let quoteCompareThreshold = 20;
+        let renewalHighlightThreshold = 20;
+        let tenantSettingsLoaded = false;
+
         // Load tenant defaults on page load
         (async function loadTenantDefaults() {
             try {
                 const resp = await fetch('/api/tenant-settings');
                 const data = await resp.json();
-                if (data.success && data.settings && Array.isArray(data.settings.default_required_docs) && data.settings.default_required_docs.length > 0) {
-                    DEFAULT_SUBJECTIVITIES = data.settings.default_required_docs;
+                if (data.success && data.settings) {
+                    if (Array.isArray(data.settings.default_required_docs) && data.settings.default_required_docs.length > 0) {
+                        DEFAULT_SUBJECTIVITIES = data.settings.default_required_docs;
+                    }
+                    if (data.settings.quote_compare_threshold !== undefined) {
+                        quoteCompareThreshold = data.settings.quote_compare_threshold;
+                    }
+                    if (data.settings.renewal_highlight_threshold !== undefined) {
+                        renewalHighlightThreshold = data.settings.renewal_highlight_threshold;
+                    }
                 }
             } catch(e) {}
+            tenantSettingsLoaded = true;
+            // Re-apply highlighting now that thresholds are loaded
+            reapplyQuoteHighlighting();
         })();
 
         function getSubjectivitiesForQuote(quoteId) {
