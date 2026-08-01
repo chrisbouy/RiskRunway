@@ -3188,10 +3188,21 @@
         }
 
         // ===== Subjectivities Logic =====
-        const DEFAULT_SUBJECTIVITIES = [
+        let DEFAULT_SUBJECTIVITIES = [
             'Signed ACORD Application',
             'Copy of Quote'
         ];
+
+        // Load tenant defaults on page load
+        (async function loadTenantDefaults() {
+            try {
+                const resp = await fetch('/api/tenant-settings');
+                const data = await resp.json();
+                if (data.success && data.settings && Array.isArray(data.settings.default_required_docs) && data.settings.default_required_docs.length > 0) {
+                    DEFAULT_SUBJECTIVITIES = data.settings.default_required_docs;
+                }
+            } catch(e) {}
+        })();
 
         function getSubjectivitiesForQuote(quoteId) {
             const quote = quotes.find(q => q.id === quoteId);

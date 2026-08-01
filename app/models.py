@@ -725,3 +725,26 @@ class SmsAlert(Base):
             'executed_at': self.executed_at.isoformat() if self.executed_at else None,
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
         }
+
+
+class TenantSettings(Base):
+    """
+    Key-value settings store for tenant-level configuration.
+    Stores all settings as a single JSON blob for simplicity.
+    """
+    __tablename__ = 'tenant_settings'
+
+    id = Column(Integer, primary_key=True)
+    settings_json = Column(Text, nullable=False, default='{}')
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def get_settings(self):
+        """Parse settings JSON safely."""
+        try:
+            return json.loads(self.settings_json) if self.settings_json else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def set_settings(self, data):
+        """Serialize settings dict to JSON."""
+        self.settings_json = json.dumps(data)

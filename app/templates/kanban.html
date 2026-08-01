@@ -783,10 +783,10 @@
             top: calc(100% + 6px);
             left: 0;
             width: 100%;
-            background: var(--rail-bg);
-            border: 1px solid var(--rail-border);
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(100, 116, 139, 0.5);
             border-radius: 6px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
             padding: 8px;
             flex-direction: column;
             gap: 4px;
@@ -929,6 +929,7 @@
                         <span>My Cards Only</span>
                     </label>
                     <button id="configureBrokersBtn" class="left-btn btn-config">Configure Brokers</button>
+                    <button id="quoteSettingsBtn" class="left-btn btn-config">⚙️ Quote Settings</button>
                     <!-- SMS disabled for now -->
                     <!-- <button id="smsSettingsBtn" class="left-btn btn-config">📱 SMS Alerts</button> -->
                     <button id="userGuideBtn" class="left-btn btn-config">📖 User Guide</button>
@@ -1201,6 +1202,54 @@
                         Save
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quote Settings Modal -->
+    <div id="quoteSettingsModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-white">⚙️ Quote Settings</h2>
+                <button id="closeQuoteSettingsModal" class="text-gray-400 hover:text-gray-200 text-2xl">&times;</button>
+            </div>
+
+            <!-- Section 1: Default Required Docs -->
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-gray-300 mb-2">Default Required Documents (Subjectivities)</h3>
+                <p class="text-xs text-gray-500 mb-3">When a quote doesn't list subjectivities, these defaults will be used on the bind checklist.</p>
+                <div id="defaultDocsChecklist" style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem;"></div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="customDocInput" placeholder="Add custom requirement..." class="flex-1 text-sm px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white">
+                    <button id="addCustomDocBtn" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Add</button>
+                </div>
+            </div>
+
+            <!-- Section 2: Renewal Highlight Threshold -->
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-gray-300 mb-2">Renewal Comparison Threshold</h3>
+                <p class="text-xs text-gray-500 mb-3">Only highlight premium/tax/fee differences between prior term and renewal quote when change exceeds this percentage.</p>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="number" id="renewalThresholdInput" min="0" max="100" step="5" class="w-20 text-sm px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-center">
+                    <span class="text-sm text-gray-400">%</span>
+                </div>
+            </div>
+
+            <!-- Section 3: Quote-to-Quote Comparison Threshold -->
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-gray-300 mb-2">Quote Comparison Threshold</h3>
+                <p class="text-xs text-gray-500 mb-3">When comparing two quotes side-by-side, only highlight differences exceeding this percentage.</p>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="number" id="quoteCompareThresholdInput" min="0" max="100" step="5" class="w-20 text-sm px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-center">
+                    <span class="text-sm text-gray-400">%</span>
+                </div>
+            </div>
+
+            <div id="quoteSettingsStatus" class="hidden text-sm rounded px-3 py-2 mb-3"></div>
+
+            <div class="flex justify-end gap-2">
+                <button id="cancelQuoteSettingsBtn" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600">Cancel</button>
+                <button id="saveQuoteSettingsBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
             </div>
         </div>
     </div>
@@ -1788,6 +1837,153 @@
         document.getElementById('reportBugBtn').addEventListener('click', function() {
             document.getElementById('settingsPanel').classList.remove('active');
             alert('Bug reporting from the kanban board is coming soon. For now, open a submission and use Report Bug from there.');
+        });
+
+        // ===== Quote Settings Modal =====
+        const COMMON_REQUIRED_DOCS = [
+            'Signed ACORD Application',
+            'Copy of Quote',
+            'Premium Payment',
+            'Loss Runs (4-5 years)',
+            'Signed Fraud Statement',
+            'MVR Reports',
+            'Driver/Fleet Safety Manual',
+            'UM/UIM Selection/Rejection Form',
+            'Business Auto Questionnaire',
+            'Workers Comp Experience Mod Worksheet',
+            'Schedule of Values (SOV)',
+            'Financial Statements',
+            'Certificate of Good Standing',
+            'Prior Carrier Cancellation Notice',
+            'Supplemental Application'
+        ];
+
+        let quoteSettingsData = {};
+
+        document.getElementById('quoteSettingsBtn').addEventListener('click', async function() {
+            document.getElementById('settingsPanel').classList.remove('active');
+            await loadQuoteSettings();
+            document.getElementById('quoteSettingsModal').classList.remove('hidden');
+        });
+
+        document.getElementById('closeQuoteSettingsModal').addEventListener('click', () => {
+            document.getElementById('quoteSettingsModal').classList.add('hidden');
+        });
+        document.getElementById('cancelQuoteSettingsBtn').addEventListener('click', () => {
+            document.getElementById('quoteSettingsModal').classList.add('hidden');
+        });
+        document.getElementById('quoteSettingsModal').addEventListener('click', function(e) {
+            if (e.target === this) this.classList.add('hidden');
+        });
+
+        async function loadQuoteSettings() {
+            try {
+                const resp = await fetch('/api/tenant-settings');
+                const data = await resp.json();
+                if (data.success) {
+                    quoteSettingsData = data.settings || {};
+                }
+            } catch(e) {
+                quoteSettingsData = {};
+            }
+            renderQuoteSettingsForm();
+        }
+
+        function renderQuoteSettingsForm() {
+            const container = document.getElementById('defaultDocsChecklist');
+            const savedDocs = quoteSettingsData.default_required_docs || ['Signed ACORD Application', 'Copy of Quote'];
+            const customDocs = quoteSettingsData.custom_required_docs || [];
+            const allSelected = new Set(savedDocs);
+
+            container.innerHTML = '';
+
+            // Render common docs as checkboxes
+            COMMON_REQUIRED_DOCS.forEach(doc => {
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex; align-items:center; gap:0.5rem; font-size:0.813rem; color:#e5e7eb; cursor:pointer;';
+                label.innerHTML = `<input type="checkbox" class="default-doc-checkbox" value="${doc}" ${allSelected.has(doc) ? 'checked' : ''} style="accent-color:#2563eb;"> ${doc}`;
+                container.appendChild(label);
+            });
+
+            // Render custom docs (ones not in common list)
+            customDocs.forEach(doc => {
+                if (COMMON_REQUIRED_DOCS.includes(doc)) return;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:0.5rem; font-size:0.813rem; color:#e5e7eb;';
+                row.innerHTML = `<input type="checkbox" class="default-doc-checkbox custom-doc" value="${doc}" checked style="accent-color:#2563eb;"> ${doc} <button class="remove-custom-doc" data-doc="${doc}" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.7rem;">✕</button>`;
+                container.appendChild(row);
+            });
+
+            // Wire remove buttons for custom docs
+            container.querySelectorAll('.remove-custom-doc').forEach(btn => {
+                btn.onclick = () => {
+                    const docName = btn.dataset.doc;
+                    quoteSettingsData.custom_required_docs = (quoteSettingsData.custom_required_docs || []).filter(d => d !== docName);
+                    quoteSettingsData.default_required_docs = (quoteSettingsData.default_required_docs || []).filter(d => d !== docName);
+                    renderQuoteSettingsForm();
+                };
+            });
+
+            // Set threshold inputs
+            document.getElementById('renewalThresholdInput').value = quoteSettingsData.renewal_highlight_threshold ?? 20;
+            document.getElementById('quoteCompareThresholdInput').value = quoteSettingsData.quote_compare_threshold ?? 20;
+        }
+
+        document.getElementById('addCustomDocBtn').addEventListener('click', function() {
+            const input = document.getElementById('customDocInput');
+            const val = input.value.trim();
+            if (!val) return;
+            if (!quoteSettingsData.custom_required_docs) quoteSettingsData.custom_required_docs = [];
+            if (!quoteSettingsData.default_required_docs) quoteSettingsData.default_required_docs = [];
+            if (!quoteSettingsData.custom_required_docs.includes(val)) {
+                quoteSettingsData.custom_required_docs.push(val);
+            }
+            if (!quoteSettingsData.default_required_docs.includes(val)) {
+                quoteSettingsData.default_required_docs.push(val);
+            }
+            input.value = '';
+            renderQuoteSettingsForm();
+        });
+        document.getElementById('customDocInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('addCustomDocBtn').click(); }
+        });
+
+        document.getElementById('saveQuoteSettingsBtn').addEventListener('click', async function() {
+            // Gather checked docs
+            const checkedDocs = [];
+            document.querySelectorAll('.default-doc-checkbox:checked').forEach(cb => {
+                checkedDocs.push(cb.value);
+            });
+
+            const payload = {
+                default_required_docs: checkedDocs,
+                custom_required_docs: quoteSettingsData.custom_required_docs || [],
+                renewal_highlight_threshold: parseInt(document.getElementById('renewalThresholdInput').value) || 20,
+                quote_compare_threshold: parseInt(document.getElementById('quoteCompareThresholdInput').value) || 20
+            };
+
+            try {
+                const resp = await fetch('/api/tenant-settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    const status = document.getElementById('quoteSettingsStatus');
+                    status.textContent = 'Settings saved!';
+                    status.className = 'text-sm rounded px-3 py-2 mb-3 bg-green-900 text-green-300';
+                    status.classList.remove('hidden');
+                    setTimeout(() => {
+                        status.classList.add('hidden');
+                        document.getElementById('quoteSettingsModal').classList.add('hidden');
+                    }, 1500);
+                } else {
+                    alert('Failed to save: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) {
+                alert('Failed to save settings.');
+            }
         });
 
         // Widget population (runs after submissions load)

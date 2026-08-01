@@ -5256,6 +5256,48 @@ def update_quote_subjectivities(quote_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/api/tenant-settings', methods=['GET'])
+@login_required
+def get_tenant_settings():
+    """Get tenant-level settings."""
+    try:
+        db_session = get_session()
+        try:
+            from app.models import TenantSettings
+            row = db_session.query(TenantSettings).first()
+            settings = row.get_settings() if row else {}
+        finally:
+            db_session.close()
+        return jsonify({'success': True, 'settings': settings})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/tenant-settings', methods=['PUT'])
+@admin_required
+def update_tenant_settings():
+    """Update tenant-level settings (admin only)."""
+    try:
+        data = request.get_json() or {}
+        db_session = get_session()
+        try:
+            from app.models import TenantSettings
+            row = db_session.query(TenantSettings).first()
+            if not row:
+                row = TenantSettings(settings_json='{}')
+                db_session.add(row)
+            current = row.get_settings()
+            current.update(data)
+            row.set_settings(current)
+            db_session.commit()
+            settings = row.get_settings()
+        finally:
+            db_session.close()
+        return jsonify({'success': True, 'settings': settings})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================================
 # ADMIN PAGE
 # ============================================================================
