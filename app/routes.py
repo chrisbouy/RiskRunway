@@ -564,8 +564,20 @@ def _send_password_reset_email(to_email, user_name, reset_url):
 @bp.route('/', methods=['GET'])
 @login_required
 def kanban():
-    """Display the Kanban board with all submissions"""
+    """Display the Kanban board with all submissions.
+    Auto-detects mobile browsers and serves the mobile-optimized view."""
+    ua = request.headers.get('User-Agent', '').lower()
+    is_mobile = any(kw in ua for kw in ['iphone', 'android', 'mobile', 'ipod'])
+    if is_mobile:
+        return render_template('mobile.html')
     return render_template('kanban.html')
+
+
+@bp.route('/mobile', methods=['GET'])
+@login_required
+def mobile_kanban():
+    """Mobile-optimized Kanban board (accessible directly via /mobile)"""
+    return render_template('mobile.html')
 
 
 def _days_until_renewal(effective_date):
@@ -1103,6 +1115,9 @@ def create_submission_entry():
             sub = db_session.query(Submission).filter_by(id=submission_id).first()
             if sub:
                 sub.submission_intake = json.dumps(intake_data)
+                # Generate abbreviated name for mobile display
+                from app.short_name import generate_short_name
+                sub.short_name = generate_short_name(insured_name)
                 db_session.commit()
         finally:
             db_session.close()
@@ -5301,6 +5316,29 @@ def update_tenant_settings():
 # ============================================================================
 # ADMIN PAGE
 # ============================================================================
+
+@bp.route('/api/admin/generate-short-names', methods=['POST'])
+@admin_required
+def generate_short_names():
+    """Backfill short_name for all submissions that don't have one."""
+    from app.short_name import generate_short_name
+    db_session = get_session()
+    try:
+        subs = db_session.query(Submission).filter(
+            (Submission.short_name == None) | (Submission.short_name == '')
+        ).all()
+        updated = 0
+        for sub in subs:
+            sub.short_name = generate_short_name(sub.insured_name)
+            updated += 1
+        db_session.commit()
+        return jsonify({'success': True, 'updated': updated})
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
 
 @bp.route('/admin', methods=['GET'])
 @admin_required

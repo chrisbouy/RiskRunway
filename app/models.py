@@ -135,6 +135,7 @@ class Submission(Base):
 
     id = Column(Integer, primary_key=True)
     insured_name = Column(String(255), nullable=False, index=True)
+    short_name = Column(String(50), nullable=True)  # AI-generated abbreviated name for mobile display
     effective_date = Column(String(10), nullable=False)  # YYYY-MM-DD format
     state = Column(String(2), nullable=True)  # Two-letter state code
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -179,6 +180,7 @@ class Submission(Base):
         return {
             'id': self.id,
             'insured_name': self.insured_name,
+            'short_name': self.short_name,
             'effective_date': self.effective_date,
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,

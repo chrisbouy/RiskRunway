@@ -250,8 +250,51 @@ Located in `sample_docs/misc/`:
 - **E&O insurance** — table stakes for enterprise
 - Small agencies trust: IIABA/PIA association recommendations, peer agent referrals, Applied Epic App Exchange listing, E&O coverage more than AWS/Microsoft badges
 
+## Subjectivities (Binding Requirements)
+- Quotes often list "subjectivities" — documents required prior to binding (e.g., signed ACORD, loss runs, MVRs)
+- Pass 2 schema includes `subjectivities` field (array of strings or null)
+- Parser prompt instructs LLM to strip redundant trailing qualifiers ("- PRIOR TO BINDING") when all items share the same one
+- Stored in both `Quote.extracted_json` (within the JSON) and `Quote.subjectivities_json` (dedicated column for fast access)
+- `Quote.subjectivities_checked` — JSON array of booleans tracking which items are satisfied (bind stage checklist)
+- API: `PUT /api/quote/<id>/subjectivities` — update list or checked state
+- Frontend display: `cleanSubjectivities()` strips common trailing timing qualifiers at display time (handles legacy data)
+- Quoting stage: "📋 Subjectivities" link under each row in Quotes by Broker table → opens modal
+- Bind stage: checklist card with checkboxes (2-column grid layout), items strike-through when checked
+- Fallback: when a quote has no subjectivities, uses tenant-configured defaults (from TenantSettings)
+- Modal allows adding/removing custom subjectivities per quote
+
+## Tenant Settings
+- Model: `TenantSettings` (single-row key-value JSON store per tenant database, `tenant_settings` table)
+- Auto-created on first PUT; `_add_missing_columns` not needed — `create_all` handles it
+- API: `GET /api/tenant-settings` (any user), `PUT /api/tenant-settings` (admin only, merges into existing)
+- Current settings keys:
+  - `default_required_docs` — array of strings, fallback subjectivities for bind checklist
+  - `custom_required_docs` — array of custom additions beyond the pre-built list
+  - `renewal_highlight_threshold` — integer %, highlight renewal vs prior term differences above this
+  - `quote_compare_threshold` — integer %, highlight quote-vs-quote differences above this
+- UI: "⚙️ Quote Settings" button in kanban Settings dropdown → modal with 3 sections
+- **Important**: threshold values can be 0 — do NOT use `|| defaultValue` (falsy), use `?? defaultValue` or explicit `!== undefined` checks
+- Pre-built required docs list (15 items) in kanban.html `COMMON_REQUIRED_DOCS` array
+
+## Quote Comparison Highlighting
+- Policy Details table compares numeric columns (premium, tax, fee, broker_fee) across quotes
+- Groups quotes by coverage type — only compares quotes with matching coverage
+- If all quotes have different coverages (no groups), compares all against each other
+- Higher value → red tint + red left border; lower value → green tint + green left border
+- Only highlights when `pctDiff > quoteCompareThreshold`
+- Percentage calculated as `|max - min| / |base| * 100` where base = min (or max if min is 0)
+- `highlightQuoteDifferences()` runs after `populatePolicyDetailsTable()` builds rows
+- `reapplyQuoteHighlighting()` called after tenant settings async load completes (race condition fix)
+- Renewal comparison threshold stored but highlighting logic NOT yet implemented (TODO)
+
+## Kanban Widgets
+- "Needs Attention" widget field name: `s.quote_count` (not `quotes_count` — was a bug, fixed)
+- `updateWidgets()` called after every `loadSubmissions()` — widgets refresh on any board action
+- Docs dropdown z-index fix: `.submission-card:has(.docs-dropdown.open) { z-index: 100 }` elevates card when dropdown is open
+
 ## Known Issues & Gotchas
 - `routes.py` is 7000+ lines — tools may truncate it. Search for specific functions.
+- Table row hover effects disabled on submission.html (was distracting)
 - All documents historically saved as `DocumentType.APPLICATION` — the type enum exists but isn't properly used on upload
 - When deleting a submission, Document files are NOT cleaned from disk (only DB records cascade-delete)
 - Storage keys are based on insured name, not submission ID — name collisions between deleted/recreated submissions
