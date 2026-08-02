@@ -2055,6 +2055,9 @@
             document.getElementById('submissionStageSection').classList.toggle('active', stage === 'submission');
             document.getElementById('quotingStageSection').classList.toggle('active', stage === 'quoting');
             document.getElementById('bindStageSection').classList.toggle('active', stage === 'bind');
+            // Only show edit toolbar in quoting stage
+            const editToolbar = document.getElementById('editToolbar');
+            if (editToolbar) editToolbar.classList.toggle('hidden', stage !== 'quoting');
             // Always sync bound visual state when stage view changes
             applyBoundVisualState(statusValue);
         }

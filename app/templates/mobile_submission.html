@@ -23,7 +23,7 @@
 
         /* ── NAV BAR ── */
         .nav-bar {
-            flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+            flex-shrink: 0; display: flex; align-items: center; gap: 10px;
             padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top));
             background: #334155; border-bottom: 1px solid #475569;
         }
@@ -36,14 +36,47 @@
             flex: 1; font-size: 15px; font-weight: 600; color: #f1f5f9;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .nav-stage {
-            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
-            text-transform: uppercase; padding: 3px 8px; border-radius: 4px;
-            flex-shrink: 0;
+        .nav-edit-btn {
+            padding: 6px 14px; border-radius: 6px; border: none;
+            background: #2563eb; color: #fff; font-size: 13px; font-weight: 600;
+            font-family: inherit; cursor: pointer;
         }
-        .stage-submission { background: rgba(74,158,255,0.2); color: var(--blue); }
-        .stage-quoting { background: rgba(255,159,64,0.2); color: var(--orange); }
-        .stage-bind { background: rgba(74,222,128,0.2); color: var(--green); }
+        .nav-edit-btn:active { opacity: 0.8; }
+        .nav-menu-btn {
+            background: none; border: 1px solid #475569; color: #f1f5f9;
+            font-size: 20px; padding: 5px 8px; cursor: pointer; border-radius: 6px;
+            line-height: 1;
+        }
+        .nav-menu-btn:active { background: #475569; }
+
+        /* Submission page menu overlay */
+        .sub-menu-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 900;
+        }
+        .sub-menu-overlay.active { display: block; }
+        .sub-menu-panel {
+            position: fixed; top: 0; right: -280px; width: 280px; height: 100%;
+            background: #334155; border-left: 1px solid #475569; z-index: 901;
+            transition: right 0.25s ease; padding: 20px 16px;
+            padding-top: max(20px, env(safe-area-inset-top));
+            display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+        }
+        .sub-menu-panel.active { right: 0; }
+        .sub-menu-item {
+            width: 100%; padding: 12px; border-radius: 8px; border: none;
+            font-size: 15px; font-weight: 500; font-family: inherit;
+            cursor: pointer; text-align: left; color: #f1f5f9; background: none;
+        }
+        .sub-menu-item:active { background: #475569; }
+        .sub-menu-item.danger { background: #ef4444; color: #fff; }
+        .sub-menu-item.danger:active { background: #dc2626; }
+        .sub-menu-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 12px 4px; }
+        .sub-menu-select {
+            width: 100%; padding: 10px 12px; font-size: 14px; font-family: inherit;
+            background: #1e293b; border: 1px solid #475569; border-radius: 8px;
+            color: #f1f5f9; margin-bottom: 4px;
+        }
+        .sub-menu-divider { height: 1px; background: #475569; margin: 8px 0; }
 
         /* ── INFO CARD ── */
         .info-card {
@@ -172,6 +205,29 @@
         .spinner-text { font-size: 14px; color: var(--text-muted); }
 
         .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; }
+
+        /* Bind tab */
+        .bind-section { margin-bottom: 16px; }
+        .bind-section-title {
+            font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+        }
+        .bind-check-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 0;
+            border-bottom: 1px solid var(--border); font-size: 14px;
+        }
+        .bind-check-item:last-child { border-bottom: none; }
+        .bind-check-item input { width: 20px; height: 20px; accent-color: var(--green); flex-shrink: 0; }
+        .bind-check-item.checked label { text-decoration: line-through; color: var(--text-muted); }
+        .bind-action-btn {
+            width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
+            font-family: inherit; border-radius: 8px; border: none; cursor: pointer;
+            margin-bottom: 8px; text-align: center;
+        }
+        .bind-action-btn:active { opacity: 0.8; }
+        .btn-request-bind { background: var(--blue); color: #fff; }
+        .btn-mark-bound { background: var(--green); color: #000; }
+        .btn-download-csv { background: var(--border); color: var(--text); }
     </style>
 </head>
 <body>
@@ -179,8 +235,28 @@
         <nav class="nav-bar">
             <button class="nav-back" id="backBtn">&larr;</button>
             <div class="nav-title" id="navTitle">Loading...</div>
-            <span class="nav-stage stage-{{ stage_key }}" id="navStage">{{ stage_key | upper }}</span>
+            <button class="nav-edit-btn" id="editBtn" {% if stage_key != 'quoting' %}style="display:none"{% endif %}>Edit</button>
+            <button class="nav-menu-btn" id="subMenuBtn">&#9776;</button>
         </nav>
+
+        <!-- Slide-out menu for submission page -->
+        <div class="sub-menu-overlay" id="subMenuOverlay"></div>
+        <div class="sub-menu-panel" id="subMenuPanel">
+            <button class="sub-menu-item" id="subMenuClose" style="text-align:right;padding:8px;font-size:22px;">&times;</button>
+            <div class="sub-menu-label">Status</div>
+            <select class="sub-menu-select" id="subStatusSelect">
+                <option value="RECEIVED">Received</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="CHOSEN">Chosen</option>
+                <option value="SENT_TO_FINANCE">Sent to Finance</option>
+            </select>
+            <div class="sub-menu-divider"></div>
+            <button class="sub-menu-item danger" id="subDeleteBtn">Delete Submission</button>
+            <button class="sub-menu-item danger" id="subReportBugBtn">Report Bug</button>
+            <div class="sub-menu-divider"></div>
+            <button class="sub-menu-item" id="subUserGuideBtn">User Guide</button>
+            <button class="sub-menu-item" id="subLogoutBtn">Logout</button>
+        </div>
 
         <div class="info-card" id="infoCard"></div>
 
@@ -193,11 +269,13 @@
         <div class="tab-bar" id="tabBar" style="display:none;">
             <button class="tab-btn active" data-tab="quotes">Quotes <span class="tab-badge" id="badgeQuotes">0</span></button>
             <button class="tab-btn" data-tab="docs">Docs <span class="tab-badge" id="badgeDocs">0</span></button>
+            <button class="tab-btn" data-tab="bind" id="tabBind" style="display:none;">Bind</button>
         </div>
 
         <div class="tab-content" id="tabbedContent" style="display:none;">
             <div class="tab-panel active" id="panel-quotes"></div>
             <div class="tab-panel" id="panel-docs"></div>
+            <div class="tab-panel" id="panel-bind"></div>
         </div>
 
         <button class="fab fab-{{ stage_key }}" id="fabBtn"></button>
@@ -254,6 +332,12 @@
                         renderInfoCard();
                         renderQuotes();
                         document.getElementById('badgeQuotes').textContent = quotes.length;
+
+                        // Show bind tab if in bind stage
+                        if (STAGE_KEY === 'bind') {
+                            document.getElementById('tabBind').style.display = '';
+                            renderBindTab();
+                        }
                     }
                 }
             } catch(e) { console.error(e); }
@@ -462,6 +546,126 @@
             });
         }
 
+        // ── Bind Tab ──
+        function renderBindTab() {
+            const panel = document.getElementById('panel-bind');
+            // Get subjectivities from the winning quote(s)
+            let subjectivities = [];
+            let subjectivitiesChecked = [];
+            let quoteIdForSubj = null;
+
+            const wonQuote = quotes.find(q => q.quote_outcome === 'WON') || quotes[0];
+            if (wonQuote) {
+                quoteIdForSubj = wonQuote.id;
+                try { subjectivities = JSON.parse(wonQuote.subjectivities_json || '[]') || []; } catch(e) { subjectivities = []; }
+                try { subjectivitiesChecked = JSON.parse(wonQuote.subjectivities_checked || '[]') || []; } catch(e) { subjectivitiesChecked = []; }
+            }
+
+            let html = '';
+
+            // Required Docs / Subjectivities checklist
+            html += '<div class="bind-section"><div class="bind-section-title">Required Documents / Subjectivities</div>';
+            if (subjectivities.length > 0) {
+                html += subjectivities.map((item, idx) => {
+                    const checked = subjectivitiesChecked[idx] === true;
+                    return '<div class="bind-check-item' + (checked ? ' checked' : '') + '">' +
+                        '<input type="checkbox" data-idx="' + idx + '"' + (checked ? ' checked' : '') + '>' +
+                        '<label>' + escapeHtml(item) + '</label></div>';
+                }).join('');
+            } else {
+                html += '<div style="font-size:13px;color:var(--text-muted);">No subjectivities listed for this quote.</div>';
+            }
+            html += '</div>';
+
+            // Action buttons
+            html += '<div class="bind-section"><div class="bind-section-title">Actions</div>';
+            html += '<button class="bind-action-btn btn-request-bind" id="bindRequestBtn">Request to Bind</button>';
+            html += '<button class="bind-action-btn btn-mark-bound" id="bindMarkBoundBtn">Mark as Bound</button>';
+            html += '<button class="bind-action-btn btn-download-csv" id="bindDownloadCsvBtn">Download CSV</button>';
+            html += '</div>';
+
+            panel.innerHTML = html;
+
+            // Wire up subjectivities checkboxes
+            panel.querySelectorAll('.bind-check-item input').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const idx = parseInt(cb.dataset.idx);
+                    subjectivitiesChecked[idx] = cb.checked;
+                    cb.closest('.bind-check-item').classList.toggle('checked', cb.checked);
+                    if (quoteIdForSubj) {
+                        await fetch('/api/quote/' + quoteIdForSubj + '/subjectivities', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ checked: subjectivitiesChecked })
+                        });
+                    }
+                });
+            });
+
+            // Request to Bind
+            document.getElementById('bindRequestBtn').addEventListener('click', () => {
+                alert('Request to Bind coming soon on mobile. Use the desktop version for now.');
+            });
+
+            // Mark as Bound
+            document.getElementById('bindMarkBoundBtn').addEventListener('click', async () => {
+                if (!confirm('Mark this submission as bound?')) return;
+                try {
+                    const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/status', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'SENT_TO_FINANCE' })
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        alert('Marked as bound');
+                        loadSubmission();
+                    } else { alert(data.error || 'Failed'); }
+                } catch(e) { alert('Network error'); }
+            });
+
+            // Download CSV
+            document.getElementById('bindDownloadCsvBtn').addEventListener('click', () => {
+                downloadCsv();
+            });
+        }
+
+        function downloadCsv() {
+            if (!quotes.length) { alert('No quotes to export'); return; }
+            const columns = ['insured_name','carrier','coverage_type','annual_premium','tax','fee','broker_fee','effective_date','expiration_date','policy_number'];
+            const headers = ['Insured Name','Carrier','Coverage','Premium','Tax','Fee','Broker Fee','Effective','Expiration','Policy #'];
+
+            let csv = headers.map(h => '"'+h+'"').join(',') + '\n';
+            quotes.forEach(q => {
+                const parsed = q.parsed_data || {};
+                const policies = parsed.policies || [];
+                const p = policies[0] || {};
+                const row = [
+                    submission.insured_name || '',
+                    q.carrier_name || p.carrier || '',
+                    p.coverage || '',
+                    p.annual_premium || '',
+                    p.tax || '',
+                    p.fee || '',
+                    p.broker_fee || '',
+                    p.effective_date || '',
+                    p.expiration_date || '',
+                    p.policy_number || ''
+                ];
+                csv += row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (submission.insured_name || 'export').replace(/[^a-zA-Z0-9]/g, '_') + '.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function escapeHtml(v) { return esc(v); }
+
         // ── Tabs (quoting/bind stages only) ──
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -529,6 +733,59 @@
 
         // ── Helpers ──
         function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        // ── Submission Page Menu ──
+        function openSubMenu() { document.getElementById('subMenuOverlay').classList.add('active'); document.getElementById('subMenuPanel').classList.add('active'); }
+        function closeSubMenu() { document.getElementById('subMenuOverlay').classList.remove('active'); document.getElementById('subMenuPanel').classList.remove('active'); }
+        document.getElementById('subMenuBtn').addEventListener('click', openSubMenu);
+        document.getElementById('subMenuOverlay').addEventListener('click', closeSubMenu);
+        document.getElementById('subMenuClose').addEventListener('click', closeSubMenu);
+
+        // Status dropdown
+        const statusSelect = document.getElementById('subStatusSelect');
+        // Set initial value based on stage
+        const stageToStatus = { submission: 'RECEIVED', quoting: 'IN_PROGRESS', bind: 'CHOSEN' };
+        statusSelect.value = stageToStatus[STAGE_KEY] || 'RECEIVED';
+        statusSelect.addEventListener('change', async () => {
+            const newStatus = statusSelect.value;
+            try {
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/status', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    closeSubMenu();
+                    window.location.reload();
+                } else { alert(data.error || 'Failed to update status'); }
+            } catch(e) { alert('Network error'); }
+        });
+
+        // Delete
+        document.getElementById('subDeleteBtn').addEventListener('click', async () => {
+            if (!confirm('Delete this submission? This cannot be undone.')) return;
+            try {
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.success) { window.location.href = '/'; }
+                else { alert(data.error || 'Delete failed'); }
+            } catch(e) { alert('Network error'); }
+        });
+
+        // Report Bug
+        document.getElementById('subReportBugBtn').addEventListener('click', () => { closeSubMenu(); alert('Bug reporting coming soon to mobile.'); });
+        // User Guide
+        document.getElementById('subUserGuideBtn').addEventListener('click', () => { closeSubMenu(); alert('User Guide coming soon to mobile.'); });
+        // Logout
+        document.getElementById('subLogoutBtn').addEventListener('click', async () => {
+            if (confirm('Log out?')) { await fetch('/logout', { method: 'POST' }); window.location.href = '/login'; }
+        });
+
+        // Edit button (toggle edit mode - placeholder for now)
+        document.getElementById('editBtn').addEventListener('click', () => {
+            alert('Edit mode coming soon to mobile.');
+        });
 
         // ── Init ──
         loadSubmission();

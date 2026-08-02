@@ -527,33 +527,35 @@
             const grouped = { submission: [], quoting: [], bind: [] };
             submissions.forEach(sub => grouped[getStageKey(sub)].push(sub));
 
-            // Max rows needed = longest column
-            const maxRows = Math.max(grouped.submission.length, grouped.quoting.length, grouped.bind.length);
-            if (maxRows === 0) {
+            // Each submission gets its own row — one card per row, placed in the correct column
+            const allRows = [];
+            ['submission', 'quoting', 'bind'].forEach(stage => {
+                grouped[stage].forEach(sub => {
+                    allRows.push({ sub, stage });
+                });
+            });
+
+            if (allRows.length === 0) {
                 body.appendChild(createLights());
                 return;
             }
 
-            for (let i = 0; i < maxRows; i++) {
-                // Lights above this row
+            allRows.forEach(({ sub, stage }) => {
                 body.appendChild(createLights());
 
-                // Card row (3 cells)
                 const row = document.createElement('div');
                 row.className = 'card-row';
 
-                ['submission', 'quoting', 'bind'].forEach(stage => {
+                ['submission', 'quoting', 'bind'].forEach(col => {
                     const cell = document.createElement('div');
                     cell.className = 'card-cell';
-                    const sub = grouped[stage][i];
-                    if (sub) cell.appendChild(createCard(sub, stage));
+                    if (col === stage) cell.appendChild(createCard(sub, stage));
                     row.appendChild(cell);
                 });
 
                 body.appendChild(row);
-            }
+            });
 
-            // Final lights after last row
             body.appendChild(createLights());
         }
 
