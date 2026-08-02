@@ -743,6 +743,18 @@ def submission_detail(submission_id):
         return "Submission not found", 404
     stage_key = _board_stage_key(submission)
     print(f"[DEBUG] Submission {submission_id}: status='{submission.get('status')}', stage_key='{stage_key}'")
+
+    # Mobile detection
+    ua = request.headers.get('User-Agent', '').lower()
+    is_mobile = any(kw in ua for kw in ['iphone', 'android', 'mobile', 'ipod'])
+    if is_mobile:
+        return render_template(
+            'mobile_submission.html',
+            submission_id=submission_id,
+            stage_key=stage_key,
+            is_admin=session.get('user_role') == 'ADMIN'
+        )
+
     return render_template(
         'submission.html',
         submission_id=submission_id,

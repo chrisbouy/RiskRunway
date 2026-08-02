@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Risk Runway</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --blue: #4a9eff; --orange: #ff9f40; --green: #4ade80;
+            --bg: #0a0a0a; --surface: #1a1a1a; --border: #2a2a2a;
+            --text: #e5e5e5; --text-muted: #a0a0a0; --text-xmuted: #707070;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%; font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            background: var(--bg); color: var(--text); overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .app-shell { height: 100dvh; display: flex; flex-direction: column; }
+
+        /* ── NAV BAR ── */
+        .nav-bar {
+            flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top));
+            background: #334155; border-bottom: 1px solid #475569;
+        }
+        .nav-back {
+            background: none; border: none; color: #f1f5f9; font-size: 22px;
+            padding: 4px 8px; cursor: pointer; border-radius: 6px;
+        }
+        .nav-back:active { background: #475569; }
+        .nav-title {
+            flex: 1; font-size: 15px; font-weight: 600; color: #f1f5f9;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .nav-stage {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; padding: 3px 8px; border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .stage-submission { background: rgba(74,158,255,0.2); color: var(--blue); }
+        .stage-quoting { background: rgba(255,159,64,0.2); color: var(--orange); }
+        .stage-bind { background: rgba(74,222,128,0.2); color: var(--green); }
+
+        /* ── INFO CARD ── */
+        .info-card {
+            flex-shrink: 0; padding: 12px 14px; background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+        .info-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+        .info-value { font-size: 13px; color: var(--text); font-weight: 500; text-align: right; max-width: 65%; }
+
+        /* ── TABS ── */
+        .tab-bar {
+            flex-shrink: 0; display: flex; background: var(--surface);
+            border-bottom: 1px solid var(--border); overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            flex: 1; min-width: 0; padding: 10px 6px; font-size: 12px; font-weight: 600;
+            font-family: inherit; text-align: center; background: none; border: none;
+            color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent;
+            white-space: nowrap; transition: color 0.2s, border-color 0.2s;
+        }
+        .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+        .tab-btn .tab-badge {
+            display: inline-block; font-size: 10px; font-weight: 700;
+            background: var(--border); color: var(--text-muted); padding: 1px 5px;
+            border-radius: 8px; margin-left: 4px;
+        }
+        .tab-btn.active .tab-badge { background: rgba(74,158,255,0.2); color: var(--blue); }
+
+        /* ── TAB CONTENT ── */
+        .tab-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ── QUOTES TAB ── */
+        .quote-card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            padding: 12px; margin-bottom: 10px;
+        }
+        .quote-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .quote-carrier { font-size: 14px; font-weight: 700; color: var(--text); }
+        .quote-premium { font-size: 14px; font-weight: 700; color: var(--green); }
+        .quote-details { display: none; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+        .quote-card.expanded .quote-details { display: block; }
+        .quote-card.expanded .quote-expand-hint { display: none; }
+        .quote-detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+        .quote-detail-label { color: var(--text-muted); }
+        .quote-detail-value { color: var(--text); font-weight: 500; }
+        .quote-expand-hint { font-size: 11px; color: var(--text-xmuted); text-align: center; margin-top: 6px; }
+
+        /* ── DOCS TAB ── */
+        .doc-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; margin-bottom: 8px;
+        }
+        .doc-item-info { flex: 1; min-width: 0; }
+        .doc-item-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .doc-item-type { font-size: 11px; color: var(--text-muted); }
+        .doc-item-btn { background: none; border: none; color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 8px; }
+
+        /* ── ACTIVITY TAB ── */
+        .activity-item {
+            padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-action { font-weight: 600; color: var(--text); }
+        .activity-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+        /* ── FLOATING ACTION BUTTON ── */
+        .fab {
+            position: fixed; bottom: 20px; right: 16px;
+            bottom: max(20px, env(safe-area-inset-bottom));
+            padding: 12px 20px; border-radius: 24px; border: none;
+            font-size: 14px; font-weight: 600; font-family: inherit;
+            color: #fff; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            z-index: 100;
+        }
+        .fab:active { transform: scale(0.95); }
+        .fab-submission { background: var(--blue); }
+        .fab-quoting { background: var(--orange); }
+        .fab-bind { background: var(--green); }
+
+        /* ── UPLOAD SHEET ── */
+        .upload-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            z-index: 200; align-items: flex-end; justify-content: center;
+        }
+        .upload-overlay.active { display: flex; }
+        .upload-sheet {
+            background: var(--surface); border-top-left-radius: 16px; border-top-right-radius: 16px;
+            width: 100%; padding: 20px; padding-bottom: max(20px, env(safe-area-inset-bottom));
+        }
+        .upload-sheet h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+        .upload-input {
+            width: 100%; padding: 12px; font-size: 16px; font-family: inherit;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+            color: var(--text); margin-bottom: 12px;
+        }
+        .upload-input:focus { outline: none; border-color: var(--blue); }
+        .upload-btn {
+            width: 100%; padding: 14px; font-size: 16px; font-weight: 600; font-family: inherit;
+            background: var(--orange); color: #fff; border: none; border-radius: 8px; cursor: pointer;
+        }
+        .upload-btn:active { opacity: 0.8; }
+        .upload-cancel {
+            width: 100%; padding: 12px; font-size: 14px; font-family: inherit;
+            background: none; color: var(--text-muted); border: none; cursor: pointer; margin-top: 8px;
+        }
+        .file-area {
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+            border: 2px dashed var(--border); border-radius: 8px; margin-bottom: 12px; cursor: pointer;
+            font-size: 14px; color: var(--text-muted);
+        }
+        .file-area:active { border-color: var(--blue); }
+
+        /* ── SPINNER ── */
+        .spinner-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            z-index: 3000; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        }
+        .spinner-overlay.active { display: flex; }
+        .spinner-ring { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner-text { font-size: 14px; color: var(--text-muted); }
+
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <nav class="nav-bar">
+            <button class="nav-back" id="backBtn">&larr;</button>
+            <div class="nav-title" id="navTitle">Loading...</div>
+            <span class="nav-stage stage-{{ stage_key }}" id="navStage">{{ stage_key | upper }}</span>
+        </nav>
+
+        <div class="info-card" id="infoCard"></div>
+
+        <!-- Submission stage: full info view (no tabs) -->
+        <div class="tab-content" id="submissionContent" style="display:none;">
+            <div class="tab-panel active" id="panel-submission-info"></div>
+        </div>
+
+        <!-- Quoting/Bind stages: tabbed view -->
+        <div class="tab-bar" id="tabBar" style="display:none;">
+            <button class="tab-btn active" data-tab="quotes">Quotes <span class="tab-badge" id="badgeQuotes">0</span></button>
+            <button class="tab-btn" data-tab="docs">Docs <span class="tab-badge" id="badgeDocs">0</span></button>
+        </div>
+
+        <div class="tab-content" id="tabbedContent" style="display:none;">
+            <div class="tab-panel active" id="panel-quotes"></div>
+            <div class="tab-panel" id="panel-docs"></div>
+        </div>
+
+        <button class="fab fab-{{ stage_key }}" id="fabBtn"></button>
+    </div>
+
+    <!-- Upload Quote Sheet -->
+    <div class="upload-overlay" id="uploadOverlay">
+        <div class="upload-sheet">
+            <h3>Upload Quote</h3>
+            <label class="file-area" id="quoteFileArea">
+                <input type="file" id="quoteFileInput" accept=".pdf,.png,.jpg,.jpeg" style="display:none">
+                <span id="quoteFileName">Tap to select PDF</span>
+            </label>
+            <button class="upload-btn" id="uploadQuoteBtn">Upload & Parse</button>
+            <button class="upload-cancel" id="cancelUploadBtn">Cancel</button>
+        </div>
+    </div>
+
+    <div class="spinner-overlay" id="spinnerOverlay">
+        <div class="spinner-ring"></div>
+        <div class="spinner-text" id="spinnerText">Processing...</div>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+        const SUBMISSION_ID = {{ submission_id }};
+        const STAGE_KEY = '{{ stage_key }}';
+        let submission = null;
+        let quotes = [];
+        let documents = [];
+
+        // ── Load Data ──
+        async function loadSubmission() {
+            try {
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID);
+                const data = await resp.json();
+                if (data.success) {
+                    submission = data.submission || data;
+                    quotes = submission.quotes || [];
+                    document.getElementById('navTitle').textContent = submission.insured_name;
+
+                    if (STAGE_KEY === 'submission') {
+                        // Submission stage: show full info view, no tabs
+                        document.getElementById('submissionContent').style.display = 'block';
+                        document.getElementById('tabBar').style.display = 'none';
+                        document.getElementById('tabbedContent').style.display = 'none';
+                        renderSubmissionInfo();
+                    } else {
+                        // Quoting/Bind: show tabs
+                        document.getElementById('submissionContent').style.display = 'none';
+                        document.getElementById('tabBar').style.display = 'flex';
+                        document.getElementById('tabbedContent').style.display = 'block';
+                        renderInfoCard();
+                        renderQuotes();
+                        document.getElementById('badgeQuotes').textContent = quotes.length;
+                    }
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadDocuments() {
+            try {
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/documents');
+                const data = await resp.json();
+                if (data.success) {
+                    documents = data.documents || [];
+                    document.getElementById('badgeDocs').textContent = documents.length;
+                    renderDocs();
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadActivity() {
+            try {
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/audit');
+                const data = await resp.json();
+                if (data.success) renderActivity(data.audit_logs || []);
+            } catch(e) {
+                document.getElementById('panel-activity').innerHTML = '<div class="empty-state">Activity log unavailable</div>';
+            }
+        }
+
+        // ── Submission Stage: Full Info ──
+        function renderSubmissionInfo() {
+            const panel = document.getElementById('panel-submission-info');
+            const intake = submission.submission_intake || {};
+            const insured = intake.insured || {};
+            const addr = insured.address || {};
+            const address = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
+            const coverages = (intake.coverage_types || []).join(', ') || '—';
+            const retailAgent = intake.retail_agent || {};
+            const agentInfo = [retailAgent.name, retailAgent.agency].filter(Boolean).join(' — ');
+            const createdDate = submission.created_at ? new Date(submission.created_at).toLocaleDateString() : '—';
+            const notes = (submission.notes && submission.notes.submission) || '';
+
+            let html = '<div style="display:flex;flex-direction:column;gap:12px;">';
+
+            // Client info section
+            html += '<div class="quote-card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Client Information</div>';
+            html += infoField('Insured Name', insured.name || submission.insured_name);
+            html += infoField('Address', address);
+            html += infoField('State', submission.state);
+            html += infoField('Effective Date', submission.effective_date);
+            html += infoField('Coverage Types', coverages);
+            html += infoField('Submission Date', createdDate);
+            html += '</div>';
+
+            // Agent info (if available)
+            if (agentInfo) {
+                html += '<div class="quote-card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Retail Agent</div>';
+                html += infoField('Agent', retailAgent.name);
+                html += infoField('Agency', retailAgent.agency);
+                html += infoField('Phone', retailAgent.phone);
+                html += infoField('Email', retailAgent.email);
+                html += '</div>';
+            }
+
+            // Reference numbers
+            if (intake.quote_number || intake.account_number) {
+                html += '<div class="quote-card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">References</div>';
+                html += infoField('Quote #', intake.quote_number);
+                html += infoField('Account #', intake.account_number);
+                html += '</div>';
+            }
+
+            // Documents
+            html += '<div class="quote-card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Documents</div>';
+            html += '<div id="submissionDocsList"></div></div>';
+
+            // Notes
+            html += '<div class="quote-card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Notes</div>';
+            html += '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;">' + esc(notes || 'No notes yet.') + '</div></div>';
+
+            html += '</div>';
+            panel.innerHTML = html;
+
+            // Render docs into the docs section
+            loadDocuments().then(() => {
+                const docsList = document.getElementById('submissionDocsList');
+                if (docsList) {
+                    if (documents.length === 0) {
+                        docsList.innerHTML = '<div style="font-size:13px;color:var(--text-muted);">No documents uploaded.</div>';
+                    } else {
+                        docsList.innerHTML = documents.map(doc =>
+                            '<div class="doc-item" style="margin-bottom:6px;">' +
+                                '<div class="doc-item-info"><div class="doc-item-name">' + esc(doc.original_filename || doc.name || 'Document') + '</div>' +
+                                '<div class="doc-item-type">' + esc(doc.document_type || '') + '</div></div>' +
+                                '<button class="doc-item-btn" onclick="window.open(\'/api/documents/' + doc.id + '/download\',\'_blank\')">View</button>' +
+                            '</div>'
+                        ).join('');
+                    }
+                }
+            });
+        }
+
+        function infoField(label, value) {
+            if (!value) return '';
+            return '<div class="info-row"><span class="info-label">' + esc(label) + '</span><span class="info-value">' + esc(value) + '</span></div>';
+        }
+
+        // ── Info Card (for quoting/bind stages) ──
+        function renderInfoCard() {
+            const card = document.getElementById('infoCard');
+            if (STAGE_KEY === 'submission') { card.style.display = 'none'; return; }
+            const intake = submission.submission_intake || {};
+            const coverages = (intake.coverage_types || []).join(', ') || '—';
+            const effectiveDate = submission.effective_date || '—';
+            const state = submission.state || '—';
+
+            card.innerHTML =
+                '<div class="info-row"><span class="info-label">Effective</span><span class="info-value">' + esc(effectiveDate) + '</span></div>' +
+                '<div class="info-row"><span class="info-label">State</span><span class="info-value">' + esc(state) + '</span></div>' +
+                '<div class="info-row"><span class="info-label">Coverage</span><span class="info-value">' + esc(coverages) + '</span></div>';
+        }
+
+        // ── Quotes ──
+        function renderQuotes() {
+            const panel = document.getElementById('panel-quotes');
+            if (quotes.length === 0) {
+                panel.innerHTML = '<div class="empty-state">No quotes yet.<br>Upload a quote PDF to get started.</div>';
+                return;
+            }
+            panel.innerHTML = quotes.map((q, idx) => {
+                const parsed = q.parsed_data || (q.extracted_json ? JSON.parse(q.extracted_json) : null);
+                const policies = (parsed && parsed.policies) || [];
+                const firstPolicy = policies[0] || {};
+
+                const carrier = q.carrier_name || firstPolicy.carrier || (parsed && parsed.carrier) || 'Unknown Carrier';
+                const premium = firstPolicy.annual_premium;
+                const tax = firstPolicy.tax ? Number(firstPolicy.tax) : 0;
+                const fee = firstPolicy.fee ? Number(firstPolicy.fee) : 0;
+                const brokerFee = firstPolicy.broker_fee ? Number(firstPolicy.broker_fee) : 0;
+                const premiumNum = premium ? Number(premium) : 0;
+                const grandTotal = premiumNum + tax + fee + brokerFee;
+                const grandTotalDisplay = grandTotal > 0 ? '$' + grandTotal.toLocaleString() : '—';
+                const premiumDisplay = premium ? '$' + Number(premium).toLocaleString() : '—';
+                const coverage = firstPolicy.coverage || '';
+
+                let detailsHtml = '';
+                const fields = [
+                    ['Coverage', coverage],
+                    ['Policy #', firstPolicy.policy_number],
+                    ['Effective', firstPolicy.effective_date],
+                    ['Expiration', firstPolicy.expiration_date],
+                    ['Base Premium', premiumDisplay],
+                    ['Tax', firstPolicy.tax ? '$' + Number(firstPolicy.tax).toLocaleString() : null],
+                    ['Fee', firstPolicy.fee ? '$' + Number(firstPolicy.fee).toLocaleString() : null],
+                    ['Broker Fee', firstPolicy.broker_fee ? '$' + Number(firstPolicy.broker_fee).toLocaleString() : null],
+                    ['MGA', parsed && (parsed.mga_name || (parsed.mga && parsed.mga.name))],
+                    ['Security', parsed && parsed.security],
+                ];
+                detailsHtml = fields.filter(f => f[1]).map(f =>
+                    '<div class="quote-detail-row"><span class="quote-detail-label">' + esc(f[0]) + '</span><span class="quote-detail-value">' + esc(String(f[1])) + '</span></div>'
+                ).join('');
+
+                // Show additional policies if more than one
+                if (policies.length > 1) {
+                    detailsHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);font-weight:600;">+ ' + (policies.length - 1) + ' more polic' + (policies.length > 2 ? 'ies' : 'y') + '</div>';
+                }
+
+                return '<div class="quote-card" data-idx="' + idx + '">' +
+                    '<div class="quote-card-header">' +
+                        '<div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Carrier</div><span class="quote-carrier">' + esc(carrier) + '</span></div>' +
+                        '<div style="text-align:right;"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Grand Total</div><span class="quote-premium">' + esc(grandTotalDisplay) + '</span></div>' +
+                    '</div>' +
+                    (coverage ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">' + esc(coverage) + '</div>' : '') +
+                    '<div class="quote-details">' + detailsHtml + '</div>' +
+                    '<div class="quote-expand-hint">Tap for details</div>' +
+                '</div>';
+            }).join('');
+
+            // Expand/collapse on tap
+            panel.querySelectorAll('.quote-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    card.classList.toggle('expanded');
+                    const hint = card.querySelector('.quote-expand-hint');
+                    if (hint) hint.textContent = card.classList.contains('expanded') ? 'Tap to collapse' : 'Tap for details';
+                });
+            });
+        }
+
+        // ── Docs ──
+        function renderDocs() {
+            const panel = document.getElementById('panel-docs');
+            if (documents.length === 0) {
+                panel.innerHTML = '<div class="empty-state">No documents uploaded yet.</div>';
+                return;
+            }
+            panel.innerHTML = documents.map(doc =>
+                '<div class="doc-item">' +
+                    '<div class="doc-item-info"><div class="doc-item-name">' + esc(doc.original_filename || doc.name || 'Document') + '</div>' +
+                    '<div class="doc-item-type">' + esc(doc.document_type || '') + '</div></div>' +
+                    '<button class="doc-item-btn" data-id="' + doc.id + '">View</button>' +
+                '</div>'
+            ).join('');
+
+            panel.querySelectorAll('.doc-item-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    window.open('/api/documents/' + btn.dataset.id + '/download', '_blank');
+                });
+            });
+        }
+
+        // ── Tabs (quoting/bind stages only) ──
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#tabbedContent .tab-panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+                if (btn.dataset.tab === 'docs' && documents.length === 0) loadDocuments();
+            });
+        });
+
+        // ── FAB ──
+        const fabBtn = document.getElementById('fabBtn');
+        if (STAGE_KEY === 'submission') { fabBtn.textContent = 'Submit to Markets'; }
+        else if (STAGE_KEY === 'quoting') { fabBtn.textContent = '+ Upload Quote'; }
+        else { fabBtn.textContent = 'Export to AMS'; }
+
+        fabBtn.addEventListener('click', () => {
+            if (STAGE_KEY === 'quoting') {
+                document.getElementById('uploadOverlay').classList.add('active');
+            } else if (STAGE_KEY === 'submission') {
+                alert('Submit to Markets coming soon on mobile.');
+            } else {
+                alert('Export to AMS is not yet available on mobile.');
+            }
+        });
+
+        // ── Upload Quote ──
+        let quoteFile = null;
+        document.getElementById('quoteFileInput').addEventListener('change', (e) => {
+            const f = e.target.files[0];
+            if (f) { quoteFile = f; document.getElementById('quoteFileName').textContent = f.name; }
+        });
+        document.getElementById('cancelUploadBtn').addEventListener('click', () => {
+            document.getElementById('uploadOverlay').classList.remove('active');
+            quoteFile = null; document.getElementById('quoteFileName').textContent = 'Tap to select PDF';
+            document.getElementById('quoteFileInput').value = '';
+        });
+        document.getElementById('uploadQuoteBtn').addEventListener('click', async () => {
+            if (!quoteFile) { alert('Select a file first'); return; }
+            document.getElementById('uploadOverlay').classList.remove('active');
+            const spinner = document.getElementById('spinnerOverlay');
+            document.getElementById('spinnerText').textContent = 'Parsing quote...';
+            spinner.classList.add('active');
+            try {
+                const fd = new FormData();
+                fd.append('file', quoteFile);
+                fd.append('submission_id', SUBMISSION_ID);
+                const resp = await fetch('/api/upload_quote', { method: 'POST', body: fd });
+                const data = await resp.json();
+                spinner.classList.remove('active');
+                if (data.success) {
+                    quoteFile = null; document.getElementById('quoteFileName').textContent = 'Tap to select PDF';
+                    document.getElementById('quoteFileInput').value = '';
+                    await loadSubmission();
+                    await loadDocuments();
+                } else { alert(data.error || 'Upload failed'); }
+            } catch(e) { spinner.classList.remove('active'); alert('Network error'); }
+        });
+
+        // ── Back ──
+        document.getElementById('backBtn').addEventListener('click', () => {
+            window.location.href = '/';
+        });
+
+        // ── Helpers ──
+        function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        // ── Init ──
+        loadSubmission();
+        loadDocuments();
+    })();
+    </script>
+</body>
+</html>

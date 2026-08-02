@@ -217,6 +217,13 @@
         }
         .preview-close:active { background: #333; }
 
+        .move-to-btn {
+            flex: 1; padding: 10px 8px; border-radius: 6px; font-size: 13px;
+            font-weight: 600; font-family: inherit; cursor: pointer;
+            background: none; border: 2px solid; text-align: center;
+        }
+        .move-to-btn:active { opacity: 0.7; }
+
         /* ── MODAL ── */
         .modal-overlay {
             display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
@@ -326,7 +333,7 @@
     <div class="app-shell">
         <header class="top-bar">
             <div class="top-bar-logo">
-                <img src="{{ url_for('static', filename='images/title_bluebg.png') }}" alt="Risk Runway">
+                <img src="{{ url_for('static', filename='images/mobile_title_bluebg.png') }}" alt="Risk Runway">
             </div>
             <button class="hamburger-btn" id="menuBtn" aria-label="Menu">&#9776;</button>
         </header>
@@ -597,6 +604,16 @@
                 }
             }
 
+            // Build "Move to" buttons for other stages
+            const stages = [
+                { key: 'submission', label: 'Submission', apiStatus: 'RECEIVED', color: 'var(--blue)' },
+                { key: 'quoting', label: 'Quoting', apiStatus: 'IN_PROGRESS', color: 'var(--orange)' },
+                { key: 'bind', label: 'Bound', apiStatus: 'CHOSEN', color: 'var(--green)' }
+            ];
+            const moveButtons = stages.filter(s => s.key !== stage).map(s =>
+                '<button class="move-to-btn" data-status="'+s.apiStatus+'" data-stage="'+s.key+'" style="border-color:'+s.color+';color:'+s.color+';">'+s.label+'</button>'
+            ).join('');
+
             card.innerHTML =
                 '<h3>'+escapeHtml(submission.insured_name)+'</h3>'+
                 '<span class="preview-badge '+badgeClass+'">'+stageLabel+'</span>'+
@@ -606,10 +623,41 @@
                 (coverageTypes.length ? '<div class="preview-row"><span class="preview-label">Coverage</span><span class="preview-value">'+escapeHtml(coverageTypes.join(', '))+'</span></div>' : '')+
                 (statusLabel ? '<div class="preview-row"><span class="preview-label">Note</span><span class="preview-value">'+escapeHtml(statusLabel)+'</span></div>' : '')+
                 renewalHtml+'</div>'+
+                '<div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Move to</div>'+
+                '<div style="display:flex;gap:8px;">'+moveButtons+'</div></div>'+
                 '<button class="preview-close" id="previewCloseBtn">Close</button>';
 
             overlay.classList.add('active');
             document.getElementById('previewCloseBtn').addEventListener('click', () => overlay.classList.remove('active'));
+
+            // Wire up move buttons
+            card.querySelectorAll('.move-to-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const targetStatus = btn.dataset.status;
+                    const targetStage = btn.dataset.stage;
+                    overlay.classList.remove('active');
+
+                    // If moving to bind, use the drag_to_bind endpoint
+                    if (targetStage === 'bind') {
+                        try {
+                            const resp = await fetch('/api/submission/'+submission.id+'/drag_to_bind', { method: 'POST', headers: {'Content-Type':'application/json'} });
+                            const data = await resp.json();
+                            if (!data.success) { alert(data.message || data.error || 'Cannot move to bind'); return; }
+                        } catch(e) { alert('Network error'); return; }
+                    } else {
+                        try {
+                            const resp = await fetch('/api/submission/'+submission.id+'/status', {
+                                method: 'PUT',
+                                headers: {'Content-Type':'application/json'},
+                                body: JSON.stringify({ status: targetStatus })
+                            });
+                            const data = await resp.json();
+                            if (!data.success) { alert(data.error || 'Move failed'); return; }
+                        } catch(e) { alert('Network error'); return; }
+                    }
+                    await loadSubmissions();
+                });
+            });
         }
 
         document.getElementById('previewOverlay').addEventListener('click', (e) => {
