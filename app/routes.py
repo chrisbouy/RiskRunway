@@ -2416,6 +2416,11 @@ def process_single_attachment():
                     db_session.add(doc)
                     db_session.commit()
 
+                    # Auto-move to quoting if still in submission stage
+                    if submission.status == SubmissionStatus.RECEIVED:
+                        submission.status = SubmissionStatus.IN_PROGRESS
+                        db_session.commit()
+
                     return jsonify({'success': True, 'message': f'Quote parsed from "{filename}" and added to submission.'})
                 except Exception as parse_err:
                     logger.error(f"Failed to parse attachment as quote: {parse_err}", exc_info=True)

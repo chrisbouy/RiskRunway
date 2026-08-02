@@ -327,6 +327,8 @@
         .msg-btn-process:active { opacity: 0.8; }
         .msg-btn-dismiss { background: var(--border); color: var(--text-muted); }
         .msg-btn-dismiss:active { background: #333; }
+        .msg-btn-read { background: rgba(74,158,255,0.2); color: var(--blue); }
+        .msg-btn-read:active { opacity: 0.8; }
     </style>
 </head>
 <body>
@@ -341,7 +343,7 @@
         <div class="board-header">
             <div class="col-head col-head-sub">Submission</div>
             <div class="col-head col-head-quot">Quoting</div>
-            <div class="col-head col-head-bind">Bound</div>
+            <div class="col-head col-head-bind">Binding</div>
         </div>
 
         <div class="board-body" id="boardBody"></div>
@@ -598,7 +600,7 @@
             const stageLabel = stage === 'submission' ? 'Submission' : stage === 'quoting' ? 'Quoting' : 'Bound';
 
             let renewalHtml = '';
-            if (submission.effective_date) {
+            if (stage !== 'submission' && submission.effective_date) {
                 const days = getDaysUntilRenewal(submission.effective_date);
                 if (days !== null) {
                     const c = days <= 30 ? '#ef4444' : days <= 60 ? '#ff9f40' : '#4ade80';
@@ -610,21 +612,30 @@
             const stages = [
                 { key: 'submission', label: 'Submission', apiStatus: 'RECEIVED', color: 'var(--blue)' },
                 { key: 'quoting', label: 'Quoting', apiStatus: 'IN_PROGRESS', color: 'var(--orange)' },
-                { key: 'bind', label: 'Bound', apiStatus: 'CHOSEN', color: 'var(--green)' }
+                { key: 'bind', label: 'Binding', apiStatus: 'CHOSEN', color: 'var(--green)' }
             ];
             const moveButtons = stages.filter(s => s.key !== stage).map(s =>
                 '<button class="move-to-btn" data-status="'+s.apiStatus+'" data-stage="'+s.key+'" style="border-color:'+s.color+';color:'+s.color+';">'+s.label+'</button>'
             ).join('');
 
+            // Build docs list
+            const docs = submission.documents || [];
+            let docsHtml = '';
+            if (docs.length > 0) {
+                docsHtml = '<div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Documents</div>' +
+                    docs.map(d => '<a href="/api/documents/'+d.id+'/download" target="_blank" style="display:block;font-size:12px;color:var(--blue);padding:5px 0;text-decoration:none;border-bottom:1px solid var(--border);">' + escapeHtml(d.name || d.original_filename || 'file') + '</a>').join('') +
+                '</div>';
+            }
+
             card.innerHTML =
                 '<h3>'+escapeHtml(submission.insured_name)+'</h3>'+
-                '<span class="preview-badge '+badgeClass+'">'+stageLabel+'</span>'+
                 '<div style="margin-top:12px;">'+
                 '<div class="preview-row"><span class="preview-label">Quotes</span><span class="preview-value">'+quoteCount+'</span></div>'+
                 '<div class="preview-row"><span class="preview-label">Documents</span><span class="preview-value">'+docCount+'</span></div>'+
                 (coverageTypes.length ? '<div class="preview-row"><span class="preview-label">Coverage</span><span class="preview-value">'+escapeHtml(coverageTypes.join(', '))+'</span></div>' : '')+
                 (statusLabel ? '<div class="preview-row"><span class="preview-label">Note</span><span class="preview-value">'+escapeHtml(statusLabel)+'</span></div>' : '')+
                 renewalHtml+'</div>'+
+                docsHtml+
                 '<div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Move to</div>'+
                 '<div style="display:flex;gap:8px;">'+moveButtons+'</div></div>'+
                 '<button class="preview-close" id="previewCloseBtn">Close</button>';
@@ -907,20 +918,106 @@
         function showNewMessagesModal() {
             const list = document.getElementById('newMessagesList');
             list.innerHTML = cachedEmails.map((email, idx) => {
-                const attHtml = (email.attachments || []).map(att =>
-                    '<span class="msg-att-badge">' + escapeHtml(att.filename) + '</span>'
+                const attHtml = (email.attachments || []).map((att, attIdx) =>
+                    '<div style="display:flex;align-items:center;gap:6px;">' +
+                        '<span class="msg-att-badge">' + escapeHtml(att.filename) + '</span>' +
+                        '<button class="msg-btn msg-btn-process" data-idx="' + idx + '" data-att-idx="' + attIdx + '">Process</button>' +
+                    '</div>'
                 ).join('');
                 const dateStr = email.received_date ? new Date(email.received_date).toLocaleDateString() : '';
                 return '<div class="msg-item">' +
-                    '<div class="msg-subject">' + escapeHtml(email.subject) + '</div>' +
+                    '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+                        '<div class="msg-subject">' + escapeHtml(email.subject) + '</div>' +
+                        '<button class="msg-btn msg-btn-read" data-idx="' + idx + '" style="flex-shrink:0;margin-left:8px;">Read</button>' +
+                    '</div>' +
                     '<div class="msg-from">From: ' + escapeHtml(email.from_name || email.from_email) + '</div>' +
                     '<div class="msg-date">' + dateStr + '</div>' +
-                    (attHtml ? '<div class="msg-attachments">' + attHtml + '</div>' : '') +
+                    (attHtml ? '<div class="msg-attachments" style="flex-direction:column;align-items:flex-start;">' + attHtml + '</div>' : '') +
                     '<div class="msg-actions">' +
                         '<button class="msg-btn msg-btn-dismiss" data-idx="' + idx + '">Dismiss</button>' +
                     '</div>' +
                 '</div>';
             }).join('');
+
+            // Read buttons — mark as read (dismiss from view)
+            list.querySelectorAll('.msg-btn-read').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    const email = cachedEmails[idx];
+                    if (email && email.message_id) {
+                        await fetch('/api/email/dismiss', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message_id: email.message_id, account_id: email.account_id })
+                        });
+                    }
+                    btn.closest('.msg-item').remove();
+                    cachedEmails.splice(idx, 1);
+                    if (cachedEmails.length === 0) document.getElementById('newMessagesModal').classList.remove('active');
+                });
+            });
+
+            // Process buttons — process attachment as quote
+            list.querySelectorAll('.msg-btn-process').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    const attIdx = parseInt(btn.dataset.attIdx);
+                    const email = cachedEmails[idx];
+                    if (!email) return;
+                    const att = (email.attachments || [])[attIdx];
+                    if (!att) return;
+
+                    // Need to pick a submission — try to match by insured name in subject
+                    let targetSubmissionId = null;
+                    const subjectLower = (email.subject || '').toLowerCase();
+                    for (const sub of submissions) {
+                        const name = (sub.insured_name || '').toLowerCase();
+                        if (name && subjectLower.includes(name)) {
+                            targetSubmissionId = sub.id;
+                            break;
+                        }
+                    }
+
+                    if (!targetSubmissionId) {
+                        // Ask user to pick
+                        const choices = submissions.map(s => s.insured_name).join('\n');
+                        const pick = prompt('Which submission is this for?\n\n' + choices);
+                        if (!pick) return;
+                        const matched = submissions.find(s => s.insured_name.toLowerCase().includes(pick.toLowerCase()));
+                        if (matched) targetSubmissionId = matched.id;
+                        else { alert('No matching submission found'); return; }
+                    }
+
+                    document.getElementById('newMessagesModal').classList.remove('active');
+                    const spinner = document.getElementById('spinnerOverlay');
+                    document.getElementById('spinnerText').textContent = 'Processing attachment...';
+                    spinner.classList.add('active');
+
+                    try {
+                        const resp = await fetch('/api/email/process_attachment', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                submission_id: targetSubmissionId,
+                                message_id: email.message_id,
+                                account_id: email.account_id,
+                                provider: email.provider || 'outlook',
+                                attachment_id: att.attachment_id,
+                                filename: att.filename,
+                                action_type: 'parse'
+                            })
+                        });
+                        const data = await resp.json();
+                        spinner.classList.remove('active');
+                        if (data.success) {
+                            alert('Attachment processed successfully');
+                            loadSubmissions();
+                        } else {
+                            alert(data.error || 'Processing failed');
+                        }
+                    } catch(e) { spinner.classList.remove('active'); alert('Network error'); }
+                });
+            });
 
             // Dismiss buttons
             list.querySelectorAll('.msg-btn-dismiss').forEach(btn => {

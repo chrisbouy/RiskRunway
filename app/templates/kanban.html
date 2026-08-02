@@ -896,7 +896,7 @@
             <!-- Hidden counters so JS doesn't break -->
             <span id="count-submission" class="stage-count" style="display:none;">Submission: 0</span>
             <span id="count-quoting" class="stage-count" style="display:none;">Quoting: 0</span>
-            <span id="count-bind" class="stage-count" style="display:none;">Bound: 0</span>
+            <span id="count-bind" class="stage-count" style="display:none;">Binding: 0</span>
 
             <button id="newSubmissionBtn" class="left-btn btn-new">+ New Risk(s)</button>
             <button id="importFromEpicBtn" class="left-btn btn-config" style="margin-top: 4px; display: none;">
@@ -2064,7 +2064,7 @@
 
             document.getElementById('count-submission').textContent = `Submission: ${grouped.submission}`;
             document.getElementById('count-quoting').textContent = `Quoting: ${grouped.quoting}`;
-            document.getElementById('count-bind').textContent = `Bound: ${grouped.bind}`;
+            document.getElementById('count-bind').textContent = `Binding: ${grouped.bind}`;
 
             // Start animation after rendering
             startRunwayLightsAnimation();

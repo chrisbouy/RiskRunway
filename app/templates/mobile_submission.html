@@ -228,6 +228,23 @@
         .btn-request-bind { background: var(--blue); color: #fff; }
         .btn-mark-bound { background: var(--green); color: #000; }
         .btn-download-csv { background: var(--border); color: var(--text); }
+
+        /* Submit to market broker entry */
+        .stm-broker-entry {
+            padding: 10px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .stm-broker-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .stm-broker-header input { width: 18px; height: 18px; accent-color: var(--blue); flex-shrink: 0; }
+        .stm-broker-name { font-size: 14px; font-weight: 600; color: var(--text); }
+        .stm-broker-email { font-size: 11px; color: var(--text-muted); }
+        .stm-docs-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .stm-doc-chip {
+            display: flex; align-items: center; gap: 4px; font-size: 11px;
+            padding: 3px 8px; border-radius: 4px; background: rgba(74,158,255,0.1);
+            color: var(--blue);
+        }
+        .stm-doc-chip input { width: 14px; height: 14px; accent-color: var(--blue); }
     </style>
 </head>
 <body>
@@ -294,6 +311,18 @@
         </div>
     </div>
 
+    <!-- Submit to Markets Sheet -->
+    <div class="upload-overlay" id="submitMarketOverlay">
+        <div class="upload-sheet" style="max-height:85vh;overflow-y:auto;">
+            <h3>Submit to Markets</h3>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Select brokers to send the application to:</p>
+            <div id="stmBrokersList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;"></div>
+            <div id="stmNoBrokers" style="display:none;font-size:13px;color:var(--text-muted);margin-bottom:12px;">No brokers configured. Add brokers from the kanban menu first.</div>
+            <button class="upload-btn" id="stmSendBtn" style="background:var(--blue);">Send to Selected</button>
+            <button class="upload-cancel" id="stmCancelBtn">Cancel</button>
+        </div>
+    </div>
+
     <div class="spinner-overlay" id="spinnerOverlay">
         <div class="spinner-ring"></div>
         <div class="spinner-text" id="spinnerText">Processing...</div>
@@ -337,6 +366,11 @@
                         if (STAGE_KEY === 'bind') {
                             document.getElementById('tabBind').style.display = '';
                             renderBindTab();
+                            // Default to bind tab
+                            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                            document.querySelectorAll('#tabbedContent .tab-panel').forEach(p => p.classList.remove('active'));
+                            document.getElementById('tabBind').classList.add('active');
+                            document.getElementById('panel-bind').classList.add('active');
                         }
                     }
                 }
@@ -579,7 +613,7 @@
 
             // Action buttons
             html += '<div class="bind-section"><div class="bind-section-title">Actions</div>';
-            html += '<button class="bind-action-btn btn-request-bind" id="bindRequestBtn">Request to Bind</button>';
+            html += '<button class="bind-action-btn btn-request-bind" id="bindRequestBtn">Send Request to Bind</button>';
             html += '<button class="bind-action-btn btn-mark-bound" id="bindMarkBoundBtn">Mark as Bound</button>';
             html += '<button class="bind-action-btn btn-download-csv" id="bindDownloadCsvBtn">Download CSV</button>';
             html += '</div>';
@@ -681,15 +715,13 @@
         const fabBtn = document.getElementById('fabBtn');
         if (STAGE_KEY === 'submission') { fabBtn.textContent = 'Submit to Markets'; }
         else if (STAGE_KEY === 'quoting') { fabBtn.textContent = '+ Upload Quote'; }
-        else { fabBtn.textContent = 'Export to AMS'; }
+        else { fabBtn.style.display = 'none'; }
 
         fabBtn.addEventListener('click', () => {
             if (STAGE_KEY === 'quoting') {
                 document.getElementById('uploadOverlay').classList.add('active');
             } else if (STAGE_KEY === 'submission') {
-                alert('Submit to Markets coming soon on mobile.');
-            } else {
-                alert('Export to AMS is not yet available on mobile.');
+                openSubmitToMarkets();
             }
         });
 
@@ -733,6 +765,124 @@
 
         // ── Helpers ──
         function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        // ── Submit to Markets ──
+        let stmBrokerEntries = [];
+
+        async function openSubmitToMarkets() {
+            const overlay = document.getElementById('submitMarketOverlay');
+            overlay.classList.add('active');
+            await loadStmBrokers();
+        }
+
+        document.getElementById('stmCancelBtn').addEventListener('click', () => {
+            document.getElementById('submitMarketOverlay').classList.remove('active');
+        });
+
+        async function loadStmBrokers() {
+            const list = document.getElementById('stmBrokersList');
+            const noBrokersMsg = document.getElementById('stmNoBrokers');
+            const sendBtn = document.getElementById('stmSendBtn');
+            list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Loading brokers...</div>';
+
+            try {
+                const resp = await fetch('/api/brokers');
+                const data = await resp.json();
+                const brokers = (data.success ? data.brokers : []).filter(b => !b.is_portal && b.email);
+
+                if (brokers.length === 0) {
+                    list.innerHTML = '';
+                    noBrokersMsg.style.display = 'block';
+                    sendBtn.disabled = true;
+                    return;
+                }
+
+                noBrokersMsg.style.display = 'none';
+                sendBtn.disabled = false;
+
+                // Get attachable docs
+                const attachableDocs = documents.filter(d => ['Application', 'SOV', 'Loss Run'].includes(d.document_type));
+
+                stmBrokerEntries = brokers.map(b => ({
+                    id: b.id,
+                    name: b.name || b.email,
+                    email: b.email,
+                    checked: true,
+                    document_ids: attachableDocs.map(d => d.id)
+                }));
+
+                list.innerHTML = stmBrokerEntries.map((entry, idx) => {
+                    const docsHtml = attachableDocs.map(doc =>
+                        '<label class="stm-doc-chip"><input type="checkbox" data-idx="'+idx+'" data-doc="'+doc.id+'" checked>' + esc(doc.original_filename || doc.name || 'file') + '</label>'
+                    ).join('');
+
+                    return '<div class="stm-broker-entry">' +
+                        '<div class="stm-broker-header">' +
+                            '<input type="checkbox" class="stm-broker-cb" data-idx="'+idx+'" checked>' +
+                            '<div><div class="stm-broker-name">' + esc(entry.name) + '</div>' +
+                            '<div class="stm-broker-email">' + esc(entry.email) + '</div></div>' +
+                        '</div>' +
+                        (docsHtml ? '<div class="stm-docs-row">' + docsHtml + '</div>' : '') +
+                    '</div>';
+                }).join('');
+
+                // Wire checkboxes
+                list.querySelectorAll('.stm-broker-cb').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        stmBrokerEntries[parseInt(cb.dataset.idx)].checked = cb.checked;
+                    });
+                });
+                list.querySelectorAll('.stm-doc-chip input').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        const idx = parseInt(cb.dataset.idx);
+                        const docId = parseInt(cb.dataset.doc);
+                        if (cb.checked) {
+                            if (!stmBrokerEntries[idx].document_ids.includes(docId)) stmBrokerEntries[idx].document_ids.push(docId);
+                        } else {
+                            stmBrokerEntries[idx].document_ids = stmBrokerEntries[idx].document_ids.filter(id => id !== docId);
+                        }
+                    });
+                });
+            } catch(e) {
+                list.innerHTML = '<div style="color:#f07070;font-size:13px;">Error loading brokers</div>';
+            }
+        }
+
+        document.getElementById('stmSendBtn').addEventListener('click', async () => {
+            const selected = stmBrokerEntries.filter(e => e.checked);
+            if (selected.length === 0) { alert('Select at least one broker'); return; }
+
+            const spinner = document.getElementById('spinnerOverlay');
+            document.getElementById('spinnerText').textContent = 'Sending to brokers...';
+            spinner.classList.add('active');
+            document.getElementById('submitMarketOverlay').classList.remove('active');
+
+            try {
+                const insuredName = submission.insured_name || 'our client';
+                const effectiveDate = submission.effective_date || 'N/A';
+
+                const brokerPayload = selected.map(entry => ({
+                    id: entry.id,
+                    body: 'Dear ' + entry.name + ',\n\nWe would like to request a quote for ' + insuredName + ' (effective ' + effectiveDate + '). Please find the attached documents for your review.\n\nPlease let us know if you need any additional information to proceed.\n\nThank you for your attention to this matter.',
+                    document_ids: entry.document_ids
+                }));
+
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/submit_to_market', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ broker_entries: brokerPayload })
+                });
+                const data = await resp.json();
+                spinner.classList.remove('active');
+
+                if (data.success) {
+                    const sent = (data.results && data.results.sent) || [];
+                    alert('Sent to ' + sent.length + ' broker(s)');
+                } else {
+                    alert(data.error || 'Failed to send');
+                }
+            } catch(e) { spinner.classList.remove('active'); alert('Network error'); }
+        });
 
         // ── Submission Page Menu ──
         function openSubMenu() { document.getElementById('subMenuOverlay').classList.add('active'); document.getElementById('subMenuPanel').classList.add('active'); }
