@@ -569,7 +569,18 @@
             if (submission.is_renewal && stage === 'quoting') card.classList.add('is-renewal');
 
             const displayName = submission.short_name || submission.insured_name;
-            card.innerHTML = '<div class="m-card-name">' + escapeHtml(displayName) + '</div>';
+
+            // Renewal countdown for bound cards
+            let countdownHtml = '';
+            if (stage === 'bind' && submission.effective_date) {
+                const days = getDaysUntilRenewal(submission.effective_date);
+                if (days !== null) {
+                    const color = days <= 30 ? '#ef4444' : days <= 60 ? '#ff9f40' : 'var(--text-muted)';
+                    countdownHtml = '<div style="font-size:10px;font-weight:600;color:'+color+';text-align:center;margin-top:2px;">T-'+days+'d</div>';
+                }
+            }
+
+            card.innerHTML = '<div class="m-card-name">' + escapeHtml(displayName) + '</div>' + countdownHtml;
 
             card.addEventListener('click', () => {
                 if (!longPressFired) window.location.href = '/submission/' + submission.id;

@@ -323,6 +323,27 @@
         </div>
     </div>
 
+    <!-- Request to Bind Sheet -->
+    <div class="upload-overlay" id="rtbOverlay">
+        <div class="upload-sheet" style="max-height:85vh;overflow-y:auto;">
+            <h3>Send Request to Bind</h3>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Select Broker</label>
+                <select class="upload-input" id="rtbBrokerSelect" style="padding:10px;font-size:14px;"></select>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Email Body</label>
+                <textarea class="upload-input" id="rtbBody" rows="5" style="resize:vertical;font-size:14px;"></textarea>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Attach Documents</label>
+                <div id="rtbDocsList" style="display:flex;flex-direction:column;gap:4px;"></div>
+            </div>
+            <button class="upload-btn" id="rtbSendBtn" style="background:var(--blue);">Send</button>
+            <button class="upload-cancel" id="rtbCancelBtn">Cancel</button>
+        </div>
+    </div>
+
     <div class="spinner-overlay" id="spinnerOverlay">
         <div class="spinner-ring"></div>
         <div class="spinner-text" id="spinnerText">Processing...</div>
@@ -495,6 +516,19 @@
         // ── Quotes ──
         function renderQuotes() {
             const panel = document.getElementById('panel-quotes');
+
+            // Update Send to Binding button state
+            const bindBtn = document.getElementById('sendToBindBtn');
+            if (bindBtn) {
+                if (quotes.length === 1) {
+                    bindBtn.disabled = false;
+                    bindBtn.style.opacity = '1';
+                } else {
+                    bindBtn.disabled = true;
+                    bindBtn.style.opacity = '0.4';
+                }
+            }
+
             if (quotes.length === 0) {
                 panel.innerHTML = '<div class="empty-state">No quotes yet.<br>Upload a quote PDF to get started.</div>';
                 return;
@@ -537,23 +571,41 @@
                     detailsHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);font-weight:600;">+ ' + (policies.length - 1) + ' more polic' + (policies.length > 2 ? 'ies' : 'y') + '</div>';
                 }
 
-                return '<div class="quote-card" data-idx="' + idx + '">' +
+                return '<div class="quote-card" data-idx="' + idx + '" data-quote-id="' + q.id + '">' +
                     '<div class="quote-card-header">' +
                         '<div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Carrier</div><span class="quote-carrier">' + esc(carrier) + '</span></div>' +
                         '<div style="text-align:right;"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Grand Total</div><span class="quote-premium">' + esc(grandTotalDisplay) + '</span></div>' +
                     '</div>' +
                     (coverage ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">' + esc(coverage) + '</div>' : '') +
-                    '<div class="quote-details">' + detailsHtml + '</div>' +
+                    '<div class="quote-details">' + detailsHtml +
+                        '<button class="quote-delete-btn" data-quote-id="' + q.id + '" style="margin-top:10px;width:100%;padding:8px;font-size:12px;font-weight:600;font-family:inherit;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Delete Quote</button>' +
+                    '</div>' +
                     '<div class="quote-expand-hint">Tap for details</div>' +
                 '</div>';
             }).join('');
 
             // Expand/collapse on tap
             panel.querySelectorAll('.quote-card').forEach(card => {
-                card.addEventListener('click', () => {
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.quote-delete-btn')) return; // Don't toggle on delete click
                     card.classList.toggle('expanded');
                     const hint = card.querySelector('.quote-expand-hint');
                     if (hint) hint.textContent = card.classList.contains('expanded') ? 'Tap to collapse' : 'Tap for details';
+                });
+            });
+
+            // Delete buttons
+            panel.querySelectorAll('.quote-delete-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (!confirm('Delete this quote?')) return;
+                    const quoteId = btn.dataset.quoteId;
+                    try {
+                        const resp = await fetch('/api/quote/' + quoteId, { method: 'DELETE' });
+                        const data = await resp.json();
+                        if (data.success) { await loadSubmission(); await loadDocuments(); }
+                        else alert(data.error || 'Delete failed');
+                    } catch(e) { alert('Network error'); }
                 });
             });
         }
@@ -612,9 +664,15 @@
             html += '</div>';
 
             // Action buttons
+            const isBound = submission.status === 'Sent to Finance' || submission.is_bound;
             html += '<div class="bind-section"><div class="bind-section-title">Actions</div>';
-            html += '<button class="bind-action-btn btn-request-bind" id="bindRequestBtn">Send Request to Bind</button>';
-            html += '<button class="bind-action-btn btn-mark-bound" id="bindMarkBoundBtn">Mark as Bound</button>';
+            if (isBound) {
+                html += '<button class="bind-action-btn btn-request-bind" id="bindRequestBtn" disabled style="opacity:0.4;">Send Request to Bind (already bound)</button>';
+                html += '<button class="bind-action-btn btn-mark-bound" id="bindMarkBoundBtn" style="background:#dc2626;color:#fff;">Unbind</button>';
+            } else {
+                html += '<button class="bind-action-btn btn-request-bind" id="bindRequestBtn">Send Request to Bind</button>';
+                html += '<button class="bind-action-btn btn-mark-bound" id="bindMarkBoundBtn">Manually Mark as Bound</button>';
+            }
             html += '<button class="bind-action-btn btn-download-csv" id="bindDownloadCsvBtn">Download CSV</button>';
             html += '</div>';
 
@@ -638,22 +696,24 @@
 
             // Request to Bind
             document.getElementById('bindRequestBtn').addEventListener('click', () => {
-                alert('Request to Bind coming soon on mobile. Use the desktop version for now.');
+                openRequestToBind();
             });
 
-            // Mark as Bound
+            // Mark as Bound / Unbind
             document.getElementById('bindMarkBoundBtn').addEventListener('click', async () => {
-                if (!confirm('Mark this submission as bound?')) return;
+                const isBound = submission.status === 'Sent to Finance' || submission.is_bound;
+                const newStatus = isBound ? 'CHOSEN' : 'SENT_TO_FINANCE';
+                const confirmMsg = isBound ? 'Unbind this submission?' : 'Mark this submission as bound?';
+                if (!confirm(confirmMsg)) return;
                 try {
                     const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/status', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: 'SENT_TO_FINANCE' })
+                        body: JSON.stringify({ status: newStatus })
                     });
                     const data = await resp.json();
                     if (data.success) {
-                        alert('Marked as bound');
-                        loadSubmission();
+                        window.location.reload();
                     } else { alert(data.error || 'Failed'); }
                 } catch(e) { alert('Network error'); }
             });
@@ -717,6 +777,35 @@
         else if (STAGE_KEY === 'quoting') { fabBtn.textContent = '+ Upload Quote'; }
         else { fabBtn.style.display = 'none'; }
 
+        // Add "Send to Binding" button for quoting stage
+        if (STAGE_KEY === 'quoting') {
+            const bindBtn = document.createElement('button');
+            bindBtn.className = 'fab fab-bind';
+            bindBtn.id = 'sendToBindBtn';
+            bindBtn.textContent = 'Send to Binding';
+            bindBtn.style.right = 'auto';
+            bindBtn.style.left = '16px';
+            bindBtn.disabled = true;
+            bindBtn.style.opacity = '0.4';
+            document.querySelector('.app-shell').appendChild(bindBtn);
+
+            bindBtn.addEventListener('click', async () => {
+                if (bindBtn.disabled) return;
+                try {
+                    const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/drag_to_bind', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data.message || data.error || 'Cannot move to binding');
+                    }
+                } catch(e) { alert('Network error'); }
+            });
+        }
+
         fabBtn.addEventListener('click', () => {
             if (STAGE_KEY === 'quoting') {
                 document.getElementById('uploadOverlay').classList.add('active');
@@ -765,6 +854,71 @@
 
         // ── Helpers ──
         function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        // ── Request to Bind ──
+        async function openRequestToBind() {
+            document.getElementById('rtbOverlay').classList.add('active');
+
+            // Load brokers into select
+            const select = document.getElementById('rtbBrokerSelect');
+            select.innerHTML = '<option value="">Loading...</option>';
+            try {
+                const resp = await fetch('/api/brokers');
+                const data = await resp.json();
+                const brokers = (data.success ? data.brokers : []).filter(b => !b.is_portal && b.email);
+                if (brokers.length === 0) {
+                    select.innerHTML = '<option value="">No brokers configured</option>';
+                } else {
+                    select.innerHTML = brokers.map(b => '<option value="'+b.id+'">'+esc(b.name || b.email)+' ('+esc(b.email)+')</option>').join('');
+                }
+            } catch(e) { select.innerHTML = '<option value="">Error loading brokers</option>'; }
+
+            // Default body
+            const insuredName = submission ? submission.insured_name : '';
+            const wonQuote = quotes.find(q => q.quote_outcome === 'WON') || quotes[0];
+            const carrier = wonQuote ? (wonQuote.carrier_name || 'the carrier') : 'the carrier';
+            document.getElementById('rtbBody').value = 'Please bind the following:\n\nInsured: ' + insuredName + '\nCarrier: ' + carrier + '\n\nPlease confirm binding and send binder documentation at your earliest convenience.\n\nThank you.';
+
+            // Load docs checkboxes
+            const docsList = document.getElementById('rtbDocsList');
+            if (documents.length === 0) await loadDocuments();
+            docsList.innerHTML = documents.map(d =>
+                '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;">' +
+                '<input type="checkbox" class="rtb-doc-cb" data-id="'+d.id+'" checked style="width:16px;height:16px;accent-color:var(--blue);">' +
+                esc(d.original_filename || d.name || 'file') + '</label>'
+            ).join('');
+        }
+
+        document.getElementById('rtbCancelBtn').addEventListener('click', () => {
+            document.getElementById('rtbOverlay').classList.remove('active');
+        });
+
+        document.getElementById('rtbSendBtn').addEventListener('click', async () => {
+            const brokerId = document.getElementById('rtbBrokerSelect').value;
+            const body = document.getElementById('rtbBody').value.trim();
+            if (!brokerId) { alert('Select a broker'); return; }
+            if (!body) { alert('Email body is required'); return; }
+
+            const docIds = [];
+            document.querySelectorAll('.rtb-doc-cb:checked').forEach(cb => docIds.push(parseInt(cb.dataset.id)));
+
+            document.getElementById('rtbOverlay').classList.remove('active');
+            const spinner = document.getElementById('spinnerOverlay');
+            document.getElementById('spinnerText').textContent = 'Sending bind request...';
+            spinner.classList.add('active');
+
+            try {
+                const resp = await fetch('/api/submission/' + SUBMISSION_ID + '/request_to_bind', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ broker_id: parseInt(brokerId), body: body, document_ids: docIds })
+                });
+                const data = await resp.json();
+                spinner.classList.remove('active');
+                if (data.success) { alert('Bind request sent successfully'); }
+                else { alert(data.error || 'Failed to send'); }
+            } catch(e) { spinner.classList.remove('active'); alert('Network error'); }
+        });
 
         // ── Submit to Markets ──
         let stmBrokerEntries = [];
