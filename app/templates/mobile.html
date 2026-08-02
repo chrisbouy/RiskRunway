@@ -41,19 +41,45 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 16px;
-            padding-top: max(12px, env(safe-area-inset-top));
-            background: #111;
-            border-bottom: 1px solid var(--border);
+            padding: 2px 16px;
+            padding-top: max(2px, env(safe-area-inset-top));
+            background: #334155;
+            border-bottom: 1px solid #475569;
         }
-        .top-bar-title { font-size: 16px; font-weight: 600; }
-        .top-bar-title .t-risk { color: #60a5fa; font-weight: 700; }
-        .top-bar-title .t-runway { font-weight: 300; color: var(--text); }
-        .top-bar-btn {
-            background: none; border: none; color: var(--text-muted);
-            font-size: 20px; padding: 6px; cursor: pointer; border-radius: 6px;
+        .top-bar-logo { display: flex; align-items: center; }
+        .top-bar-logo img { height: 72px; width: auto; display: block; }
+        .hamburger-btn {
+            background: none; border: none; color: #f1f5f9;
+            font-size: 24px; padding: 6px; cursor: pointer; border-radius: 6px;
+            line-height: 1;
         }
-        .top-bar-btn:active { background: var(--border); }
+        .hamburger-btn:active { background: #475569; }
+
+        /* ── SLIDE-OUT MENU ── */
+        .menu-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 900;
+        }
+        .menu-overlay.active { display: block; }
+        .menu-panel {
+            position: fixed; top: 0; right: -260px; width: 260px; height: 100%;
+            background: #111; border-left: 1px solid var(--border);
+            z-index: 901; transition: right 0.25s ease;
+            padding: 20px 16px;
+            padding-top: max(20px, env(safe-area-inset-top));
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .menu-panel.active { right: 0; }
+        .menu-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px; border-radius: 8px; background: none; border: none;
+            color: var(--text); font-size: 15px; font-weight: 500;
+            font-family: inherit; cursor: pointer; text-align: left; width: 100%;
+        }
+        .menu-item:active { background: var(--border); }
+        .menu-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+        .menu-divider { height: 1px; background: var(--border); margin: 8px 0; }
+        .menu-item.danger { color: #f07070; }
 
         /* ── COLUMN HEADERS ── */
         .board-header {
@@ -65,24 +91,16 @@
         .col-head {
             text-align: center;
             padding: 10px 4px 8px;
-            font-size: 10px;
+            font-size: 12px;
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
             border-right: 1px solid var(--border);
         }
         .col-head:last-child { border-right: none; }
-        .col-head .col-dot {
-            display: inline-block; width: 7px; height: 7px;
-            border-radius: 50%; margin-right: 4px; vertical-align: middle;
-        }
         .col-head-sub { color: var(--blue); }
-        .col-head-sub .col-dot { background: var(--blue); }
         .col-head-quot { color: var(--orange); }
-        .col-head-quot .col-dot { background: var(--orange); }
         .col-head-bind { color: var(--green); }
-        .col-head-bind .col-dot { background: var(--green); }
-        .col-count { font-size: 9px; font-weight: 500; color: var(--text-xmuted); margin-top: 2px; }
 
         /* ── BOARD BODY (scrollable rows) ── */
         .board-body {
@@ -160,28 +178,10 @@
         .m-card.is-bound { border-color: var(--green); border-width: 2px; }
         .m-card.is-renewal { border-color: #60a5fa; border-width: 2px; }
         .m-card-name {
-            font-size: 11px; font-weight: 600; color: var(--text);
+            font-size: 13px; font-weight: 600; color: var(--text);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             text-align: center; line-height: 1.3;
         }
-
-        /* ── BOTTOM BAR ── */
-        .bottom-bar {
-            flex-shrink: 0;
-            display: flex; align-items: center; justify-content: space-around;
-            padding: 10px 16px;
-            padding-bottom: max(10px, env(safe-area-inset-bottom));
-            background: #111; border-top: 1px solid var(--border);
-        }
-        .bottom-btn {
-            display: flex; flex-direction: column; align-items: center; gap: 3px;
-            background: none; border: none; color: var(--text-muted);
-            font-size: 10px; font-weight: 500; cursor: pointer;
-            padding: 4px 12px; border-radius: 8px;
-        }
-        .bottom-btn:active { background: var(--border); }
-        .bottom-btn svg { width: 22px; height: 22px; }
-        .bottom-btn.active { color: var(--blue); }
 
         /* ── LONG-PRESS PREVIEW ── */
         .preview-overlay {
@@ -276,37 +276,115 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner-text { font-size: 14px; color: var(--text-muted); text-align: center; }
+
+        /* Broker item */
+        .broker-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .broker-item-info { flex: 1; min-width: 0; }
+        .broker-item-name { font-size: 14px; font-weight: 600; color: var(--text); }
+        .broker-item-email { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .broker-item-del {
+            background: none; border: none; color: #f07070; font-size: 18px;
+            cursor: pointer; padding: 4px 8px; flex-shrink: 0;
+        }
+        /* Doc checkbox row */
+        .doc-check-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 0; font-size: 13px; color: var(--text);
+        }
+        .doc-check-row input { width: 18px; height: 18px; accent-color: var(--blue); }
+
+        /* Email message item */
+        .msg-item {
+            padding: 12px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .msg-subject { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; line-height: 1.3; }
+        .msg-from { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+        .msg-date { font-size: 11px; color: var(--text-xmuted); }
+        .msg-attachments { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+        .msg-att-badge {
+            font-size: 11px; padding: 2px 8px; border-radius: 4px;
+            background: rgba(74,158,255,0.15); color: var(--blue);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+        }
+        .msg-actions { margin-top: 8px; display: flex; gap: 8px; }
+        .msg-btn {
+            font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 6px;
+            border: none; cursor: pointer; font-family: inherit;
+        }
+        .msg-btn-process { background: #7c3aed; color: #fff; }
+        .msg-btn-process:active { opacity: 0.8; }
+        .msg-btn-dismiss { background: var(--border); color: var(--text-muted); }
+        .msg-btn-dismiss:active { background: #333; }
     </style>
 </head>
 <body>
     <div class="app-shell">
         <header class="top-bar">
-            <span class="top-bar-title"><span class="t-risk">Risk</span><span class="t-runway">Runway</span></span>
-            <button class="top-bar-btn" id="refreshBtn" aria-label="Refresh">&#8635;</button>
+            <div class="top-bar-logo">
+                <img src="{{ url_for('static', filename='images/title_bluebg.png') }}" alt="Risk Runway">
+            </div>
+            <button class="hamburger-btn" id="menuBtn" aria-label="Menu">&#9776;</button>
         </header>
 
         <div class="board-header">
-            <div class="col-head col-head-sub"><span class="col-dot"></span>Submission<div class="col-count" id="count-submission">0</div></div>
-            <div class="col-head col-head-quot"><span class="col-dot"></span>Quoting<div class="col-count" id="count-quoting">0</div></div>
-            <div class="col-head col-head-bind"><span class="col-dot"></span>Bound<div class="col-count" id="count-bind">0</div></div>
+            <div class="col-head col-head-sub">Submission</div>
+            <div class="col-head col-head-quot">Quoting</div>
+            <div class="col-head col-head-bind">Bound</div>
         </div>
 
         <div class="board-body" id="boardBody"></div>
+    </div>
 
-        <nav class="bottom-bar">
-            <button class="bottom-btn active" id="navBoard">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                Board
-            </button>
-            <button class="bottom-btn" id="navNew">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                New
-            </button>
-            <button class="bottom-btn" id="navLogout">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Logout
-            </button>
-        </nav>
+    <!-- Slide-out Menu -->
+    <div class="menu-overlay" id="menuOverlay"></div>
+    <div class="menu-panel" id="menuPanel">
+        <button class="menu-item" id="menuClose" style="justify-content:flex-end;padding:8px;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <button class="menu-item" id="menuNew">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            New Submission
+        </button>
+        <div class="menu-divider"></div>
+        <label class="menu-item" style="cursor:pointer;">
+            <input type="checkbox" id="menuFilterMyCards" style="width:18px;height:18px;accent-color:var(--blue);">
+            My Cards Only
+        </label>
+        <button class="menu-item" id="menuConfigureBrokers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            Configure Brokers
+        </button>
+        <button class="menu-item" id="menuQuoteSettings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            Quote Settings
+        </button>
+        <button class="menu-item" id="menuCheckEmail">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Check Email
+        </button>
+        <button class="menu-item" id="menuUserGuide">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            User Guide
+        </button>
+        <button class="menu-item" id="menuReportBug" style="color:#f07070;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2l1.88 1.88M14.12 3.88L16 2M9 7.13v-1a3 3 0 016 0v1M12 20c-3.87 0-7-3.13-7-7h14c0 3.87-3.13 7-7 7zM5 13H2M22 13h-3M5 17l-2 2M19 17l2 2"/></svg>
+            Report Bug
+        </button>
+        <div class="menu-divider"></div>
+        <div style="padding:8px 12px;font-size:11px;color:var(--text-xmuted);">
+            Logged in as
+            <div id="menuUserName" style="font-size:13px;font-weight:600;color:var(--text);margin-top:2px;"></div>
+            <div id="menuUserRole" style="display:inline-block;margin-top:4px;font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;background:rgba(74,114,196,0.3);color:#92a8d8;padding:1px 5px;border-radius:3px;"></div>
+        </div>
+        <button class="menu-item danger" id="menuLogout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Logout
+        </button>
     </div>
 
     <div class="spinner-overlay" id="spinnerOverlay">
@@ -338,6 +416,56 @@
         </div>
     </div>
 
+    <!-- Configure Brokers Modal -->
+    <div class="modal-overlay" id="brokersModal">
+        <div class="modal-sheet">
+            <h3>Configure Brokers</h3>
+            <div id="brokersList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:40vh;overflow-y:auto;"></div>
+            <div style="border-top:1px solid var(--border);padding-top:12px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-muted);">Add Broker</div>
+                <input class="modal-input" id="addBrokerName" type="text" placeholder="Broker name" style="margin-bottom:8px;">
+                <input class="modal-input" id="addBrokerEmail" type="email" placeholder="Email address" style="margin-bottom:8px;">
+                <button class="modal-btn-primary" id="addBrokerBtn" style="font-size:14px;padding:10px;">Add</button>
+            </div>
+            <button class="modal-btn-secondary" id="closeBrokersModalBtn">Close</button>
+        </div>
+    </div>
+
+    <!-- Quote Settings Modal -->
+    <div class="modal-overlay" id="quoteSettingsModal">
+        <div class="modal-sheet">
+            <h3>Quote Settings</h3>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:13px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Quote Compare Threshold (%)</label>
+                <input class="modal-input" id="mQuoteCompareThreshold" type="number" min="0" max="100" style="margin-bottom:0;">
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:13px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Renewal Highlight Threshold (%)</label>
+                <input class="modal-input" id="mRenewalThreshold" type="number" min="0" max="100" style="margin-bottom:0;">
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:13px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Default Required Docs</label>
+                <div id="mDocsChecklist" style="max-height:30vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+            <button class="modal-btn-primary" id="saveQuoteSettingsBtn">Save</button>
+            <button class="modal-btn-secondary" id="closeQuoteSettingsBtn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Check Email handled directly via spinner, no modal needed -->
+
+    <!-- New Messages Modal (shown after email check finds messages) -->
+    <div class="modal-overlay" id="newMessagesModal">
+        <div class="modal-sheet" style="max-height:85vh;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 style="margin:0;">New Messages</h3>
+                <button id="closeNewMessagesBtn" style="background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;">&times;</button>
+            </div>
+            <div id="newMessagesList" style="display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:65vh;"></div>
+            <button class="modal-btn-secondary" id="dismissAllMessagesBtn">Close</button>
+        </div>
+    </div>
+
     <script>
     (function() {
         'use strict';
@@ -365,7 +493,8 @@
         // ── Data ──
         async function loadSubmissions() {
             try {
-                const resp = await fetch('/api/submissions');
+                const filterParam = filterMyCards ? '?assigned_to_me=true' : '';
+                const resp = await fetch('/api/submissions' + filterParam);
                 const data = await resp.json();
                 if (data.success) { submissions = data.submissions; renderBoard(); }
             } catch (e) { console.error(e); }
@@ -390,10 +519,6 @@
 
             const grouped = { submission: [], quoting: [], bind: [] };
             submissions.forEach(sub => grouped[getStageKey(sub)].push(sub));
-
-            document.getElementById('count-submission').textContent = grouped.submission.length;
-            document.getElementById('count-quoting').textContent = grouped.quoting.length;
-            document.getElementById('count-bind').textContent = grouped.bind.length;
 
             // Max rows needed = longest column
             const maxRows = Math.max(grouped.submission.length, grouped.quoting.length, grouped.bind.length);
@@ -506,7 +631,8 @@
 
         // ── New Submission ──
         let selectedFile = null;
-        document.getElementById('navNew').addEventListener('click', () => {
+        document.getElementById('menuNew').addEventListener('click', () => {
+            closeMenu();
             document.getElementById('newModal').classList.add('active');
             setTimeout(() => document.getElementById('newInsuredName').focus(), 100);
         });
@@ -541,9 +667,236 @@
             finally { spinner.classList.remove('active'); btn.textContent = 'Create'; btn.disabled = false; }
         });
 
-        // ── Logout & Refresh ──
-        document.getElementById('navLogout').addEventListener('click', async () => { if (confirm('Log out?')) { await fetch('/logout',{method:'POST'}); window.location.href='/login'; } });
-        document.getElementById('refreshBtn').addEventListener('click', loadSubmissions);
+        // ── Menu ──
+        let filterMyCards = false;
+        function openMenu() { document.getElementById('menuOverlay').classList.add('active'); document.getElementById('menuPanel').classList.add('active'); }
+        function closeMenu() { document.getElementById('menuOverlay').classList.remove('active'); document.getElementById('menuPanel').classList.remove('active'); }
+        document.getElementById('menuBtn').addEventListener('click', () => {
+            if (document.getElementById('menuPanel').classList.contains('active')) closeMenu();
+            else openMenu();
+        });
+        document.getElementById('menuOverlay').addEventListener('click', closeMenu);
+        document.getElementById('menuClose').addEventListener('click', closeMenu);
+        document.getElementById('menuLogout').addEventListener('click', async () => { if (confirm('Log out?')) { await fetch('/logout',{method:'POST'}); window.location.href='/login'; } });
+        document.getElementById('menuFilterMyCards').addEventListener('change', (e) => { filterMyCards = e.target.checked; loadSubmissions(); });
+        document.getElementById('menuConfigureBrokers').addEventListener('click', () => { closeMenu(); openBrokersModal(); });
+        document.getElementById('menuQuoteSettings').addEventListener('click', () => { closeMenu(); openQuoteSettingsModal(); });
+        document.getElementById('menuCheckEmail').addEventListener('click', () => { closeMenu(); checkEmailDirect(); });
+        document.getElementById('menuUserGuide').addEventListener('click', () => { closeMenu(); alert('User Guide coming soon to mobile.'); });
+        document.getElementById('menuReportBug').addEventListener('click', () => { closeMenu(); alert('Bug reporting coming soon to mobile. Use the desktop version for now.'); });
+
+        // Load user info for menu
+        async function loadUserInfo() {
+            try {
+                const resp = await fetch('/api/users');
+                const data = await resp.json();
+                if (data.success && data.current_user) {
+                    document.getElementById('menuUserName').textContent = data.current_user.full_name || data.current_user.username;
+                    document.getElementById('menuUserRole').textContent = data.current_user.role || '';
+                }
+            } catch(e) {}
+        }
+        loadUserInfo();
+
+        // ── Configure Brokers Modal ──
+        async function openBrokersModal() {
+            document.getElementById('brokersModal').classList.add('active');
+            await loadBrokersForMobile();
+        }
+        document.getElementById('closeBrokersModalBtn').addEventListener('click', () => document.getElementById('brokersModal').classList.remove('active'));
+        document.getElementById('brokersModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('active'); });
+
+        async function loadBrokersForMobile() {
+            const list = document.getElementById('brokersList');
+            list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Loading...</div>';
+            try {
+                const resp = await fetch('/api/brokers');
+                const data = await resp.json();
+                if (data.success) {
+                    if (data.brokers.length === 0) { list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No brokers configured yet.</div>'; return; }
+                    list.innerHTML = data.brokers.map(b => `
+                        <div class="broker-item">
+                            <div class="broker-item-info">
+                                <div class="broker-item-name">${escapeHtml(b.name || 'Unnamed')}</div>
+                                <div class="broker-item-email">${b.is_portal ? escapeHtml(b.portal_name) : escapeHtml(b.email)}</div>
+                            </div>
+                            <button class="broker-item-del" data-id="${b.id}">&times;</button>
+                        </div>
+                    `).join('');
+                    list.querySelectorAll('.broker-item-del').forEach(btn => {
+                        btn.addEventListener('click', async () => {
+                            if (confirm('Delete this broker?')) {
+                                await fetch('/api/brokers/' + btn.dataset.id, { method: 'DELETE' });
+                                await loadBrokersForMobile();
+                            }
+                        });
+                    });
+                }
+            } catch(e) { list.innerHTML = '<div style="color:#f07070;font-size:13px;">Error loading brokers</div>'; }
+        }
+
+        document.getElementById('addBrokerBtn').addEventListener('click', async () => {
+            const name = document.getElementById('addBrokerName').value.trim();
+            const email = document.getElementById('addBrokerEmail').value.trim();
+            if (!email) { alert('Email is required'); return; }
+            try {
+                const resp = await fetch('/api/brokers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name || email, email: email, is_portal: false })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    document.getElementById('addBrokerName').value = '';
+                    document.getElementById('addBrokerEmail').value = '';
+                    await loadBrokersForMobile();
+                } else { alert(data.error || 'Failed to add broker'); }
+            } catch(e) { alert('Network error'); }
+        });
+
+        // ── Quote Settings Modal ──
+        const COMMON_DOCS = [
+            'Signed ACORD Application','Copy of Quote','Premium Payment','Loss Runs (4-5 years)',
+            'Signed Fraud Statement','MVR Reports','Driver/Fleet Safety Manual',
+            'UM/UIM Selection/Rejection Form','Business Auto Questionnaire',
+            'Workers Comp Experience Mod Worksheet','Schedule of Values (SOV)',
+            'Financial Statements','Certificate of Good Standing',
+            'Prior Carrier Cancellation Notice','Supplemental Application'
+        ];
+        let mQuoteSettings = {};
+
+        async function openQuoteSettingsModal() {
+            document.getElementById('quoteSettingsModal').classList.add('active');
+            try {
+                const resp = await fetch('/api/tenant-settings');
+                const data = await resp.json();
+                mQuoteSettings = data.success ? (data.settings || {}) : {};
+            } catch(e) { mQuoteSettings = {}; }
+            document.getElementById('mQuoteCompareThreshold').value = mQuoteSettings.quote_compare_threshold ?? 20;
+            document.getElementById('mRenewalThreshold').value = mQuoteSettings.renewal_highlight_threshold ?? 20;
+            renderDocsChecklist();
+        }
+
+        function renderDocsChecklist() {
+            const container = document.getElementById('mDocsChecklist');
+            const selected = new Set(mQuoteSettings.default_required_docs || ['Signed ACORD Application', 'Copy of Quote']);
+            const allDocs = [...new Set([...COMMON_DOCS, ...(mQuoteSettings.custom_required_docs || [])])];
+            container.innerHTML = allDocs.map(doc => `
+                <label class="doc-check-row">
+                    <input type="checkbox" value="${escapeHtml(doc)}" ${selected.has(doc) ? 'checked' : ''}>
+                    ${escapeHtml(doc)}
+                </label>
+            `).join('');
+        }
+
+        document.getElementById('closeQuoteSettingsBtn').addEventListener('click', () => document.getElementById('quoteSettingsModal').classList.remove('active'));
+        document.getElementById('quoteSettingsModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('active'); });
+
+        document.getElementById('saveQuoteSettingsBtn').addEventListener('click', async () => {
+            const checkedDocs = [];
+            document.querySelectorAll('#mDocsChecklist input:checked').forEach(cb => checkedDocs.push(cb.value));
+            const payload = {
+                default_required_docs: checkedDocs,
+                custom_required_docs: mQuoteSettings.custom_required_docs || [],
+                quote_compare_threshold: parseInt(document.getElementById('mQuoteCompareThreshold').value, 10),
+                renewal_highlight_threshold: parseInt(document.getElementById('mRenewalThreshold').value, 10)
+            };
+            try {
+                const resp = await fetch('/api/tenant-settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.success) { document.getElementById('quoteSettingsModal').classList.remove('active'); }
+                else alert(data.error || 'Failed to save');
+            } catch(e) { alert('Network error'); }
+        });
+
+        // ── Check Email (direct, no modal) ──
+        let cachedEmails = [];
+
+        async function checkEmailDirect() {
+            const spinner = document.getElementById('spinnerOverlay');
+            const spinnerText = document.getElementById('spinnerText');
+            spinnerText.textContent = 'Checking email...';
+            spinner.classList.add('active');
+            try {
+                const resp = await fetch('/api/email/scrape', { method: 'POST' });
+                const data = await resp.json();
+                spinner.classList.remove('active');
+
+                if (!data.success && data.needs_connect) {
+                    alert('No email account connected. Connect via desktop.');
+                } else if (!data.success && data.needs_reauth) {
+                    const provider = data.provider || 'gmail';
+                    const returnUrl = encodeURIComponent(window.location.href);
+                    const oauthResp = await fetch('/api/oauth/connect/' + provider + '?return_url=' + returnUrl);
+                    const oauthData = await oauthResp.json();
+                    if (oauthData.success && oauthData.authorization_url) {
+                        window.location.href = oauthData.authorization_url;
+                    } else {
+                        alert('Re-authentication failed. Try from desktop.');
+                    }
+                } else if (!data.success) {
+                    alert(data.error || 'Email check failed');
+                } else {
+                    cachedEmails = data.emails || [];
+                    if (cachedEmails.length > 0) {
+                        showNewMessagesModal();
+                        loadSubmissions();
+                    } else {
+                        alert('No new messages');
+                    }
+                }
+            } catch(e) {
+                spinner.classList.remove('active');
+                alert('Network error');
+            }
+        }
+
+        function showNewMessagesModal() {
+            const list = document.getElementById('newMessagesList');
+            list.innerHTML = cachedEmails.map((email, idx) => {
+                const attHtml = (email.attachments || []).map(att =>
+                    '<span class="msg-att-badge">' + escapeHtml(att.filename) + '</span>'
+                ).join('');
+                const dateStr = email.received_date ? new Date(email.received_date).toLocaleDateString() : '';
+                return '<div class="msg-item">' +
+                    '<div class="msg-subject">' + escapeHtml(email.subject) + '</div>' +
+                    '<div class="msg-from">From: ' + escapeHtml(email.from_name || email.from_email) + '</div>' +
+                    '<div class="msg-date">' + dateStr + '</div>' +
+                    (attHtml ? '<div class="msg-attachments">' + attHtml + '</div>' : '') +
+                    '<div class="msg-actions">' +
+                        '<button class="msg-btn msg-btn-dismiss" data-idx="' + idx + '">Dismiss</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            // Dismiss buttons
+            list.querySelectorAll('.msg-btn-dismiss').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    const email = cachedEmails[idx];
+                    if (email && email.message_id) {
+                        await fetch('/api/email/dismiss', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message_id: email.message_id, account_id: email.account_id })
+                        });
+                    }
+                    btn.closest('.msg-item').remove();
+                    cachedEmails.splice(idx, 1);
+                    if (cachedEmails.length === 0) document.getElementById('newMessagesModal').classList.remove('active');
+                });
+            });
+
+            document.getElementById('newMessagesModal').classList.add('active');
+        }
+
+        document.getElementById('closeNewMessagesBtn').addEventListener('click', () => document.getElementById('newMessagesModal').classList.remove('active'));
+        document.getElementById('dismissAllMessagesBtn').addEventListener('click', () => document.getElementById('newMessagesModal').classList.remove('active'));
+        document.getElementById('newMessagesModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('active'); });
 
         // ── Init ──
         loadSubmissions();
