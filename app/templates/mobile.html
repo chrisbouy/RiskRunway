@@ -369,10 +369,10 @@
             Check Email
         </button>
         <div class="menu-divider"></div>
-        <label class="menu-item" style="cursor:pointer;">
-            <input type="checkbox" id="menuFilterMyCards" style="width:18px;height:18px;accent-color:var(--blue);">
-            My Cards Only
-        </label>
+        <button class="menu-item" id="menuFilterBoard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filter Board
+        </button>
         <button class="menu-item" id="menuConfigureBrokers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             Configure Brokers
@@ -466,6 +466,30 @@
         </div>
     </div>
 
+    <!-- Filter Board Modal -->
+    <div class="modal-overlay" id="filterBoardModal">
+        <div class="modal-sheet">
+            <h3>Filter Board</h3>
+            <input class="modal-input" id="mFilterSearch" type="text" placeholder="Search insured name..." autocomplete="off">
+            <select class="modal-input" id="mFilterStage" style="appearance:auto;">
+                <option value="">All Stages</option>
+                <option value="submission">Submission</option>
+                <option value="quoting">Quoting</option>
+                <option value="bind">Bound</option>
+            </select>
+            <select class="modal-input" id="mFilterCoverage" style="appearance:auto;">
+                <option value="">All Coverages</option>
+            </select>
+            <label class="doc-check-row" style="padding:10px 0;">
+                <input type="checkbox" id="mFilterMyCards">
+                <span style="font-size:15px;font-weight:500;">My Cards Only</span>
+            </label>
+            <button class="modal-btn-primary" id="applyFiltersBtn">Apply Filters</button>
+            <button class="modal-btn-secondary" id="clearFiltersBtn" style="color:var(--blue);">Clear All Filters</button>
+            <button class="modal-btn-secondary" id="closeFilterBoardBtn">Cancel</button>
+        </div>
+    </div>
+
     <!-- Check Email handled directly via spinner, no modal needed -->
 
     <!-- New Messages Modal (shown after email check finds messages) -->
@@ -490,6 +514,73 @@
         const LONG_PRESS_MS = 500;
         const NUM_DOTS = 20;
 
+        // ── Filter state ──
+        let filterMyCards = false;
+        let filterSearch = '';
+        let filterStage = '';
+        let filterCoverage = '';
+
+        const COVERAGE_ALIASES = {
+            'gl': 'General Liability',
+            'general liability': 'General Liability',
+            'commercial general liability': 'General Liability',
+            'cgl': 'General Liability',
+            'wc': 'Workers Compensation',
+            'workers comp': 'Workers Compensation',
+            'workers compensation': 'Workers Compensation',
+            "worker's compensation": 'Workers Compensation',
+            "worker's comp": 'Workers Compensation',
+            'auto': 'Commercial Auto',
+            'commercial auto': 'Commercial Auto',
+            'business auto': 'Commercial Auto',
+            'ca': 'Commercial Auto',
+            'bop': 'Business Owners Policy',
+            'business owners policy': 'Business Owners Policy',
+            "business owners'": 'Business Owners Policy',
+            'property': 'Commercial Property',
+            'commercial property': 'Commercial Property',
+            'cp': 'Commercial Property',
+            'umbrella': 'Umbrella/Excess',
+            'excess': 'Umbrella/Excess',
+            'excess liability': 'Umbrella/Excess',
+            'umbrella/excess': 'Umbrella/Excess',
+            'professional liability': 'Professional Liability',
+            'e&o': 'Professional Liability',
+            'errors and omissions': 'Professional Liability',
+            'errors & omissions': 'Professional Liability',
+            'd&o': 'Directors & Officers',
+            'directors and officers': 'Directors & Officers',
+            'directors & officers': 'Directors & Officers',
+            'epli': 'Employment Practices',
+            'employment practices liability': 'Employment Practices',
+            'employment practices': 'Employment Practices',
+            'cyber': 'Cyber Liability',
+            'cyber liability': 'Cyber Liability',
+            'inland marine': 'Inland Marine',
+            'im': 'Inland Marine',
+            'crime': 'Crime/Fidelity',
+            'fidelity': 'Crime/Fidelity',
+            'crime/fidelity': 'Crime/Fidelity',
+            'liquor liability': 'Liquor Liability',
+            'products liability': 'Products Liability',
+            'pollution liability': 'Pollution Liability',
+            "builder's risk": "Builder's Risk",
+            'builders risk': "Builder's Risk",
+            'garage liability': 'Garage Liability',
+            'ocean marine': 'Ocean Marine',
+            'aviation': 'Aviation',
+            'surety bond': 'Surety Bond',
+            'surety': 'Surety Bond',
+            'flood': 'Flood',
+            'earthquake': 'Earthquake',
+        };
+
+        function normalizeCoverageType(raw) {
+            if (!raw) return '';
+            const lower = raw.toLowerCase().trim();
+            return COVERAGE_ALIASES[lower] || raw.trim();
+        }
+
         function normalizeStatus(status) {
             const s = (status || '').trim().toUpperCase().replace(/\s+/g, '_');
             if (s === 'RECEIVED') return 'RECEIVED';
@@ -510,8 +601,52 @@
                 const filterParam = filterMyCards ? '?assigned_to_me=true' : '';
                 const resp = await fetch('/api/submissions' + filterParam);
                 const data = await resp.json();
-                if (data.success) { submissions = data.submissions; renderBoard(); }
+                if (data.success) {
+                    submissions = applyFilters(data.submissions);
+                    updateCoverageOptions(data.submissions);
+                    renderBoard();
+                }
             } catch (e) { console.error(e); }
+        }
+
+        function applyFilters(subs) {
+            return subs.filter(sub => {
+                if (filterSearch && !sub.insured_name.toLowerCase().includes(filterSearch.toLowerCase())) {
+                    return false;
+                }
+                if (filterStage && getStageKey(sub) !== filterStage) {
+                    return false;
+                }
+                if (filterCoverage) {
+                    const coverageTypes = (sub.submission_intake && sub.submission_intake.coverage_types) || [];
+                    if (!coverageTypes.some(ct => normalizeCoverageType(ct) === filterCoverage)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        function updateCoverageOptions(allSubs) {
+            const select = document.getElementById('mFilterCoverage');
+            const current = select.value;
+            const allCoverages = new Set();
+            allSubs.forEach(sub => {
+                const types = (sub.submission_intake && sub.submission_intake.coverage_types) || [];
+                types.forEach(t => {
+                    const normalized = normalizeCoverageType(t);
+                    if (normalized) allCoverages.add(normalized);
+                });
+            });
+            const sorted = [...allCoverages].sort();
+            select.innerHTML = '<option value="">All Coverages</option>';
+            sorted.forEach(cov => {
+                const opt = document.createElement('option');
+                opt.value = cov;
+                opt.textContent = cov;
+                if (cov === current) opt.selected = true;
+                select.appendChild(opt);
+            });
         }
 
         // ── Create a full-width runway lights element ──
@@ -558,9 +693,6 @@
                     cell.className = 'card-cell';
                     if (col === stage) {
                         cell.appendChild(createCard(sub, stage));
-                        // Green frame for bound cards in bind column
-                        const isBound = sub.is_bound || sub.status === 'Sent to Finance';
-                        if (col === 'bind' && isBound) cell.classList.add('bound-cell');
                     }
                     row.appendChild(cell);
                 });
@@ -749,7 +881,6 @@
         });
 
         // ── Menu ──
-        let filterMyCards = false;
         function openMenu() { document.getElementById('menuOverlay').classList.add('active'); document.getElementById('menuPanel').classList.add('active'); }
         function closeMenu() { document.getElementById('menuOverlay').classList.remove('active'); document.getElementById('menuPanel').classList.remove('active'); }
         document.getElementById('menuBtn').addEventListener('click', () => {
@@ -759,12 +890,44 @@
         document.getElementById('menuOverlay').addEventListener('click', closeMenu);
         document.getElementById('menuClose').addEventListener('click', closeMenu);
         document.getElementById('menuLogout').addEventListener('click', async () => { if (confirm('Log out?')) { await fetch('/logout',{method:'POST'}); window.location.href='/login'; } });
-        document.getElementById('menuFilterMyCards').addEventListener('change', (e) => { filterMyCards = e.target.checked; loadSubmissions(); });
+        document.getElementById('menuFilterBoard').addEventListener('click', () => { closeMenu(); openFilterBoardModal(); });
         document.getElementById('menuConfigureBrokers').addEventListener('click', () => { closeMenu(); openBrokersModal(); });
         document.getElementById('menuQuoteSettings').addEventListener('click', () => { closeMenu(); openQuoteSettingsModal(); });
         document.getElementById('menuCheckEmail').addEventListener('click', () => { closeMenu(); checkEmailDirect(); });
         document.getElementById('menuUserGuide').addEventListener('click', () => { closeMenu(); alert('User Guide coming soon to mobile.'); });
         document.getElementById('menuReportBug').addEventListener('click', () => { closeMenu(); alert('Bug reporting coming soon to mobile. Use the desktop version for now.'); });
+
+        // ── Filter Board Modal ──
+        function openFilterBoardModal() {
+            document.getElementById('mFilterSearch').value = filterSearch;
+            document.getElementById('mFilterStage').value = filterStage;
+            document.getElementById('mFilterCoverage').value = filterCoverage;
+            document.getElementById('mFilterMyCards').checked = filterMyCards;
+            document.getElementById('filterBoardModal').classList.add('active');
+            setTimeout(() => document.getElementById('mFilterSearch').focus(), 100);
+        }
+        document.getElementById('applyFiltersBtn').addEventListener('click', () => {
+            filterSearch = document.getElementById('mFilterSearch').value.trim();
+            filterStage = document.getElementById('mFilterStage').value;
+            filterCoverage = document.getElementById('mFilterCoverage').value;
+            filterMyCards = document.getElementById('mFilterMyCards').checked;
+            document.getElementById('filterBoardModal').classList.remove('active');
+            loadSubmissions();
+        });
+        document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+            filterSearch = '';
+            filterStage = '';
+            filterCoverage = '';
+            filterMyCards = false;
+            document.getElementById('mFilterSearch').value = '';
+            document.getElementById('mFilterStage').value = '';
+            document.getElementById('mFilterCoverage').value = '';
+            document.getElementById('mFilterMyCards').checked = false;
+            document.getElementById('filterBoardModal').classList.remove('active');
+            loadSubmissions();
+        });
+        document.getElementById('closeFilterBoardBtn').addEventListener('click', () => document.getElementById('filterBoardModal').classList.remove('active'));
+        document.getElementById('filterBoardModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('active'); });
 
         // Load user info for menu
         async function loadUserInfo() {

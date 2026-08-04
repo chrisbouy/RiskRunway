@@ -83,6 +83,7 @@ class User(Base):
     sms_alerts_enabled = Column(Boolean, default=False, nullable=False)  # Whether user wants SMS notifications
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
 
     # Relationships
     assigned_submissions = relationship("Submission", back_populates="assigned_user")
@@ -122,7 +123,8 @@ class User(Base):
             'ams_agent_installed': self.ams_agent_installed,
             'phone_number': self.phone_number,
             'sms_alerts_enabled': self.sms_alerts_enabled,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_login_at': self.last_login_at.isoformat() if self.last_login_at else None
         }
 
 
@@ -578,7 +580,9 @@ class EmailAttachment(Base):
     filename = Column(String(500), nullable=False)
     content_type = Column(String(100), nullable=True)
     size_bytes = Column(Integer, nullable=True)
-    file_path = Column(String(1000), nullable=True)  # Path to saved file on disk
+    file_path = Column(String(1000), nullable=True)  # Path to saved file on disk (legacy/local)
+    storage_provider = Column(String(20), nullable=True)  # 's3' or 'local'
+    storage_key = Column(String(1000), nullable=True)  # S3 key or local relative path
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     message_id = Column(String(500), nullable=True)  # Original email Message-ID for IMAP retrieval
     attachment_id = Column(String(500), nullable=True)  # OAuth: attachment ID; IMAP: part index

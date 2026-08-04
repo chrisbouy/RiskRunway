@@ -283,6 +283,7 @@ class EmailClient:
     def ingest_attachment(self, email_attachment_id: int, submission_id: int) -> Dict:
         """
         Process an email attachment through the existing quote parsing pipeline.
+        Handles attachments stored on S3 or locally.
         """
         from app.parsers.application_parser import process_document
         
@@ -296,21 +297,55 @@ class EmailClient:
             if not attachment:
                 return {'success': False, 'error': 'Attachment not found'}
             
-            if not attachment.file_path or not os.path.exists(attachment.file_path):
-                return {'success': False, 'error': 'Attachment file not found'}
+            file_path = None
+            temp_file = False
+
+            # Try S3 first
+            if attachment.storage_provider == 's3' and attachment.storage_key:
+                try:
+                    import boto3
+                    from flask import current_app
+                    bucket = current_app.config.get('S3_BUCKET')
+                    client = boto3.client(
+                        's3',
+                        region_name=current_app.config.get('S3_REGION') or None,
+                        endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                    )
+                    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+                    temp_dir = os.path.join(upload_folder, 'temp_email_attachments')
+                    os.makedirs(temp_dir, exist_ok=True)
+                    file_path = os.path.join(temp_dir, f"{attachment.id}_{attachment.filename}")
+                    client.download_file(bucket, attachment.storage_key, file_path)
+                    temp_file = True
+                except Exception as e:
+                    logger.error(f"Failed to download attachment from S3: {e}")
+                    return {'success': False, 'error': f'S3 download failed: {e}'}
+
+            # Fall back to local file_path
+            if not file_path:
+                if not attachment.file_path or not os.path.exists(attachment.file_path):
+                    return {'success': False, 'error': 'Attachment file not found'}
+                file_path = attachment.file_path
             
             # Process through existing parser
-            result = process_document(
-                file_path=attachment.file_path,
-                submission_id=submission_id,
-                document_type='quote',
-                carrier_name=None
-            )
-            
-            return {
-                'success': True,
-                'result': result
-            }
+            try:
+                result = process_document(
+                    file_path=file_path,
+                    submission_id=submission_id,
+                    document_type='quote',
+                    carrier_name=None
+                )
+                return {
+                    'success': True,
+                    'result': result
+                }
+            finally:
+                # Clean up temp file if we downloaded from S3
+                if temp_file and file_path and os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        pass
             
         except Exception as e:
             logger.error(f"Error ingesting attachment: {e}")

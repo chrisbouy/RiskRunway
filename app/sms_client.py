@@ -330,9 +330,34 @@ class SmsClient:
     def _download_attachment(self, attachment, email_msg, db_session) -> Optional[str]:
         """
         Download an attachment from the email provider (OAuth).
-        Returns the local file path, or None on failure.
+        Uploads to configured storage (S3 in prod) and returns a local file path for processing.
         """
         import os
+
+        # If already stored in S3, download to temp local path
+        if attachment.storage_provider == 's3' and attachment.storage_key:
+            try:
+                import boto3
+                from flask import current_app
+                bucket = current_app.config.get('S3_BUCKET')
+                client = boto3.client(
+                    's3',
+                    region_name=current_app.config.get('S3_REGION') or None,
+                    endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                )
+                upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+                temp_dir = os.path.join(upload_folder, 'temp_email_attachments')
+                os.makedirs(temp_dir, exist_ok=True)
+                local_path = os.path.join(temp_dir, f"{attachment.id}_{attachment.filename}")
+                client.download_file(bucket, attachment.storage_key, local_path)
+                return local_path
+            except Exception as e:
+                logger.error(f"Failed to download attachment from S3: {e}")
+                return None
+
+        # If already downloaded locally and file exists, return it
+        if attachment.file_path and os.path.exists(attachment.file_path):
+            return attachment.file_path
 
         # Find the connected account that fetched this email
         connected_account_id = email_msg.connected_account_id
@@ -389,15 +414,52 @@ class SmsClient:
             if not content:
                 return None
 
-            # Save to uploads folder
+            # Save to temp local file
             upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
-            import uuid
-            safe_filename = f"{uuid.uuid4()}_{attachment.filename}"
-            file_path = os.path.join(upload_folder, safe_filename)
-            os.makedirs(upload_folder, exist_ok=True)
+            temp_dir = os.path.join(upload_folder, 'temp_email_attachments')
+            os.makedirs(temp_dir, exist_ok=True)
+            from werkzeug.utils import secure_filename as sf
+            safe_filename = sf(attachment.filename) or 'attachment.bin'
+            file_path = os.path.join(temp_dir, f"{attachment.id}_{safe_filename}")
 
             with open(file_path, 'wb') as f:
                 f.write(content)
+
+            # Upload to configured storage (S3 in prod, local in dev)
+            provider = (current_app.config.get('STORAGE_PROVIDER') or 'local').lower()
+            if provider == 's3':
+                bucket = current_app.config.get('S3_BUCKET')
+                if bucket:
+                    try:
+                        import boto3
+                        from app.database import get_current_tenant
+                        tenant = get_current_tenant() or 'default'
+                        storage_key = f"{tenant}/email_attachments/{email_msg.id}/{safe_filename}"
+                        extra_args = {}
+                        if attachment.content_type:
+                            extra_args['ContentType'] = attachment.content_type
+                        client = boto3.client(
+                            's3',
+                            region_name=current_app.config.get('S3_REGION') or None,
+                            endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+                        )
+                        client.upload_file(file_path, bucket, storage_key, ExtraArgs=extra_args or None)
+                        attachment.storage_provider = 's3'
+                        attachment.storage_key = storage_key
+                        attachment.file_path = file_path
+                        db_session.commit()
+                        logger.info(f"Uploaded attachment {attachment.filename} to S3: {storage_key}")
+                    except Exception as e:
+                        logger.error(f"S3 upload failed, keeping local: {e}")
+                        attachment.storage_provider = 'local'
+                        attachment.storage_key = file_path
+                        attachment.file_path = file_path
+                        db_session.commit()
+            else:
+                attachment.storage_provider = 'local'
+                attachment.storage_key = file_path
+                attachment.file_path = file_path
+                db_session.commit()
 
             return file_path
 

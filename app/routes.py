@@ -373,6 +373,10 @@ def login():
             session['full_name'] = user.full_name
             session['user_role'] = user.role.name
 
+            # Record login timestamp
+            user.last_login_at = datetime.utcnow()
+            db_session.commit()
+
             # Restore database selection if it was set
             if 'current_database' in session:
                 set_current_db(session['current_database'])
@@ -2481,23 +2485,49 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
     - OAuth: Uses stored access_token with automatic refresh
     - IMAP: Reconnects using config credentials and fetches by message_id + part_index
 
-    Returns the file path or None if download fails.
+    Downloads the file, uploads to configured storage (S3 or local), and returns
+    a local file path for processing. On S3, the file is downloaded to a temp path.
+
+    Returns the local file path or None if download fails.
     """
-    # If already downloaded and file exists, return it
+    # If already stored in S3, download to a temp local path for processing
+    if attachment.storage_provider == 's3' and attachment.storage_key:
+        try:
+            import boto3
+            import tempfile
+            bucket = current_app.config.get('S3_BUCKET')
+            client = boto3.client(
+                's3',
+                region_name=current_app.config.get('S3_REGION') or None,
+                endpoint_url=current_app.config.get('S3_ENDPOINT_URL') or None
+            )
+            # Download from S3 to a temp file for processing
+            temp_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'temp_email_attachments')
+            os.makedirs(temp_dir, exist_ok=True)
+            local_path = os.path.join(temp_dir, f"{attachment.id}_{attachment.filename}")
+            client.download_file(bucket, attachment.storage_key, local_path)
+            logger.info(f"Downloaded attachment {attachment.filename} from S3 key {attachment.storage_key}")
+            return local_path
+        except Exception as e:
+            logger.error(f"Failed to download attachment from S3: {e}")
+            return None
+
+    # If already downloaded locally and file exists, return it
     if attachment.file_path and os.path.exists(attachment.file_path):
         logger.info(f"Attachment {attachment.filename} already downloaded at {attachment.file_path}")
         return attachment.file_path
 
     logger.info(f"Downloading attachment {attachment.filename} on-demand...")
 
-    # Create attachments directory
-    attachments_dir = os.path.join('data', 'email_attachments', str(email.id))
-    os.makedirs(attachments_dir, exist_ok=True)
-    file_path = os.path.join(attachments_dir, attachment.filename)
+    # Create temp directory for the download
+    temp_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'temp_email_attachments')
+    os.makedirs(temp_dir, exist_ok=True)
+    file_path = os.path.join(temp_dir, f"{attachment.id}_{attachment.filename}")
 
     try:
+        file_content = None
+
         # Check if this is an OAuth email or IMAP email
-        print(f"Email {email.id} connected_account_id: {email.connected_account_id}")
         if email.connected_account_id:
             # OAuth path (Gmail or Outlook)
             account = db_session.query(ConnectedAccount).filter_by(id=email.connected_account_id).first()
@@ -2529,23 +2559,13 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
                     return None
 
             # Download attachment using OAuth API
-            attachment_data = service.fetch_attachments(
+            file_content = service.fetch_attachments(
                 access_token=access_token,
                 message_id=attachment.message_id,
                 attachment_id=attachment.attachment_id
             )
 
-            if attachment_data:
-                with open(file_path, 'wb') as f:
-                    f.write(attachment_data)
-
-                # Update database with file path
-                attachment.file_path = file_path
-                db_session.commit()
-
-                logger.info(f"Downloaded OAuth attachment {attachment.filename} to {file_path}")
-                return file_path
-            else:
+            if not file_content:
                 logger.error(f"Failed to download OAuth attachment {attachment.filename}")
                 return None
 
@@ -2568,7 +2588,6 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
 
             try:
                 import email as email_lib
-                from email.utils import parsedate_to_datetime
 
                 # Search for the email by Message-ID
                 scraper.mail.select('INBOX')
@@ -2593,25 +2612,39 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
                         content_disposition = str(part.get("Content-Disposition", ""))
                         if "attachment" in content_disposition:
                             if current_index == part_index:
-                                # Found the attachment
-                                payload = part.get_payload(decode=True)
-                                if payload:
-                                    with open(file_path, 'wb') as f:
-                                        f.write(payload)
-
-                                    # Update database with file path
-                                    attachment.file_path = file_path
-                                    db_session.commit()
-
-                                    logger.info(f"Downloaded IMAP attachment {attachment.filename} to {file_path}")
-                                    return file_path
+                                file_content = part.get_payload(decode=True)
+                                break
                             current_index += 1
 
-                logger.error(f"Attachment not found in IMAP email at index {part_index}")
-                return None
+                if not file_content:
+                    logger.error(f"Attachment not found in IMAP email at index {part_index}")
+                    return None
 
             finally:
                 scraper.disconnect()
+
+        # We have the file content - save locally then upload to storage
+        with open(file_path, 'wb') as f:
+            f.write(file_content)
+
+        # Upload to configured storage (S3 in prod, local in dev)
+        from app.database import get_current_tenant
+        tenant = get_current_tenant() or 'default'
+        safe_filename = secure_filename(attachment.filename) or 'attachment.bin'
+        storage_object_key = f"{tenant}/email_attachments/{email.id}/{safe_filename}"
+
+        storage_provider_val, storage_key = _storage_upload(
+            file_path, storage_object_key, attachment.content_type
+        )
+
+        # Update database with storage info
+        attachment.storage_provider = storage_provider_val
+        attachment.storage_key = storage_key
+        attachment.file_path = file_path  # Keep local path as fallback
+        db_session.commit()
+
+        logger.info(f"Downloaded attachment {attachment.filename} → {storage_provider_val}:{storage_key}")
+        return file_path
 
     except Exception as e:
         logger.error(f"Error downloading attachment on-demand: {e}")

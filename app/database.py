@@ -368,6 +368,7 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('users', 'password_reset_expires', 'TIMESTAMP')
         _safe_add_column('users', 'phone_number', 'VARCHAR(20)')
         _safe_add_column('users', 'sms_alerts_enabled', 'BOOLEAN DEFAULT FALSE NOT NULL')
+        _safe_add_column('users', 'last_login_at', 'TIMESTAMP')
 
     # brokers
     if 'brokers' in table_names:
@@ -380,6 +381,11 @@ def _add_missing_columns(engine, inspector):
     if 'email_messages' in table_names:
         _safe_add_column('email_messages', 'is_deleted', 'BOOLEAN DEFAULT FALSE')
         _safe_add_column('email_messages', 'connected_account_id', 'INTEGER')
+
+    # email_attachments
+    if 'email_attachments' in table_names:
+        _safe_add_column('email_attachments', 'storage_provider', 'VARCHAR(20)')
+        _safe_add_column('email_attachments', 'storage_key', 'VARCHAR(1000)')
 
     # sms_alerts
     if 'sms_alerts' in table_names:

@@ -192,7 +192,7 @@ Located in `sample_docs/misc/`:
 - Email scraping: polls OAuth inbox for broker replies, filters by broker emails + insured names + has_attachments
 - Submit to Market: sends to configured brokers with selected document attachments
 - Known: documents with "quote", "indication", or "proposal" in filename are unchecked by default in send modal
-- Email scraper writes attachments to disk — needs S3 migration before it works correctly on Fargate
+- Email scraper downloads attachments to S3 via the storage provider abstraction (same as document uploads)
 - Emails are NOT saved in RiskRunway — only parsed/ingested or discarded
 
 ## SMS / Text Message Integration
@@ -301,10 +301,12 @@ Located in `sample_docs/misc/`:
 - The email "Check Email" button applies default filters (brokers + insured names + has_attachments) on initial load
 - ProtonMail threads emails by subject — repeated test sends with same insured name show combined attachment previews
 - AWS CLI v1 doesn't have `aws logs tail` — use `aws logs filter-log-events` instead
-- CloudWatch filter patterns don't allow colons
+- CloudWatch filter patterns don't allow colons or slashes (`/`) — can't filter on URL paths directly
+- CloudWatch logs only contain `[TENANT]` resolution lines — Flask werkzeug access logs (request method/path) are NOT captured
 - `<unknown>:6142: SyntaxWarning: invalid escape sequence '\l'` — pre-existing, unrelated regex in routes.py
 - RDS is publicly accessible — was enabled to run create_admin_user.py. Consider disabling after go-live.
-- Email scraper writes attachments to disk — needs S3 migration for Fargate
+- ~~Email scraper writes attachments to disk~~ — FIXED: now uses S3 storage provider on Fargate
+- Mobile and desktop kanban do NOT share rendering logic — they have separate templates with independent JS. Fixes to one don't propagate to the other.
 
 
 ## Conventions
@@ -315,6 +317,7 @@ Located in `sample_docs/misc/`:
 - Test emails: cbouy@protonmail.com, chris.bouy@icloud.com
 - OAuth redirect URIs: `https://app.risk-runway.com/oauth/outlook/callback`, `/oauth/gmail/callback`
 - Marketing site deploy: `aws s3 sync /Users/chrisbouy/code_base/PF_Site s3://risk-runway-site --delete --exclude ".git/*" --exclude ".DS_Store"` then invalidate CloudFront
+- `User.last_login_at` — tracks last successful login timestamp (added 8/4/26). Visible in `/api/users` response.
 
 ## Open Actions / TODO
 - Apply for Microsoft Publisher Verification
