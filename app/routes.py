@@ -1360,7 +1360,11 @@ def download_document(document_id):
                 # For other files (PDFs etc.), redirect to presigned URL
                 signed_url = client.generate_presigned_url(
                     ClientMethod='get_object',
-                    Params={'Bucket': bucket, 'Key': doc.storage_key},
+                    Params={
+                        'Bucket': bucket,
+                        'Key': doc.storage_key,
+                        'ResponseContentDisposition': f'inline; filename="{doc.original_filename}"'
+                    },
                     ExpiresIn=300
                 )
                 return redirect(signed_url)
@@ -3877,14 +3881,14 @@ def triage_attachment():
                     # Save document
                     content_type = 'application/pdf'
                     doc_key = _build_storage_key(
-                        submission_id, DocumentType.APPLICATION.name, safe_filename,
+                        submission_id, DocumentType.QUOTE.name, safe_filename,
                         session.get('user_id'), submission.insured_name
                     )
                     storage_provider_val, storage_key = _storage_upload(filepath, doc_key, content_type)
                     doc = Document(
                         submission_id=submission_id,
                         quote_id=quote_id,
-                        document_type=DocumentType.APPLICATION,
+                        document_type=DocumentType.QUOTE,
                         carrier=carrier_name,
                         term_key=effective_date or submission.effective_date,
                         version=1,

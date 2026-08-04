@@ -3804,6 +3804,13 @@ Thank you for your attention to this matter.`;
                     const index = parseInt(this.dataset.index);
                     if (submitToMarketBrokerEntries[index]) {
                         submitToMarketBrokerEntries[index].checked = this.checked;
+                        // When broker is deselected, also deselect their attachments
+                        if (!this.checked) {
+                            submitToMarketBrokerEntries[index].document_ids = [];
+                            document.querySelectorAll(`.stm-doc-checkbox[data-index="${index}"]`).forEach(docCb => {
+                                docCb.checked = false;
+                            });
+                        }
                     }
                 });
             });

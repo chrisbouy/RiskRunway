@@ -983,7 +983,15 @@
                 // Wire checkboxes
                 list.querySelectorAll('.stm-broker-cb').forEach(cb => {
                     cb.addEventListener('change', () => {
-                        stmBrokerEntries[parseInt(cb.dataset.idx)].checked = cb.checked;
+                        const idx = parseInt(cb.dataset.idx);
+                        stmBrokerEntries[idx].checked = cb.checked;
+                        // When broker is deselected, also deselect their attachments
+                        if (!cb.checked) {
+                            stmBrokerEntries[idx].document_ids = [];
+                            list.querySelectorAll(`.stm-doc-chip input[data-idx="${idx}"]`).forEach(docCb => {
+                                docCb.checked = false;
+                            });
+                        }
                     });
                 });
                 list.querySelectorAll('.stm-doc-chip input').forEach(cb => {
