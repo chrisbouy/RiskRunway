@@ -38,8 +38,14 @@ PASS2_APPLICATION_PROMPT = dedent(
     4) Do not confuse city/state/ZIP with insured name.
     5) Do not extract policy premium/tax/fee totals here.
     6) Do not include wholesale broker/MGA in output, even if present.
-    7) Coverage types needed should be an array of normalized strings
-       (e.g., General Liability, Commercial Property, Workers Compensation, Commercial Auto).
+    7) Coverage types needed should be an array of normalized strings.
+       Use ONLY these canonical names when possible:
+       General Liability, Commercial Property, Workers Compensation, Commercial Auto,
+       Business Owners Policy, Umbrella/Excess, Professional Liability, Directors & Officers,
+       Employment Practices, Cyber Liability, Inland Marine, Crime/Fidelity,
+       Liquor Liability, Products Liability, Pollution Liability, Builder's Risk,
+       Garage Liability, Ocean Marine, Aviation, Surety Bond, Flood, Earthquake.
+       If the coverage does not match any of these, use the standard industry term.
 
     Return this exact schema:
     {
@@ -159,14 +165,9 @@ def _postprocess_application_data(data):
     if not isinstance(coverages, list):
         coverages = []
 
-    # Normalize to unique non-empty strings.
-    normalized_coverages = []
-    for item in coverages:
-        if not item:
-            continue
-        value = str(item).strip()
-        if value and value not in normalized_coverages:
-            normalized_coverages.append(value)
+    # Normalize to unique non-empty strings using canonical coverage names.
+    from app.parsers.coverage_normalizer import normalize_coverage_list
+    normalized_coverages = normalize_coverage_list(coverages)
     submission["coverage_types_needed"] = normalized_coverages
     data["submission"] = submission
     return data

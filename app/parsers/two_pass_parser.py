@@ -249,7 +249,7 @@ PASS2_NORMALIZATION_PROMPT = dedent(
         "quote_number": "string or null",
         "policies": [
             {
-                "coverage_type": "string or null (use standard term, not abbreviation)",
+                "coverage_type": "string or null — use one of these canonical names: General Liability, Commercial Property, Workers Compensation, Commercial Auto, Business Owners Policy, Umbrella/Excess, Professional Liability, Directors & Officers, Employment Practices, Cyber Liability, Inland Marine, Crime/Fidelity, Liquor Liability, Products Liability, Pollution Liability, Builder's Risk, Garage Liability, Ocean Marine, Aviation, Surety Bond, Flood, Earthquake. If none match, use the standard industry term.",
                 "carrier": "string or null (company name only)",
                 "policy_number": "string or null",
                 "effective_date": "string or null (YYYY-MM-DD format)",
@@ -495,6 +495,16 @@ def pass1_extract_quote_layout(pdf_path, max_pages=5):
     }
 
 
+def _normalize_quote_coverage_types(data):
+    """Normalize coverage_type fields in parsed quote JSON to canonical names."""
+    from app.parsers.coverage_normalizer import normalize_coverage_type
+    policies = data.get("policies")
+    if isinstance(policies, list):
+        for policy in policies:
+            if isinstance(policy, dict) and policy.get("coverage_type"):
+                policy["coverage_type"] = normalize_coverage_type(policy["coverage_type"])
+
+
 def pass2_normalize_quote_data(layout_data):
     """
     Pass 2: Normalize to structured JSON.
@@ -546,6 +556,7 @@ def pass2_normalize_quote_data(layout_data):
         normalized_data = llm.generate_json(prompt)
 
     if isinstance(normalized_data, dict):
+        _normalize_quote_coverage_types(normalized_data)
         return normalized_data
 
     result_text = json.dumps(normalized_data)
@@ -554,7 +565,10 @@ def pass2_normalize_quote_data(layout_data):
     if result_text.endswith("```"):
         result_text = result_text[:-3]
 
-    return json.loads(result_text.strip())
+    parsed = json.loads(result_text.strip())
+    if isinstance(parsed, dict):
+        _normalize_quote_coverage_types(parsed)
+    return parsed
 
 def process_quote_two_pass(pdf_path, existing_quotes=None):
 

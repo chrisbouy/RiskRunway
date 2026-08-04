@@ -1060,6 +1060,8 @@ def create_submission_entry():
                 'processing_metadata': application_result.get('processing_metadata', {})
             }
         else:
+            from app.parsers.coverage_normalizer import normalize_coverage_list
+            coverage_types_list = normalize_coverage_list(coverage_types_list)
             intake_data = {
                 'source': 'manual',
                 'insured': {'name': insured_name, 'address': None},

@@ -408,8 +408,7 @@
         .runway-lane.active-quot { background: rgba(255, 159, 64, 0.15); }
         .runway-lane.active-bind { background: rgba(74, 222, 128, 0.15); }
         .runway-lane.active-bind.is-bound-lane {
-            outline: 2px solid var(--green);
-            outline-offset: -2px;
+            /* Bound status indicated by card border — no lane outline needed */
         }
 
         /* ── SUBMISSION CARD ── */
@@ -912,7 +911,7 @@
                 Import from Epic
             </button>
 
-            <button id="checkEmailsBtn" class="left-btn btn-config" style="margin-top: 4px;">
+            <button id="checkEmailsBtn" class="left-btn btn-new" style="margin-top: 4px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                     <polyline points="22,6 12,13 2,6"></polyline>
@@ -922,7 +921,7 @@
             <span id="newMessageCount" class="hidden">0</span>
 
             <div class="settings-trigger" style="margin-top: 4px;">
-                <button id="settingsToggleBtn" class="left-btn btn-config">
+                <button id="settingsToggleBtn" class="left-btn btn-new">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -948,6 +947,22 @@
                     </div>
                     <button id="logoutBtn" class="left-btn btn-logout">Logout</button>
                 </div>
+            </div>
+
+            <!-- Filter Section -->
+            <div style="margin-top: 6px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--rail-border); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 5px;">
+                <div class="left-section-title" style="margin: 0; padding: 4px 8px;">Filters</div>
+                <input type="text" id="filterSearch" class="left-control" placeholder="Search insured name..." style="font-size: 11px; padding: 5px 8px;">
+                <select id="filterStage" class="left-control">
+                    <option value="">All Stages</option>
+                    <option value="submission">Submission</option>
+                    <option value="quoting">Quoting</option>
+                    <option value="bind">Bound</option>
+                </select>
+                <select id="filterCoverage" class="left-control">
+                    <option value="">All Coverages</option>
+                </select>
+                <button id="clearFiltersBtn" class="left-btn btn-config" style="font-size: 10px; text-align: center; display: none;">Clear Filters</button>
             </div>
 
             <div class="left-divider" style="margin-top: 8px;"></div>
@@ -1657,6 +1672,9 @@
         let allUsers = [];
         let currentUser = null;
         let filterMyCards = false;
+        let filterSearch = '';
+        let filterStage = '';
+        let filterCoverage = '';
         const STAGE_COLUMNS = [
             { key: 'submission', statuses: ['Received'], apiStatus: 'RECEIVED', label: 'Submission', countId: 'count-submission' },
             { key: 'quoting', statuses: ['In Progress'], apiStatus: 'IN_PROGRESS', label: 'Quoting', countId: 'count-quoting' },
@@ -1799,6 +1817,115 @@
             filterMyCards = this.checked;
             loadSubmissions();
         });
+
+        // Kanban filter handlers
+        document.getElementById('filterSearch').addEventListener('input', function() {
+            filterSearch = this.value;
+            renderKanban();
+        });
+        document.getElementById('filterStage').addEventListener('change', function() {
+            filterStage = this.value;
+            renderKanban();
+        });
+        document.getElementById('filterCoverage').addEventListener('change', function() {
+            filterCoverage = this.value;
+            renderKanban();
+        });
+        document.getElementById('clearFiltersBtn').addEventListener('click', function() {
+            filterSearch = '';
+            filterStage = '';
+            filterCoverage = '';
+            document.getElementById('filterSearch').value = '';
+            document.getElementById('filterStage').value = '';
+            document.getElementById('filterCoverage').value = '';
+            renderKanban();
+        });
+
+        // Coverage type normalization — maps common variations to canonical names.
+        // This is a client-side safety net; parsers normalize at extraction time.
+        const COVERAGE_ALIASES = {
+            'gl': 'General Liability',
+            'general liability': 'General Liability',
+            'commercial general liability': 'General Liability',
+            'cgl': 'General Liability',
+            'wc': 'Workers Compensation',
+            'workers comp': 'Workers Compensation',
+            'workers compensation': 'Workers Compensation',
+            "worker's compensation": 'Workers Compensation',
+            "worker's comp": 'Workers Compensation',
+            'auto': 'Commercial Auto',
+            'commercial auto': 'Commercial Auto',
+            'business auto': 'Commercial Auto',
+            'ca': 'Commercial Auto',
+            'bop': 'Business Owners Policy',
+            'business owners policy': 'Business Owners Policy',
+            "business owners'": 'Business Owners Policy',
+            'property': 'Commercial Property',
+            'commercial property': 'Commercial Property',
+            'cp': 'Commercial Property',
+            'umbrella': 'Umbrella/Excess',
+            'excess': 'Umbrella/Excess',
+            'excess liability': 'Umbrella/Excess',
+            'umbrella/excess': 'Umbrella/Excess',
+            'professional liability': 'Professional Liability',
+            'e&o': 'Professional Liability',
+            'errors and omissions': 'Professional Liability',
+            'errors & omissions': 'Professional Liability',
+            'd&o': 'Directors & Officers',
+            'directors and officers': 'Directors & Officers',
+            'directors & officers': 'Directors & Officers',
+            'epli': 'Employment Practices',
+            'employment practices liability': 'Employment Practices',
+            'employment practices': 'Employment Practices',
+            'cyber': 'Cyber Liability',
+            'cyber liability': 'Cyber Liability',
+            'inland marine': 'Inland Marine',
+            'im': 'Inland Marine',
+            'crime': 'Crime/Fidelity',
+            'fidelity': 'Crime/Fidelity',
+            'crime/fidelity': 'Crime/Fidelity',
+            'liquor liability': 'Liquor Liability',
+            'products liability': 'Products Liability',
+            'pollution liability': 'Pollution Liability',
+            "builder's risk": "Builder's Risk",
+            'builders risk': "Builder's Risk",
+            'garage liability': 'Garage Liability',
+            'ocean marine': 'Ocean Marine',
+            'aviation': 'Aviation',
+            'surety bond': 'Surety Bond',
+            'surety': 'Surety Bond',
+            'flood': 'Flood',
+            'earthquake': 'Earthquake',
+        };
+
+        function normalizeCoverageType(raw) {
+            if (!raw) return '';
+            const lower = raw.toLowerCase().trim();
+            return COVERAGE_ALIASES[lower] || raw.trim();
+        }
+
+        function updateFilterOptions() {
+            // Populate coverage type dropdown from all submissions (normalized)
+            const coverageSelect = document.getElementById('filterCoverage');
+            const currentCoverage = coverageSelect.value;
+            const allCoverages = new Set();
+            submissions.forEach(sub => {
+                const types = (sub.submission_intake && sub.submission_intake.coverage_types) || [];
+                types.forEach(t => {
+                    const normalized = normalizeCoverageType(t);
+                    if (normalized) allCoverages.add(normalized);
+                });
+            });
+            const sortedCoverages = [...allCoverages].sort();
+            coverageSelect.innerHTML = '<option value="">All Coverages</option>';
+            sortedCoverages.forEach(cov => {
+                const opt = document.createElement('option');
+                opt.value = cov;
+                opt.textContent = cov;
+                if (cov === currentCoverage) opt.selected = true;
+                coverageSelect.appendChild(opt);
+            });
+        }
 
         // Settings panel toggle
         document.getElementById('settingsToggleBtn').addEventListener('click', function(e) {
@@ -2059,8 +2186,28 @@
             // Clear old canvases from tracking array
             runwayLightsCanvases.length = 0;
 
+            // Apply client-side filters
+            const filtered = submissions.filter(sub => {
+                // Text search on insured name
+                if (filterSearch && !sub.insured_name.toLowerCase().includes(filterSearch.toLowerCase())) {
+                    return false;
+                }
+                // Stage filter
+                if (filterStage && getStageKey(sub) !== filterStage) {
+                    return false;
+                }
+                // Coverage type filter
+                if (filterCoverage) {
+                    const coverageTypes = (sub.submission_intake && sub.submission_intake.coverage_types) || [];
+                    if (!coverageTypes.some(ct => normalizeCoverageType(ct) === filterCoverage)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
             const grouped = { submission: 0, quoting: 0, bind: 0 };
-            submissions.forEach(sub => {
+            filtered.forEach(sub => {
                 const stageKey = getStageKey(sub);
                 grouped[stageKey] += 1;
                 rows.appendChild(createRunwayRow(sub));
@@ -2069,6 +2216,13 @@
             document.getElementById('count-submission').textContent = `Submission: ${grouped.submission}`;
             document.getElementById('count-quoting').textContent = `Quoting: ${grouped.quoting}`;
             document.getElementById('count-bind').textContent = `Binding: ${grouped.bind}`;
+
+            // Update filter dropdowns with available options
+            updateFilterOptions();
+
+            // Show/hide clear button
+            const hasFilters = filterSearch || filterStage || filterCoverage;
+            document.getElementById('clearFiltersBtn').style.display = hasFilters ? 'block' : 'none';
 
             // Start animation after rendering
             startRunwayLightsAnimation();
