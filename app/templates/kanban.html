@@ -407,6 +407,10 @@
         .runway-lane.active-sub  { background: rgba(74, 158, 255, 0.15); }
         .runway-lane.active-quot { background: rgba(255, 159, 64, 0.15); }
         .runway-lane.active-bind { background: rgba(74, 222, 128, 0.15); }
+        .runway-lane.active-bind.is-bound-lane {
+            outline: 2px solid var(--green);
+            outline-offset: -2px;
+        }
 
         /* ── SUBMISSION CARD ── */
         .submission-card {
@@ -2590,6 +2594,9 @@
 
                 if (laneKey === stageKey) {
                     lane.appendChild(createSubmissionCard(submission, stageKey));
+                    // Green frame for bound submissions in bind lane
+                    const isBound = submission.is_bound || submission.status === 'Sent to Finance';
+                    if (laneKey === 'bind' && isBound) lane.classList.add('is-bound-lane');
                 }
 
                 lane.addEventListener('dragover', (e) => {

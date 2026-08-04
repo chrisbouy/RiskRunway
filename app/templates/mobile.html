@@ -161,6 +161,11 @@
             border-right: 1px solid var(--border);
         }
         .card-cell:last-child { border-right: none; }
+        .card-cell.bound-cell {
+            border: 2px solid var(--green);
+            border-radius: 4px;
+            background: rgba(74, 222, 128, 0.05);
+        }
 
         /* ── CARD ── */
         .m-card {
@@ -551,7 +556,12 @@
                 ['submission', 'quoting', 'bind'].forEach(col => {
                     const cell = document.createElement('div');
                     cell.className = 'card-cell';
-                    if (col === stage) cell.appendChild(createCard(sub, stage));
+                    if (col === stage) {
+                        cell.appendChild(createCard(sub, stage));
+                        // Green frame for bound cards in bind column
+                        const isBound = sub.is_bound || sub.status === 'Sent to Finance';
+                        if (col === 'bind' && isBound) cell.classList.add('bound-cell');
+                    }
                     row.appendChild(cell);
                 });
 
@@ -968,7 +978,7 @@
                 });
             });
 
-            // Process buttons — process attachment as quote
+            // Process buttons — triage attachment (auto-classifies as quote/binder/other)
             list.querySelectorAll('.msg-btn-process').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const idx = parseInt(btn.dataset.idx);
@@ -978,51 +988,55 @@
                     const att = (email.attachments || [])[attIdx];
                     if (!att) return;
 
-                    // Need to pick a submission — try to match by insured name in subject
-                    let targetSubmissionId = null;
-                    const subjectLower = (email.subject || '').toLowerCase();
-                    for (const sub of submissions) {
-                        const name = (sub.insured_name || '').toLowerCase();
-                        if (name && subjectLower.includes(name)) {
-                            targetSubmissionId = sub.id;
-                            break;
-                        }
-                    }
-
-                    if (!targetSubmissionId) {
-                        // Ask user to pick
-                        const choices = submissions.map(s => s.insured_name).join('\n');
-                        const pick = prompt('Which submission is this for?\n\n' + choices);
-                        if (!pick) return;
-                        const matched = submissions.find(s => s.insured_name.toLowerCase().includes(pick.toLowerCase()));
-                        if (matched) targetSubmissionId = matched.id;
-                        else { alert('No matching submission found'); return; }
-                    }
-
                     document.getElementById('newMessagesModal').classList.remove('active');
                     const spinner = document.getElementById('spinnerOverlay');
                     document.getElementById('spinnerText').textContent = 'Processing attachment...';
                     spinner.classList.add('active');
 
                     try {
-                        const resp = await fetch('/api/email/process_attachment', {
+                        const resp = await fetch('/api/email/triage_attachment', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                submission_id: targetSubmissionId,
                                 message_id: email.message_id,
                                 account_id: email.account_id,
                                 provider: email.provider || 'outlook',
                                 attachment_id: att.attachment_id,
-                                filename: att.filename,
-                                action_type: 'parse'
+                                filename: att.filename
                             })
                         });
                         const data = await resp.json();
                         spinner.classList.remove('active');
                         if (data.success) {
-                            alert('Attachment processed successfully');
+                            alert(data.message || 'Attachment processed successfully');
                             loadSubmissions();
+                        } else if (data.needs_submission_pick) {
+                            // Multiple matches — ask user to pick
+                            const choices = (data.candidates || []).map(c => c.insured_name).join('\n');
+                            const pick = prompt('Multiple submissions matched. Which one?\n\n' + choices);
+                            if (pick) {
+                                const matched = (data.candidates || []).find(c => c.insured_name.toLowerCase().includes(pick.toLowerCase()));
+                                if (matched) {
+                                    // Retry with explicit submission_id
+                                    spinner.classList.add('active');
+                                    const resp2 = await fetch('/api/email/triage_attachment', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            message_id: email.message_id,
+                                            account_id: email.account_id,
+                                            provider: email.provider || 'outlook',
+                                            attachment_id: att.attachment_id,
+                                            filename: att.filename,
+                                            submission_id: matched.id
+                                        })
+                                    });
+                                    const data2 = await resp2.json();
+                                    spinner.classList.remove('active');
+                                    if (data2.success) { alert(data2.message || 'Processed'); loadSubmissions(); }
+                                    else alert(data2.error || 'Failed');
+                                }
+                            }
                         } else {
                             alert(data.error || 'Processing failed');
                         }
