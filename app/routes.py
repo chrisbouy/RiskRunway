@@ -30,8 +30,7 @@ from app.database import (
     is_database_switching_enabled
 )
 from app.models import Submission, Quote, SubmissionStatus, QuoteStatus, User, UserRole, AuditLog, Document, DocumentType, Broker, EmailMessage, EmailAttachment, ConnectedAccount, EmailProvider, ConnectedAccountStatus, AmsExportJob, AppetiteRule, SmsAlert
-from app.email_scraper import EmailScraper  # IMAP-based scraping (active)
-from app.email_client import EmailClient, create_email_client  # OAuth (future)
+from app.email_client import EmailClient, create_email_client
 from app.oauth_services import get_oauth_service
 
 logger = logging.getLogger(__name__)
@@ -1511,7 +1510,7 @@ def view_quote_file(quote_id):
 @bp.route('/api/email/scrape', methods=['POST'])
 @login_required
 def trigger_email_scrape():
-    """uses OAuth if available, falls back to IMAP"""
+    """Trigger email scrape via OAuth connected accounts"""
     try:
         if not current_app.config.get('EMAIL_SCRAPING_ENABLED', False):
             return jsonify({'success': False, 'error': 'Email scraping is disabled'}), 400
@@ -1587,28 +1586,8 @@ def trigger_email_scrape():
                     
                     return jsonify(results)
             
-            # Fall back to IMAP if no OAuth accounts or OAuth failed
-            # If no OAuth accounts at all, prompt user to connect rather than trying IMAP
+            # No connected OAuth accounts — tell user to connect
             if not oauth_accounts:
-                results['success'] = False
-                results['error'] = 'No email account connected. Please connect your email account first.'
-                results['needs_connect'] = True
-            elif current_app.config.get('IMAP_PASSWORD'):
-                scraper = EmailScraper(
-                    imap_server=current_app.config['IMAP_SERVER'],
-                    email_address=current_app.config['IMAP_EMAIL'],
-                    password=current_app.config['IMAP_PASSWORD'],
-                    use_ssl=current_app.config['IMAP_USE_SSL']
-                )
-                
-                # Scrape emails from last 24 hours
-                from datetime import timedelta
-                since_date = datetime.now() - timedelta(days=24)
-                
-                imap_result = scraper.scrape_emails(since_date)
-                results.update(imap_result)
-                results['source'] = 'IMAP'
-            else:
                 results['success'] = False
                 results['error'] = 'No email account connected. Please connect your email account first.'
                 results['needs_connect'] = True
@@ -1918,9 +1897,7 @@ def get_email_scrape_status():
     try:
         status = {
             'enabled': current_app.config.get('EMAIL_SCRAPING_ENABLED', False),
-            'configured': bool(current_app.config.get('IMAP_PASSWORD')),
-            'imap_server': current_app.config.get('IMAP_SERVER', ''),
-            'imap_email': current_app.config.get('IMAP_EMAIL', ''),
+            'configured': True,  # OAuth-based, configured via connected accounts
             'scrape_interval_minutes': current_app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)
         }
         
@@ -2485,9 +2462,7 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
     This implements lazy attachment loading - attachments are stored as metadata during
     email scraping, then downloaded only when the user clicks "Ingest Quote".
 
-    Handles both OAuth (Gmail/Outlook) and IMAP sources:
-    - OAuth: Uses stored access_token with automatic refresh
-    - IMAP: Reconnects using config credentials and fetches by message_id + part_index
+    Uses OAuth (Gmail/Outlook) with stored access_token and automatic refresh.
 
     Downloads the file, uploads to configured storage (S3 or local), and returns
     a local file path for processing. On S3, the file is downloaded to a temp path.
@@ -2531,7 +2506,7 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
     try:
         file_content = None
 
-        # Check if this is an OAuth email or IMAP email
+        # Download via OAuth (connected account)
         if email.connected_account_id:
             # OAuth path (Gmail or Outlook)
             account = db_session.query(ConnectedAccount).filter_by(id=email.connected_account_id).first()
@@ -2574,58 +2549,9 @@ def _download_attachment_on_demand(attachment: EmailAttachment, email: EmailMess
                 return None
 
         else:
-            # IMAP path - need to reconnect and fetch
-            if not current_app.config.get('IMAP_PASSWORD'):
-                logger.error("IMAP credentials not configured")
-                return None
-
-            scraper = EmailScraper(
-                imap_server=current_app.config['IMAP_SERVER'],
-                email_address=current_app.config['IMAP_EMAIL'],
-                password=current_app.config['IMAP_PASSWORD'],
-                use_ssl=current_app.config['IMAP_USE_SSL']
-            )
-
-            if not scraper.connect():
-                logger.error("Failed to connect to IMAP server")
-                return None
-
-            try:
-                import email as email_lib
-
-                # Search for the email by Message-ID
-                scraper.mail.select('INBOX')
-                _, message_numbers = scraper.mail.search(None, f'HEADER Message-ID "{attachment.message_id}"')
-
-                if not message_numbers[0]:
-                    logger.error(f"Email with message_id {attachment.message_id} not found in IMAP")
-                    return None
-
-                # Fetch the email
-                num = message_numbers[0].split()[0]
-                _, msg_data = scraper.mail.fetch(num, '(RFC822)')
-                email_body = msg_data[0][1]
-                msg = email_lib.message_from_bytes(email_body)
-
-                # Walk through parts to find the attachment
-                part_index = int(attachment.attachment_id) if attachment.attachment_id else 0
-                current_index = 0
-
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        content_disposition = str(part.get("Content-Disposition", ""))
-                        if "attachment" in content_disposition:
-                            if current_index == part_index:
-                                file_content = part.get_payload(decode=True)
-                                break
-                            current_index += 1
-
-                if not file_content:
-                    logger.error(f"Attachment not found in IMAP email at index {part_index}")
-                    return None
-
-            finally:
-                scraper.disconnect()
+            # No connected account — this shouldn't happen for new emails (all use OAuth now)
+            logger.error(f"Attachment {attachment.id} has no connected_account_id — cannot download (legacy IMAP email?)")
+            return None
 
         # We have the file content - save locally then upload to storage
         with open(file_path, 'wb') as f:

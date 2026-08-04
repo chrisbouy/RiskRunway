@@ -187,9 +187,10 @@ Located in `sample_docs/misc/`:
 - Anchor Browser (competitor) extracts data OUT of AMS using headless browsers. We push data IN via user's live authenticated session — fundamentally different approach.
 
 ## Email System
-- Sends via Microsoft Outlook Graph API (OAuth)
-- `_send_email_via_oauth()` handles attachments from both local and S3
-- Email scraping: polls OAuth inbox for broker replies, filters by broker emails + insured names + has_attachments
+- **All email I/O uses Microsoft Outlook Graph API (OAuth)** — both sending and receiving
+- `_send_email_via_oauth()` handles outbound with attachments from both local and S3
+- **Background polling**: APScheduler in `app/__init__.py` runs every N minutes (config: `EMAIL_POLLING_ENABLED`, `EMAIL_SCRAPE_INTERVAL_MINUTES`, default 5). Fetches via OAuth, filters by broker emails + insured names, triggers SMS alerts for matches.
+- **On-demand "Check Email"**: same OAuth fetch, triggered by user clicking button in kanban UI (routes.py). Displays matched emails in modal.
 - Submit to Market: sends to configured brokers with selected document attachments
 - Known: documents with "quote", "indication", or "proposal" in filename are unchecked by default in send modal
 - Email scraper downloads attachments to S3 via the storage provider abstraction (same as document uploads)

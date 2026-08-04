@@ -45,21 +45,11 @@ class Config:
     MICROSOFT_REDIRECT_URI = os.environ.get('MICROSOFT_REDIRECT_URI', 'http://localhost:5000/oauth/outlook/callback')
     MICROSOFT_TENANT_ID = os.environ.get('MICROSOFT_TENANT_ID', 'common')
     
-    # IMAP Email Scraping Configuration (active)
-    IMAP_SERVER = os.environ.get('IMAP_SERVER', 'imap.gmail.com')
-    IMAP_EMAIL = os.environ.get('IMAP_EMAIL', '')
-    IMAP_PASSWORD = os.environ.get('IMAP_PASSWORD', '')
-    IMAP_USE_SSL = os.environ.get('IMAP_USE_SSL', 'true').lower() == 'true'
-    
     # Email Processing
     # Manual on-demand scraping endpoint
     EMAIL_SCRAPING_ENABLED = os.environ.get('EMAIL_SCRAPING_ENABLED', 'false').lower() == 'true'
     # Background polling scheduler
     EMAIL_POLLING_ENABLED = os.environ.get('EMAIL_POLLING_ENABLED', 'false').lower() == 'true'
-    EMAIL_SCRAPING_MODE = os.environ.get('EMAIL_SCRAPING_MODE', 'oauth').lower()  # oauth | imap | auto
-    # 'oauth' - use OAuth (Gmail/Outlook) only
-    # 'imap' - use IMAP only
-    # 'auto' - try OAuth first, fall back to IMAP if OAuth not configured
     EMAIL_SCRAPE_INTERVAL_MINUTES = int(os.environ.get('EMAIL_SCRAPE_INTERVAL_MINUTES', '5'))
     
     # Token encryption key (generate a new one for production)

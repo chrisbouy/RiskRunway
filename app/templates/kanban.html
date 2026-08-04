@@ -1185,7 +1185,8 @@
         </div>
     </div>
 
-    <!-- SMS Alerts Settings Modal -->
+    <!-- SMS Alerts Settings Modal — DISABLED (Twilio A2P registration pending) -->
+    <!--
     <div id="smsSettingsModal" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[9999]">
         <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
             <h2 class="text-xl font-bold mb-2 text-white">📱 SMS Alert Settings</h2>
@@ -1226,6 +1227,7 @@
             </div>
         </div>
     </div>
+    -->
 
     <!-- Quote Settings Modal -->
     <div id="quoteSettingsModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
@@ -5263,8 +5265,9 @@
         initializePage();
 
         // ============================================================================
-        // SMS ALERTS SETTINGS
+        // SMS ALERTS SETTINGS — DISABLED (Twilio A2P registration pending)
         // ============================================================================
+        /*
         (function() {
             const modal = document.getElementById('smsSettingsModal');
             const phoneInput = document.getElementById('smsPhoneNumber');
@@ -5354,6 +5357,7 @@
                 }
             });
         })();
+        */
     </script>
 
 <!-- User Guide Panel (fixed overlay) -->
@@ -5555,6 +5559,24 @@
             <li>Each quote shows key parsed fields: carrier, premium, tax, fees, effective/expiration dates, limits, etc.</li>
             <li>You must narrow down to a single selected quote per coverage type before the card can move to Binding.</li>
         </ul>
+
+        <h3>Quote Comparison Highlighting</h3>
+        <p>When you have <strong>two or more quote documents</strong> uploaded, RiskRunway automatically color-codes numeric differences in the Policy Details table:</p>
+        <ul>
+            <li><span style="color:#22c55e;font-weight:600;">Green</span> — the lower value (better for the insured)</li>
+            <li><span style="color:#ef4444;font-weight:600;">Red</span> — the higher value (more expensive)</li>
+        </ul>
+        <p>Highlighting compares the same coverage type across different quote documents. For example, two General Liability quotes from different brokers will be compared against each other, but a GL quote won't be compared against a Workers Comp quote from the same broker.</p>
+        <p>If every coverage type is unique (no overlap between quotes), all rows are compared against each other as a general cost indicator.</p>
+        <p><strong>Note:</strong> A single quote with multiple coverage lines will never highlight against itself — highlighting only appears when there are competing quotes to compare.</p>
+
+        <h3>Highlight Threshold Settings</h3>
+        <p>You can control how sensitive the highlighting is via <strong>⚙️ Quote Settings</strong> (in the Settings menu):</p>
+        <ul>
+            <li><strong>Quote Compare Threshold (%)</strong> — The minimum percentage difference between two values before highlighting appears. Set to 0 to highlight any difference, or increase it (e.g. 10%) to only flag significant gaps.</li>
+            <li><strong>Renewal Highlight Threshold (%)</strong> — (Coming soon) Controls highlighting when comparing a renewal quote against the prior term's bound quote.</li>
+        </ul>
+        <p>These settings are saved per-tenant — all users in your agency share the same thresholds.</p>
 
         <h2 id="kg-correspondence">9. Saving Correspondence</h2>
         <ol>

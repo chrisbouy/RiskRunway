@@ -41,229 +41,196 @@ def create_app():
         """Background task to scrape emails"""
         # Run within Flask application context since this task runs in a background thread
         with app.app_context():
-            scraping_mode = app.config.get('EMAIL_SCRAPING_MODE', 'oauth').lower()
-            print(f"[EMAIL SCRAPER] Running in mode: {scraping_mode}")
+            print(f"[EMAIL SCRAPER] Running background OAuth poll")
             
-            # Track results from both methods
             oauth_result = None
-            imap_result = None
             
-            # === OAuth MODE (Gmail/Outlook) ===
-            if scraping_mode in ('oauth', 'auto'):
-                try:
-                    from app.database import get_session
-                    from app.models import ConnectedAccount, ConnectedAccountStatus, EmailProvider
-                    from app.oauth_services import get_oauth_service
-                    
-                    db_session = get_session()
-                    
-                    # Get all active connected accounts
-                    accounts = db_session.query(ConnectedAccount).filter(
-                        ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
-                    ).all()
-                    
-                    if accounts:
-                        for account in accounts:
-                            try:
-                                # Get OAuth service for this provider
-                                config = {
-                                    'GMAIL_CLIENT_ID': app.config.get('GMAIL_CLIENT_ID', ''),
-                                    'GMAIL_CLIENT_SECRET': app.config.get('GMAIL_CLIENT_SECRET', ''),
-                                    'GMAIL_REDIRECT_URI': app.config.get('GMAIL_REDIRECT_URI', ''),
-                                    'MICROSOFT_CLIENT_ID': app.config.get('MICROSOFT_CLIENT_ID', ''),
-                                    'MICROSOFT_CLIENT_SECRET': app.config.get('MICROSOFT_CLIENT_SECRET', ''),
-                                    'MICROSOFT_REDIRECT_URI': app.config.get('MICROSOFT_REDIRECT_URI', ''),
-                                }
+            try:
+                from app.database import get_session
+                from app.models import ConnectedAccount, ConnectedAccountStatus, EmailProvider
+                from app.oauth_services import get_oauth_service
+                
+                db_session = get_session()
+                
+                # Get all active connected accounts
+                accounts = db_session.query(ConnectedAccount).filter(
+                    ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+                ).all()
+                
+                if accounts:
+                    for account in accounts:
+                        try:
+                            # Get OAuth service for this provider
+                            config = {
+                                'GMAIL_CLIENT_ID': app.config.get('GMAIL_CLIENT_ID', ''),
+                                'GMAIL_CLIENT_SECRET': app.config.get('GMAIL_CLIENT_SECRET', ''),
+                                'GMAIL_REDIRECT_URI': app.config.get('GMAIL_REDIRECT_URI', ''),
+                                'MICROSOFT_CLIENT_ID': app.config.get('MICROSOFT_CLIENT_ID', ''),
+                                'MICROSOFT_CLIENT_SECRET': app.config.get('MICROSOFT_CLIENT_SECRET', ''),
+                                'MICROSOFT_REDIRECT_URI': app.config.get('MICROSOFT_REDIRECT_URI', ''),
+                            }
+                            
+                            provider_name = 'gmail' if account.provider == EmailProvider.GMAIL else 'outlook'
+                            service = get_oauth_service(provider_name, config)
+                            
+                            # Get decrypted tokens (NOW WITHIN APP CONTEXT!)
+                            tokens = account.get_decrypted_tokens()
+                            access_token = tokens.get('access_token')
+                            
+                            if not access_token:
+                                print(f"[EMAIL SCRAPER] No access token for {account.email_address}, skipping")
+                                continue
+                            
+                            # Refresh token if needed
+                            refresh_token = tokens.get('refresh_token')
+                            if refresh_token:
+                                try:
+                                    new_tokens = service.refresh_access_token(refresh_token)
+                                    account.set_encrypted_tokens(new_tokens)
+                                    access_token = new_tokens.get('access_token')
+                                    db_session.commit()
+                                except Exception as refresh_err:
+                                    print(f"[EMAIL SCRAPER] Token refresh failed for {account.email_address}: {refresh_err}")
+                            
+                            # Fetch emails from this account
+                            from datetime import timedelta
+                            since_date = datetime.now() - timedelta(hours=24)
+                            emails = service.fetch_emails(access_token, max_results=50, since_date=since_date)
+                            
+                            print(f"[EMAIL SCRAPER] OAuth fetched {len(emails)} emails from {account.email_address}")
+                            
+                            # Process emails: filter by broker OR insured name, then trigger SMS alerts
+                            from app.models import Broker, Submission
+                            
+                            # Get broker emails for this user
+                            user_brokers = db_session.query(Broker).filter(
+                                Broker.user_id == account.user_id,
+                                Broker.is_enabled == True,
+                                Broker.email.isnot(None)
+                            ).all()
+                            broker_email_set = set(b.email.strip().lower() for b in user_brokers if b.email)
+                            
+                            # Get insured name variants for this user's submissions
+                            user_submissions = db_session.query(Submission).filter(
+                                Submission.assigned_to == account.user_id
+                            ).all()
+                            
+                            insured_variants = set()
+                            for sub in user_submissions:
+                                if sub.insured_name:
+                                    # Simple variant: lowercase full name and significant words
+                                    name_lower = sub.insured_name.strip().lower()
+                                    insured_variants.add(name_lower)
+                                    for word in name_lower.split():
+                                        if len(word) > 3:
+                                            insured_variants.add(word)
+                            
+                            # Filter emails: from a broker OR mentions an insured name
+                            own_email = (account.email_address or '').strip().lower()
+                            matched_emails = []
+                            for em in emails:
+                                from_email = (em.from_email or '').strip().lower() if hasattr(em, 'from_email') else ''
                                 
-                                provider_name = 'gmail' if account.provider == EmailProvider.GMAIL else 'outlook'
-                                service = get_oauth_service(provider_name, config)
-                                
-                                # Get decrypted tokens (NOW WITHIN APP CONTEXT!)
-                                tokens = account.get_decrypted_tokens()
-                                access_token = tokens.get('access_token')
-                                
-                                if not access_token:
-                                    print(f"[EMAIL SCRAPER] No access token for {account.email_address}, skipping")
+                                # Skip emails from self
+                                if from_email == own_email:
                                     continue
                                 
-                                # Refresh token if needed
-                                refresh_token = tokens.get('refresh_token')
-                                if refresh_token:
-                                    try:
-                                        new_tokens = service.refresh_access_token(refresh_token)
-                                        account.set_encrypted_tokens(new_tokens)
-                                        access_token = new_tokens.get('access_token')
-                                        db_session.commit()
-                                    except Exception as refresh_err:
-                                        print(f"[EMAIL SCRAPER] Token refresh failed for {account.email_address}: {refresh_err}")
+                                # Check if from a broker
+                                is_from_broker = from_email in broker_email_set
                                 
-                                # Fetch emails from this account
-                                from datetime import timedelta
-                                since_date = datetime.now() - timedelta(hours=24)
-                                emails = service.fetch_emails(access_token, max_results=50, since_date=since_date)
+                                # Check if subject/body mentions an insured name
+                                subject = (em.subject or '').lower() if hasattr(em, 'subject') else ''
+                                body = (em.body_text or '').lower() if hasattr(em, 'body_text') else ''
+                                combined = f"{subject} {body}"
+                                mentions_insured = any(v in combined for v in insured_variants if len(v) > 3)
                                 
-                                print(f"[EMAIL SCRAPER] OAuth fetched {len(emails)} emails from {account.email_address}")
-                                
-                                # Process emails: filter by broker OR insured name, then trigger SMS alerts
-                                from app.models import Broker, Submission
-                                
-                                # Get broker emails for this user
-                                user_brokers = db_session.query(Broker).filter(
-                                    Broker.user_id == account.user_id,
-                                    Broker.is_enabled == True,
-                                    Broker.email.isnot(None)
-                                ).all()
-                                broker_email_set = set(b.email.strip().lower() for b in user_brokers if b.email)
-                                
-                                # Get insured name variants for this user's submissions
-                                user_submissions = db_session.query(Submission).filter(
-                                    Submission.assigned_to == account.user_id
-                                ).all()
-                                
-                                insured_variants = set()
-                                for sub in user_submissions:
-                                    if sub.insured_name:
-                                        # Simple variant: lowercase full name and significant words
-                                        name_lower = sub.insured_name.strip().lower()
-                                        insured_variants.add(name_lower)
-                                        for word in name_lower.split():
-                                            if len(word) > 3:
-                                                insured_variants.add(word)
-                                
-                                # Filter emails: from a broker OR mentions an insured name
-                                own_email = (account.email_address or '').strip().lower()
-                                matched_emails = []
-                                for em in emails:
-                                    from_email = (em.from_email or '').strip().lower() if hasattr(em, 'from_email') else ''
+                                if is_from_broker or mentions_insured:
+                                    matched_emails.append(em)
+                            
+                            print(f"[EMAIL SCRAPER] {len(matched_emails)} emails matched (broker or insured name) out of {len(emails)}")
+                            oauth_result = {'success': True, 'accounts': len(accounts), 'emails': len(emails), 'matched': len(matched_emails)}
+                            
+                            # Send SMS alerts for matched emails
+                            if matched_emails and app.config.get('SMS_ALERTS_ENABLED', False):
+                                try:
+                                    from app.sms_client import create_sms_client, build_email_alert_text
+                                    from app.models import User, SmsAlert
                                     
-                                    # Skip emails from self
-                                    if from_email == own_email:
-                                        continue
-                                    
-                                    # Check if from a broker
-                                    is_from_broker = from_email in broker_email_set
-                                    
-                                    # Check if subject/body mentions an insured name
-                                    subject = (em.subject or '').lower() if hasattr(em, 'subject') else ''
-                                    body = (em.body_text or '').lower() if hasattr(em, 'body_text') else ''
-                                    combined = f"{subject} {body}"
-                                    mentions_insured = any(v in combined for v in insured_variants if len(v) > 3)
-                                    
-                                    if is_from_broker or mentions_insured:
-                                        matched_emails.append(em)
-                                
-                                print(f"[EMAIL SCRAPER] {len(matched_emails)} emails matched (broker or insured name) out of {len(emails)}")
-                                oauth_result = {'success': True, 'accounts': len(accounts), 'emails': len(emails), 'matched': len(matched_emails)}
-                                
-                                # Send SMS alerts for matched emails
-                                if matched_emails and app.config.get('SMS_ALERTS_ENABLED', False):
-                                    try:
-                                        from app.sms_client import create_sms_client, build_email_alert_text
-                                        from app.models import User, SmsAlert
-                                        
-                                        sms = create_sms_client(app.config)
-                                        if sms:
-                                            user = db_session.query(User).filter_by(id=account.user_id).first()
-                                            if user and user.phone_number and user.sms_alerts_enabled:
-                                                # Dedup: check which provider_message_ids we've already alerted on
-                                                already_alerted_msg_ids = set(
-                                                    row[0] for row in db_session.query(SmsAlert.provider_message_id).filter(
-                                                        SmsAlert.user_id == user.id,
-                                                        SmsAlert.provider_message_id.isnot(None)
-                                                    ).all()
+                                    sms = create_sms_client(app.config)
+                                    if sms:
+                                        user = db_session.query(User).filter_by(id=account.user_id).first()
+                                        if user and user.phone_number and user.sms_alerts_enabled:
+                                            # Dedup: check which provider_message_ids we've already alerted on
+                                            already_alerted_msg_ids = set(
+                                                row[0] for row in db_session.query(SmsAlert.provider_message_id).filter(
+                                                    SmsAlert.user_id == user.id,
+                                                    SmsAlert.provider_message_id.isnot(None)
+                                                ).all()
+                                            )
+                                            
+                                            alerts_sent = 0
+                                            for em in matched_emails:
+                                                from_name = em.from_name if hasattr(em, 'from_name') else ''
+                                                from_email_addr = em.from_email if hasattr(em, 'from_email') else ''
+                                                subject = em.subject if hasattr(em, 'subject') else ''
+                                                att_count = len(em.attachments) if hasattr(em, 'attachments') else 0
+                                                msg_id = em.message_id if hasattr(em, 'message_id') else None
+                                                
+                                                # Skip if we already alerted on this exact email
+                                                if msg_id and msg_id in already_alerted_msg_ids:
+                                                    continue
+                                                
+                                                # Find which submission this matches (if any)
+                                                matched_sub = None
+                                                subj_lower = (subject or '').lower()
+                                                for sub in user_submissions:
+                                                    if sub.insured_name and sub.insured_name.lower() in subj_lower:
+                                                        matched_sub = sub
+                                                        break
+                                                
+                                                # Build alert text
+                                                parts = []
+                                                if matched_sub:
+                                                    parts.append(f"📬 {matched_sub.insured_name}")
+                                                else:
+                                                    parts.append("📬 New email")
+                                                parts.append(f"From: {from_name or from_email_addr}")
+                                                if subject:
+                                                    subj_short = subject[:60] + "..." if len(subject) > 60 else subject
+                                                    parts.append(f"Re: {subj_short}")
+                                                if att_count > 0:
+                                                    parts.append(f"({att_count} attachment{'s' if att_count > 1 else ''})")
+                                                parts.append("")
+                                                parts.append("Reply:")
+                                                parts.append("1) Process")
+                                                parts.append("2) Skip")
+                                                alert_text = '\n'.join(parts)
+                                                
+                                                sms.send_alert(
+                                                    user=user,
+                                                    message=alert_text,
+                                                    submission_id=matched_sub.id if matched_sub else None,
+                                                    provider_message_id=msg_id,
+                                                    connected_account_id=account.id
                                                 )
-                                                
-                                                alerts_sent = 0
-                                                for em in matched_emails:
-                                                    from_name = em.from_name if hasattr(em, 'from_name') else ''
-                                                    from_email_addr = em.from_email if hasattr(em, 'from_email') else ''
-                                                    subject = em.subject if hasattr(em, 'subject') else ''
-                                                    att_count = len(em.attachments) if hasattr(em, 'attachments') else 0
-                                                    msg_id = em.message_id if hasattr(em, 'message_id') else None
-                                                    
-                                                    # Skip if we already alerted on this exact email
-                                                    if msg_id and msg_id in already_alerted_msg_ids:
-                                                        continue
-                                                    
-                                                    # Find which submission this matches (if any)
-                                                    matched_sub = None
-                                                    subj_lower = (subject or '').lower()
-                                                    for sub in user_submissions:
-                                                        if sub.insured_name and sub.insured_name.lower() in subj_lower:
-                                                            matched_sub = sub
-                                                            break
-                                                    
-                                                    # Build alert text
-                                                    parts = []
-                                                    if matched_sub:
-                                                        parts.append(f"📬 {matched_sub.insured_name}")
-                                                    else:
-                                                        parts.append("📬 New email")
-                                                    parts.append(f"From: {from_name or from_email_addr}")
-                                                    if subject:
-                                                        subj_short = subject[:60] + "..." if len(subject) > 60 else subject
-                                                        parts.append(f"Re: {subj_short}")
-                                                    if att_count > 0:
-                                                        parts.append(f"({att_count} attachment{'s' if att_count > 1 else ''})")
-                                                    parts.append("")
-                                                    parts.append("Reply:")
-                                                    parts.append("1) Process")
-                                                    parts.append("2) Skip")
-                                                    alert_text = '\n'.join(parts)
-                                                    
-                                                    sms.send_alert(
-                                                        user=user,
-                                                        message=alert_text,
-                                                        submission_id=matched_sub.id if matched_sub else None,
-                                                        provider_message_id=msg_id,
-                                                        connected_account_id=account.id
-                                                    )
-                                                    already_alerted_msg_ids.add(msg_id)
-                                                    alerts_sent += 1
-                                                
-                                                if alerts_sent > 0:
-                                                    print(f"[SMS ALERTS] Sent {alerts_sent} text alert(s) to {user.phone_number}")
-                                    except Exception as sms_err:
-                                        print(f"[SMS ALERTS] Error in background alert: {sms_err}")
-                                
-                                
-                            except Exception as account_err:
-                                print(f"[EMAIL SCRAPER] Error processing account {account.email_address}: {account_err}")
-                        
-                        db_session.close()
-                    else:
-                        print("[EMAIL SCRAPER] No connected OAuth accounts found")
-                        if scraping_mode == 'oauth':
-                            return  # OAuth mode but no accounts
-                        # auto mode will fall through to IMAP
-                except Exception as oauth_err:
-                    print(f"[EMAIL SCRAPER] OAuth scrape error: {oauth_err}")
-                    if scraping_mode == 'oauth':
-                        return  # OAuth mode - don't try IMAP
-            
-            # === IMAP MODE (fallback or direct) ===
-            if scraping_mode in ('imap', 'auto') and app.config.get('IMAP_PASSWORD'):
-                try:
-                    from app.email_scraper import EmailScraper
+                                                already_alerted_msg_ids.add(msg_id)
+                                                alerts_sent += 1
+                                            
+                                            if alerts_sent > 0:
+                                                print(f"[SMS ALERTS] Sent {alerts_sent} text alert(s) to {user.phone_number}")
+                                except Exception as sms_err:
+                                    print(f"[SMS ALERTS] Error in background alert: {sms_err}")
+                            
+                        except Exception as account_err:
+                            print(f"[EMAIL SCRAPER] Error processing account {account.email_address}: {account_err}")
                     
-                    scraper = EmailScraper(
-                        imap_server=app.config['IMAP_SERVER'],
-                        email_address=app.config['IMAP_EMAIL'],
-                        password=app.config['IMAP_PASSWORD'],
-                        use_ssl=app.config['IMAP_USE_SSL']
-                    )
-                    
-                    # Scrape emails from last 24 hours
-                    since_date = datetime.now() - timedelta(hours=24)
-                    imap_result = scraper.scrape_emails(since_date)
-                    
-                    print(f"[EMAIL SCRAPER] IMAP scrape completed: {imap_result}")
-                    
-                except Exception as imap_err:
-                    print(f"[EMAIL SCRAPER] IMAP scrape error: {imap_err}")
-                    imap_result = {'success': False, 'error': str(imap_err)}
-            elif scraping_mode in ('imap', 'auto') and not app.config.get('IMAP_PASSWORD'):
-                print("[EMAIL SCRAPER] IMAP configured but no password set")
+                    db_session.close()
+                else:
+                    print("[EMAIL SCRAPER] No connected OAuth accounts found")
+                    return
+            except Exception as oauth_err:
+                print(f"[EMAIL SCRAPER] OAuth scrape error: {oauth_err}")
+                return
             
             # Log results
             from app.database import get_session, log_action
@@ -271,9 +238,7 @@ def create_app():
             db_session = get_session()
             try:
                 result_summary = {
-                    'mode': scraping_mode,
                     'oauth': oauth_result,
-                    'imap': imap_result
                 }
                 log_action(
                     entity_type='system',

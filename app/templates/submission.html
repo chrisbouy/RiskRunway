@@ -3086,6 +3086,10 @@
             const numericVisibleIndices = visibleIndices.filter(i => numericKeys.has(allColumns[i].key));
             if (numericVisibleIndices.length === 0 || quotes.length < 2) return;
 
+            // Only highlight if there are multiple distinct quote documents (different fileIndex)
+            const distinctFiles = new Set(quotes.map(q => q.fileIndex || q.quoteIndex));
+            if (distinctFiles.size < 2) return;
+
             const threshold = quoteCompareThreshold;
             const rows = tbody.querySelectorAll('tr');
 
@@ -3097,9 +3101,11 @@
                 coverageGroups[cov].push({ quote: q, rowIdx: idx });
             });
 
-            // For each coverage group with 2+ quotes, compare values
+            // For each coverage group with 2+ quotes from DIFFERENT documents, compare values
             Object.values(coverageGroups).forEach(group => {
-                if (group.length < 2) return;
+                // Only compare if multiple quote documents have this same coverage
+                const distinctDocs = new Set(group.map(g => g.quote.fileIndex || g.quote.quoteIndex));
+                if (distinctDocs.size < 2) return;
 
                 numericVisibleIndices.forEach(colIdx => {
                     const key = allColumns[colIdx].key;
@@ -3140,9 +3146,13 @@
                 });
             });
 
-            // If only one quote per coverage (different coverages), compare all quotes
-            const allSingle = Object.values(coverageGroups).every(g => g.length === 1);
-            if (allSingle && quotes.length >= 2) {
+            // If all coverages are unique (no same-coverage comparisons possible),
+            // compare across all quotes — but ONLY if they come from different documents
+            const allSingle = Object.values(coverageGroups).every(g => {
+                const distinctDocs = new Set(g.map(item => item.quote.fileIndex || item.quote.quoteIndex));
+                return distinctDocs.size <= 1;
+            });
+            if (allSingle && distinctFiles.size >= 2) {
                 numericVisibleIndices.forEach(colIdx => {
                     const key = allColumns[colIdx].key;
                     const values = quotes.map((q, idx) => ({
