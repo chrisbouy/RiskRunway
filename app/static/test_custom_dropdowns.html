@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AgencyPro Plus — Policy Entry</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; color: #212529; padding: 20px; }
+  .header { background: #343a40; color: white; padding: 10px 20px; margin: -20px -20px 20px; font-size: 14px; }
+  .form-section { background: white; border: 1px solid #dee2e6; border-radius: 4px; padding: 16px; margin-bottom: 16px; }
+  .form-section h4 { font-size: 12px; color: #6c757d; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #dee2e6; padding-bottom: 6px; }
+  .row { display: flex; gap: 12px; margin-bottom: 10px; }
+  .field { flex: 1; }
+  .field label { display: block; font-size: 11px; color: #495057; margin-bottom: 4px; font-weight: 600; }
+  .field input { width: 100%; border: 1px solid #ced4da; border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+  .field input:focus { border-color: #80bdff; outline: 0; box-shadow: 0 0 0 2px rgba(0,123,255,.15); }
+
+  /* Custom dropdown (non-native select) */
+  .custom-select-wrapper { position: relative; }
+  .custom-select-trigger {
+    width: 100%; border: 1px solid #ced4da; border-radius: 4px; padding: 6px 10px;
+    font-size: 13px; background: white; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  }
+  .custom-select-trigger::after { content: '▾'; color: #6c757d; }
+  .custom-select-trigger.open { border-color: #80bdff; box-shadow: 0 0 0 2px rgba(0,123,255,.15); }
+  .custom-select-options {
+    display: none; position: absolute; top: 100%; left: 0; right: 0;
+    background: white; border: 1px solid #ced4da; border-top: none; border-radius: 0 0 4px 4px;
+    max-height: 200px; overflow-y: auto; z-index: 100;
+  }
+  .custom-select-options.open { display: block; }
+  .custom-select-option {
+    padding: 6px 10px; font-size: 13px; cursor: pointer;
+  }
+  .custom-select-option:hover { background: #e9ecef; }
+  .custom-select-option.selected { background: #007bff; color: white; }
+
+  /* Hidden input to store selected value */
+  .custom-select-value { display: none; }
+</style>
+</head>
+<body>
+<div class="header">AgencyPro Plus — Policy Entry Module v3.8</div>
+
+<div class="form-section">
+  <h4>Named Insured</h4>
+  <div class="row">
+    <div class="field">
+      <label>Insured Name</label>
+      <input type="text" name="insured_name" id="insured_name">
+    </div>
+    <div class="field">
+      <label>DBA</label>
+      <input type="text" name="dba" id="dba">
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Address</label>
+      <input type="text" name="address" id="address">
+    </div>
+    <div class="field">
+      <label>City</label>
+      <input type="text" name="city" id="city">
+    </div>
+    <div class="field">
+      <label>State</label>
+      <!-- CUSTOM dropdown — not a native <select> -->
+      <div class="custom-select-wrapper" data-custom-select="state">
+        <input type="hidden" name="state" id="state" class="custom-select-value">
+        <div class="custom-select-trigger" data-trigger>Select State</div>
+        <div class="custom-select-options" data-options>
+          <div class="custom-select-option" data-value="AL">Alabama</div>
+          <div class="custom-select-option" data-value="AK">Alaska</div>
+          <div class="custom-select-option" data-value="AZ">Arizona</div>
+          <div class="custom-select-option" data-value="AR">Arkansas</div>
+          <div class="custom-select-option" data-value="CA">California</div>
+          <div class="custom-select-option" data-value="CO">Colorado</div>
+          <div class="custom-select-option" data-value="CT">Connecticut</div>
+          <div class="custom-select-option" data-value="FL">Florida</div>
+          <div class="custom-select-option" data-value="GA">Georgia</div>
+          <div class="custom-select-option" data-value="IL">Illinois</div>
+          <div class="custom-select-option" data-value="IN">Indiana</div>
+          <div class="custom-select-option" data-value="KS">Kansas</div>
+          <div class="custom-select-option" data-value="KY">Kentucky</div>
+          <div class="custom-select-option" data-value="LA">Louisiana</div>
+          <div class="custom-select-option" data-value="MD">Maryland</div>
+          <div class="custom-select-option" data-value="MI">Michigan</div>
+          <div class="custom-select-option" data-value="MN">Minnesota</div>
+          <div class="custom-select-option" data-value="MS">Mississippi</div>
+          <div class="custom-select-option" data-value="MO">Missouri</div>
+          <div class="custom-select-option" data-value="NY">New York</div>
+          <div class="custom-select-option" data-value="NC">North Carolina</div>
+          <div class="custom-select-option" data-value="OH">Ohio</div>
+          <div class="custom-select-option" data-value="OK">Oklahoma</div>
+          <div class="custom-select-option" data-value="PA">Pennsylvania</div>
+          <div class="custom-select-option" data-value="SC">South Carolina</div>
+          <div class="custom-select-option" data-value="TN">Tennessee</div>
+          <div class="custom-select-option" data-value="TX">Texas</div>
+          <div class="custom-select-option" data-value="VA">Virginia</div>
+          <div class="custom-select-option" data-value="WA">Washington</div>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Zip</label>
+      <input type="text" name="zip" id="zip">
+    </div>
+  </div>
+</div>
+
+<div class="form-section">
+  <h4>Policy Information</h4>
+  <div class="row">
+    <div class="field">
+      <label>Carrier</label>
+      <input type="text" name="carrier" id="carrier">
+    </div>
+    <div class="field">
+      <label>Policy Number</label>
+      <input type="text" name="policy_number" id="policy_number">
+    </div>
+    <div class="field">
+      <label>Line of Business</label>
+      <!-- Another custom dropdown -->
+      <div class="custom-select-wrapper" data-custom-select="lob">
+        <input type="hidden" name="line_of_business" id="line_of_business" class="custom-select-value">
+        <div class="custom-select-trigger" data-trigger>Select LOB</div>
+        <div class="custom-select-options" data-options>
+          <div class="custom-select-option" data-value="GL">General Liability</div>
+          <div class="custom-select-option" data-value="CA">Commercial Auto</div>
+          <div class="custom-select-option" data-value="WC">Workers Compensation</div>
+          <div class="custom-select-option" data-value="PROP">Commercial Property</div>
+          <div class="custom-select-option" data-value="UMB">Umbrella / Excess</div>
+          <div class="custom-select-option" data-value="PL">Professional Liability</div>
+          <div class="custom-select-option" data-value="CYBER">Cyber Liability</div>
+          <div class="custom-select-option" data-value="BOP">Business Owners Policy</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Effective Date</label>
+      <input type="text" name="effective_date" id="effective_date">
+    </div>
+    <div class="field">
+      <label>Expiration Date</label>
+      <input type="text" name="expiration_date" id="expiration_date">
+    </div>
+    <div class="field">
+      <label>Annual Premium</label>
+      <input type="text" name="premium" id="premium">
+    </div>
+  </div>
+</div>
+
+<div class="form-section">
+  <h4>Producer</h4>
+  <div class="row">
+    <div class="field">
+      <label>Producer Name</label>
+      <input type="text" name="producer" id="producer">
+    </div>
+    <div class="field">
+      <label>Wholesale Broker</label>
+      <input type="text" name="broker" id="broker">
+    </div>
+    <div class="field">
+      <label>Payment Plan</label>
+      <!-- Custom dropdown for payment -->
+      <div class="custom-select-wrapper" data-custom-select="payment">
+        <input type="hidden" name="payment_plan" id="payment_plan" class="custom-select-value">
+        <div class="custom-select-trigger" data-trigger>Select Plan</div>
+        <div class="custom-select-options" data-options>
+          <div class="custom-select-option" data-value="annual">Annual</div>
+          <div class="custom-select-option" data-value="semi">Semi-Annual</div>
+          <div class="custom-select-option" data-value="quarterly">Quarterly</div>
+          <div class="custom-select-option" data-value="monthly">Monthly</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Custom dropdown behavior
+  document.querySelectorAll('.custom-select-wrapper').forEach(wrapper => {
+    const trigger = wrapper.querySelector('[data-trigger]');
+    const options = wrapper.querySelector('[data-options]');
+    const hiddenInput = wrapper.querySelector('.custom-select-value');
+
+    trigger.addEventListener('click', () => {
+      // Close all others
+      document.querySelectorAll('.custom-select-options.open').forEach(o => {
+        if (o !== options) o.classList.remove('open');
+      });
+      document.querySelectorAll('.custom-select-trigger.open').forEach(t => {
+        if (t !== trigger) t.classList.remove('open');
+      });
+      options.classList.toggle('open');
+      trigger.classList.toggle('open');
+    });
+
+    options.querySelectorAll('.custom-select-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const val = opt.dataset.value;
+        const text = opt.textContent;
+        hiddenInput.value = val;
+        trigger.textContent = text;
+        options.classList.remove('open');
+        trigger.classList.remove('open');
+        // Remove selected from siblings, add to this
+        options.querySelectorAll('.selected').forEach(s => s.classList.remove('selected'));
+        opt.classList.add('selected');
+        // Dispatch change event on hidden input
+        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+  });
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-select-wrapper')) {
+      document.querySelectorAll('.custom-select-options.open').forEach(o => o.classList.remove('open'));
+      document.querySelectorAll('.custom-select-trigger.open').forEach(t => t.classList.remove('open'));
+    }
+  });
+</script>
+</body>
+</html>
