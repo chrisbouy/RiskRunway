@@ -12,8 +12,6 @@ build/
 # TypeScript
 node_modules/
 dist/
-*.js
-*.js.map
 *.d.ts
 
 # IDEs and editors
