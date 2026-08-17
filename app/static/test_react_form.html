@@ -132,6 +132,19 @@
     </div>
   </div>
 
+  <div class="card">
+    <h3>Line Items</h3>
+    <div id="lineItemsContainer">
+      <div class="grid" style="margin-bottom:8px;">
+        <div class="form-group"><label>Coverage</label><input type="text" data-field="line_coverage_1" id="line_coverage_1"></div>
+        <div class="form-group"><label>Description</label><input type="text" data-field="line_desc_1" id="line_desc_1"></div>
+        <div class="form-group"><label>Limit</label><input type="text" data-field="line_limit_1" id="line_limit_1"></div>
+        <div class="form-group"><label>Premium</label><input type="text" data-field="line_premium_1" id="line_premium_1"></div>
+      </div>
+    </div>
+    <button id="addLineBtn" style="background:#6366f1;color:white;border:none;padding:7px 14px;font-size:12px;cursor:pointer;border-radius:6px;font-weight:500;">+ Add Line</button>
+  </div>
+
   <!-- Status display — simulates React state tracking -->
   <div id="stateDisplay" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:12px;font-size:11px;font-family:monospace;color:#6b7280;margin-top:8px;">
     Form state: waiting for input...
@@ -164,6 +177,28 @@
       stateDisplay.textContent = 'Form state: ' + entries.map(([k,v]) => `${k}="${v}"`).join(', ');
     }
   }
+
+  // Line items
+  let lineCount = 1;
+  document.getElementById('addLineBtn').addEventListener('click', function() {
+    lineCount++;
+    const container = document.getElementById('lineItemsContainer');
+    const row = document.createElement('div');
+    row.className = 'grid';
+    row.style.marginBottom = '8px';
+    row.innerHTML = `
+      <div class="form-group"><label>Coverage</label><input type="text" data-field="line_coverage_${lineCount}" id="line_coverage_${lineCount}"></div>
+      <div class="form-group"><label>Description</label><input type="text" data-field="line_desc_${lineCount}" id="line_desc_${lineCount}"></div>
+      <div class="form-group"><label>Limit</label><input type="text" data-field="line_limit_${lineCount}" id="line_limit_${lineCount}"></div>
+      <div class="form-group"><label>Premium</label><input type="text" data-field="line_premium_${lineCount}" id="line_premium_${lineCount}"></div>
+    `;
+    container.appendChild(row);
+    // Wire up state tracking for new fields
+    row.querySelectorAll('[data-field]').forEach(el => {
+      el.addEventListener('input', () => { formState[el.dataset.field] = el.value; updateDisplay(); });
+      el.addEventListener('change', () => { formState[el.dataset.field] = el.value; updateDisplay(); });
+    });
+  });
 </script>
 </body>
 </html>

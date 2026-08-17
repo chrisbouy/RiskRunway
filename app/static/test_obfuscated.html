@@ -118,6 +118,43 @@
       <input type="text" id="f_k3l7m" autocomplete="off">
     </div>
   </div>
+
+  <h2 style="color:#333;border-bottom:2px solid #0066cc;padding-bottom:8px;margin-top:24px;">Line Items</h2>
+  <table id="lineItemsTable" style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
+    <thead>
+      <tr style="background:#e8e8e8;">
+        <th style="padding:6px 8px;text-align:left;border:1px solid #ccc;">Coverage</th>
+        <th style="padding:6px 8px;text-align:left;border:1px solid #ccc;">Description</th>
+        <th style="padding:6px 8px;text-align:left;border:1px solid #ccc;">Limit</th>
+        <th style="padding:6px 8px;text-align:left;border:1px solid #ccc;">Premium</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_coverage_1" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_desc_1" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_limit_1" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_premium_1" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+      </tr>
+    </tbody>
+  </table>
+  <button onclick="addLineItem()" style="background:#0066cc;color:white;border:none;padding:6px 12px;font-size:12px;cursor:pointer;border-radius:3px;">+ Add Line</button>
+
+  <script>
+    let lineCount = 1;
+    function addLineItem() {
+      lineCount++;
+      const tbody = document.querySelector('#lineItemsTable tbody');
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_coverage_${lineCount}" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_desc_${lineCount}" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_limit_${lineCount}" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+        <td style="border:1px solid #ccc;padding:4px;"><input type="text" name="line_premium_${lineCount}" style="width:100%;padding:4px;border:1px solid #999;font-size:12px;"></td>
+      `;
+      tbody.appendChild(row);
+    }
+  </script>
 </div>
 </body>
 </html>

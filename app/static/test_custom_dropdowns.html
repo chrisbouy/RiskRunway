@@ -183,6 +183,19 @@
   </div>
 </div>
 
+<div class="form-section">
+  <h4>Line Items</h4>
+  <div id="lineItemsContainer">
+    <div class="row">
+      <div class="field"><label>Coverage</label><input type="text" name="line_coverage_1" id="line_coverage_1"></div>
+      <div class="field"><label>Description</label><input type="text" name="line_desc_1" id="line_desc_1"></div>
+      <div class="field"><label>Limit</label><input type="text" name="line_limit_1" id="line_limit_1"></div>
+      <div class="field"><label>Premium</label><input type="text" name="line_premium_1" id="line_premium_1"></div>
+    </div>
+  </div>
+  <button id="addLineBtn" style="background:#007bff;color:white;border:none;padding:6px 12px;font-size:12px;cursor:pointer;border-radius:4px;margin-top:8px;">+ Add Line</button>
+</div>
+
 <script>
   // Custom dropdown behavior
   document.querySelectorAll('.custom-select-wrapper').forEach(wrapper => {
@@ -225,6 +238,22 @@
       document.querySelectorAll('.custom-select-options.open').forEach(o => o.classList.remove('open'));
       document.querySelectorAll('.custom-select-trigger.open').forEach(t => t.classList.remove('open'));
     }
+  });
+
+  // Line items
+  let lineCount = 1;
+  document.getElementById('addLineBtn').addEventListener('click', function() {
+    lineCount++;
+    const container = document.getElementById('lineItemsContainer');
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="field"><label>Coverage</label><input type="text" name="line_coverage_${lineCount}" id="line_coverage_${lineCount}"></div>
+      <div class="field"><label>Description</label><input type="text" name="line_desc_${lineCount}" id="line_desc_${lineCount}"></div>
+      <div class="field"><label>Limit</label><input type="text" name="line_limit_${lineCount}" id="line_limit_${lineCount}"></div>
+      <div class="field"><label>Premium</label><input type="text" name="line_premium_${lineCount}" id="line_premium_${lineCount}"></div>
+    `;
+    container.appendChild(row);
   });
 </script>
 </body>

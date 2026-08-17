@@ -80,6 +80,33 @@
         <tr><td class='lbl'>Producer:</td><td><input type='text' name='producer'></td>
             <td class='lbl'>Broker:</td><td><input type='text' name='broker'></td></tr>
       </table>
+
+      <div class='section'>Line Items</div>
+      <table id='lineItemsTable' style='width:100%;margin-bottom:8px;'>
+        <tr style='background:#e8e8e8;'>
+          <td style='padding:4px 6px;font-weight:bold;border:1px solid #aaa;'>Coverage</td>
+          <td style='padding:4px 6px;font-weight:bold;border:1px solid #aaa;'>Description</td>
+          <td style='padding:4px 6px;font-weight:bold;border:1px solid #aaa;'>Limit</td>
+          <td style='padding:4px 6px;font-weight:bold;border:1px solid #aaa;'>Premium</td>
+        </tr>
+        <tr>
+          <td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_coverage_1' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td>
+          <td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_desc_1' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td>
+          <td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_limit_1' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td>
+          <td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_premium_1' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td>
+        </tr>
+      </table>
+      <button onclick='addLineItem()' style='background:#2c3e50;color:white;border:none;padding:5px 10px;font-size:11px;cursor:pointer;'>+ Add Line</button>
+      <script>
+        let lineCount = 1;
+        function addLineItem() {
+          lineCount++;
+          const table = document.getElementById(&quot;lineItemsTable&quot;);
+          const row = document.createElement(&quot;tr&quot;);
+          row.innerHTML = &quot;<td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_coverage_&quot;+lineCount+&quot;' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td><td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_desc_&quot;+lineCount+&quot;' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td><td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_limit_&quot;+lineCount+&quot;' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td><td style='border:1px solid #aaa;padding:3px;'><input type='text' name='line_premium_&quot;+lineCount+&quot;' style='width:100%;padding:3px;border:1px solid #999;font-size:12px;'></td>&quot;;
+          table.appendChild(row);
+        }
+      </script>
     </body>
     </html>
   "></iframe>

@@ -23,6 +23,7 @@ class PolicyForm extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this.lineCount = 1;
     this.shadowRoot.innerHTML = `
       <style>
         .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
@@ -127,7 +128,33 @@ class PolicyForm extends HTMLElement {
           <input type="text" id="broker" name="broker">
         </div>
       </div>
+
+      <h3>Line Items</h3>
+      <div id="lineItemsContainer">
+        <div class="form-grid" style="margin-bottom:8px;">
+          <div class="field"><label>Coverage</label><input type="text" name="line_coverage_1"></div>
+          <div class="field"><label>Description</label><input type="text" name="line_desc_1"></div>
+          <div class="field"><label>Limit</label><input type="text" name="line_limit_1"></div>
+          <div class="field"><label>Premium</label><input type="text" name="line_premium_1"></div>
+        </div>
+      </div>
+      <button id="addLineBtn" style="background:#4fc3f7;color:#1a1a2e;border:none;padding:6px 12px;font-size:11px;cursor:pointer;border-radius:4px;font-weight:600;">+ Add Line</button>
     `;
+
+    this.shadowRoot.getElementById('addLineBtn').addEventListener('click', () => {
+      this.lineCount++;
+      const container = this.shadowRoot.getElementById('lineItemsContainer');
+      const row = document.createElement('div');
+      row.className = 'form-grid';
+      row.style.marginBottom = '8px';
+      row.innerHTML = `
+        <div class="field"><label>Coverage</label><input type="text" name="line_coverage_${this.lineCount}"></div>
+        <div class="field"><label>Description</label><input type="text" name="line_desc_${this.lineCount}"></div>
+        <div class="field"><label>Limit</label><input type="text" name="line_limit_${this.lineCount}"></div>
+        <div class="field"><label>Premium</label><input type="text" name="line_premium_${this.lineCount}"></div>
+      `;
+      container.appendChild(row);
+    });
   }
 }
 customElements.define('policy-form', PolicyForm);

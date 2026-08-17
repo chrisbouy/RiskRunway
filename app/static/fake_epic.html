@@ -522,6 +522,24 @@
       </div>
     </div>
 
+    <!-- Line Items -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Line Items</span>
+        <button class="btn btn-ghost" onclick="addLineItem()">+ Add Line</button>
+      </div>
+      <div class="card-body">
+        <div id="lineItemsContainer">
+          <div class="form-grid-4" style="margin-bottom:12px;">
+            <div class="field"><label>Coverage</label><input type="text" name="line_coverage_1" id="line_coverage_1"></div>
+            <div class="field"><label>Description</label><input type="text" name="line_desc_1" id="line_desc_1"></div>
+            <div class="field"><label>Limit</label><input type="text" name="line_limit_1" id="line_limit_1"></div>
+            <div class="field"><label>Premium</label><input type="text" name="line_premium_1" id="line_premium_1"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Risk / Underwriting -->
     <div class="card">
       <div class="card-header">
@@ -758,6 +776,27 @@
 </div>
 
 <script>
+  // Line items
+  let lineCount = 1;
+  function addLineItem() {
+    lineCount++;
+    const container = document.getElementById('lineItemsContainer');
+    const row = document.createElement('div');
+    row.className = 'form-grid-4';
+    row.style.marginBottom = '12px';
+    row.innerHTML = `
+      <div class="field"><label>Coverage</label><input type="text" name="line_coverage_${lineCount}" id="line_coverage_${lineCount}"></div>
+      <div class="field"><label>Description</label><input type="text" name="line_desc_${lineCount}" id="line_desc_${lineCount}"></div>
+      <div class="field"><label>Limit</label><input type="text" name="line_limit_${lineCount}" id="line_limit_${lineCount}"></div>
+      <div class="field"><label>Premium</label><input type="text" name="line_premium_${lineCount}" id="line_premium_${lineCount}"></div>
+    `;
+    container.appendChild(row);
+    // Wire up highlight for new inputs
+    row.querySelectorAll('input').forEach(el => {
+      el.addEventListener('input', () => { el.classList.toggle('filled', !!el.value.trim()); });
+    });
+  }
+
   // Highlight filled fields
   document.querySelectorAll('input, select, textarea').forEach(el => {
     el.addEventListener('input', () => {
