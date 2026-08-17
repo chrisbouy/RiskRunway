@@ -392,6 +392,10 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('sms_alerts', 'provider_message_id', 'VARCHAR(500)')
         _safe_add_column('sms_alerts', 'connected_account_id', 'INTEGER')
 
+    # ams_export_jobs
+    if 'ams_export_jobs' in table_names:
+        _safe_add_column('ams_export_jobs', 'quote_facts_json', 'TEXT')
+
 
 def _ensure_audit_log_delete_constraints(conn, inspector):
     """Keep audit history when its submission or quote is deleted."""

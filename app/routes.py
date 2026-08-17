@@ -10,6 +10,7 @@ import requests
 import base64
 import uuid
 import shutil
+import threading
 from functools import wraps
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
@@ -6708,7 +6709,85 @@ def ams_vision():
 
 # ============================================================================
 # AMS EXTENSION FILL — Chrome extension enumerates DOM fields, server matches
+#
+# Two stages, so the expensive part happens exactly once per export job:
+#
+#   Stage A (once per job): read the quote page images with a vision model and
+#           extract an exhaustive flat dict of insurance facts. Cached in memory
+#           and persisted to AmsExportJob.quote_facts_json.
+#   Stage B (per request):  match those facts to the DOM fields the extension
+#           enumerated, using a cheap text-only model. No images, sub-second.
+#
+# Previously every request re-uploaded full-resolution page images to Sonnet and
+# re-did the reading work, which is why a single export cost 7 vision calls.
 # ============================================================================
+
+_AMS_FACTS_CACHE = {}
+_AMS_FACTS_LOCK = threading.Lock()
+
+
+def _load_quote_images_for_job(job):
+    """Load quote page images from disk for a job."""
+    from PIL import Image
+
+    db_session = get_session()
+    try:
+        quotes = []
+        if job.quote_id:
+            quote = db_session.query(Quote).filter_by(id=job.quote_id).first()
+            if quote:
+                quotes = [quote]
+        if not quotes:
+            quotes = db_session.query(Quote).filter_by(submission_id=job.submission_id).all()
+
+        for quote in quotes:
+            if not quote.pass1_layout_json:
+                continue
+            layout = json.loads(quote.pass1_layout_json)
+            images = []
+            for page in layout.get('pages', []):
+                img_path = page.get('image_path')
+                if not img_path:
+                    continue
+                if os.path.exists(img_path):
+                    images.append(Image.open(img_path).convert("RGB"))
+            if images:
+                return images
+        return []
+    finally:
+        db_session.close()
+
+
+def _compact_fields_for_prompt(fields):
+    """
+    Compact the enumerated field payload for the vision prompt.
+    Keep labels, selectors, types, and select options — strip noise.
+    """
+    compact = []
+    for f in fields:
+        if not isinstance(f, dict) or not f.get('selector'):
+            continue
+        item = {
+            's': f.get('selector'),
+            'label': (f.get('label') or f.get('name') or f.get('id') or '').strip()[:120],
+        }
+        tag = (f.get('tag') or '').lower()
+        ftype = (f.get('type') or '').lower()
+        if tag == 'select':
+            item['type'] = 'select'
+            opts = []
+            for opt in (f.get('options') or []):
+                text = (opt.get('text') or opt.get('value') or '').strip()
+                if text and text not in ('— Select —', '-- Select --'):
+                    opts.append(text)
+            item['options'] = opts[:60]
+        elif tag == 'textarea':
+            item['type'] = 'textarea'
+        elif ftype and ftype != 'text':
+            item['type'] = ftype
+        compact.append(item)
+    return compact
+
 
 @bp.route('/api/ams/extension-fill', methods=['POST'])
 def ams_extension_fill():
@@ -6716,87 +6795,157 @@ def ams_extension_fill():
     Called by the Chrome extension content script.
     Receives: job_id + list of form fields (with labels, types, options).
     Returns: fill instructions mapping selectors to values.
-    Uses Claude to match quote data to the available form fields.
+
+    The model sees quote page images + the field list together in one call —
+    exactly the original approach that achieved 41 fields. The result is cached
+    per job so any follow-up call (for newly revealed fields after filling)
+    does a cheap text-only match against the cached extraction instead.
     """
     try:
         import settings as settings_module
         from app.parsers.llm_parsers import BedrockClient
 
+        request_started = time.time()
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'error': 'No JSON payload'}), 400
 
         job_id = data.get('job_id')
         fields = data.get('fields', [])
+        already_filled = data.get('already_filled') or []
 
+        if not job_id:
+            return jsonify({'success': False, 'error': 'job_id is required'}), 400
         if not fields:
             return jsonify({'success': False, 'error': 'No fields provided'}), 400
 
-        # Load quote images for this job
-        quote_images = []
-        if job_id:
+        compact_fields = _compact_fields_for_prompt(fields)
+        if not compact_fields:
+            return jsonify({'success': True, 'fills': {}})
+
+        valid_selectors = {f['s'] for f in compact_fields}
+        fields_json = json.dumps(compact_fields, separators=(',', ':'))
+
+        # Check if we have cached facts from a previous call on this job.
+        cached_facts = _AMS_FACTS_CACHE.get(job_id)
+
+        if cached_facts:
+            # ── Fast path: match new fields against already-extracted facts ──
+            skip_note = ""
+            if already_filled:
+                skip_note = f"\nAlready filled, do not return these selectors: {json.dumps(sorted(already_filled))}\n"
+
+            prompt = (
+                "You are mapping insurance policy data onto an AMS web form.\n\n"
+                "QUOTE DATA (the only source of truth — do not invent anything not here):\n"
+                f"{json.dumps(cached_facts, separators=(',', ':'))}\n\n"
+                "FORM FIELDS (\"s\" = selector to use as key, \"label\" = visible label):\n"
+                f"{fields_json}\n\n"
+                "Return a JSON object: key = the \"s\" value verbatim, value = {{\"value\":\"...\"}} "
+                "if data matches, or null if not. One entry per field.\n\n"
+                "RULES:\n"
+                "- Never fabricate. Use null if no match.\n"
+                "- For select fields, value MUST be an exact option from the field's \"options\" list.\n"
+                "- Broker = wholesale broker. Producer = retail agent.\n"
+                "- Dates MM/DD/YYYY. Currency digits only (no $). State 2-letter. ALL CAPS for text.\n"
+                f"{skip_note}\n"
+                "Return ONLY valid JSON. No explanation."
+            )
+
+            match_model = getattr(settings_module, 'BEDROCK_MATCH_MODEL', None) or settings_module.BEDROCK_VISION_MODEL
+            client = BedrockClient(model=match_model, region=settings_module.BEDROCK_REGION)
+            fills = client.generate_json(prompt, max_tokens=8192) or {}
+            facts_source = 'cached'
+
+        else:
+            # ── First call: vision — model sees images + fields together ──────
             db_session = get_session()
             try:
                 job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
-                if job and job.quote_id:
-                    quote = db_session.query(Quote).filter_by(id=job.quote_id).first()
-                    if quote and quote.pass1_layout_json:
-                        from PIL import Image
-                        layout = json.loads(quote.pass1_layout_json)
-                        for page in layout.get('pages', []):
-                            img_path = page.get('image_path')
-                            if img_path and os.path.exists(img_path):
-                                quote_images.append(Image.open(img_path).convert("RGB"))
-                elif job:
-                    quotes = db_session.query(Quote).filter_by(submission_id=job.submission_id).all()
-                    for quote in quotes:
-                        if quote.pass1_layout_json:
-                            from PIL import Image
-                            layout = json.loads(quote.pass1_layout_json)
-                            for page in layout.get('pages', []):
-                                img_path = page.get('image_path')
-                                if img_path and os.path.exists(img_path):
-                                    quote_images.append(Image.open(img_path).convert("RGB"))
-                            break
+                if not job:
+                    return jsonify({'success': False, 'error': f'Job {job_id} not found'}), 404
+                quote_images = _load_quote_images_for_job(job)
             finally:
                 db_session.close()
 
-        if not quote_images:
-            return jsonify({'success': False, 'error': 'No quote images found for this job'}), 400
+            if not quote_images:
+                return jsonify({'success': False, 'error': 'No quote images found for this job'}), 400
 
-        # Build prompt: field list + quote images → ask Claude to match
-        fields_description = json.dumps(fields, indent=2)
+            num_pages = len(quote_images)
+            skip_note = ""
+            if already_filled:
+                skip_note = f"\nFields already filled (skip these selectors): {json.dumps(sorted(already_filled))}\n"
 
-        prompt = (
-            "You are matching insurance quote data to form fields.\n\n"
-            "Below is a list of empty form fields from an AMS (Agency Management System) web form. "
-            "Each field has a label, type, selector, and for dropdowns, available options.\n\n"
-            f"FORM FIELDS:\n{fields_description}\n\n"
-            "The images show pages from an insurance quote document.\n\n"
-            "YOUR TASK:\n"
-            "- Read the quote document to extract all relevant data\n"
-            "- Match extracted data to the appropriate form fields\n"
-            "- For dropdown/select fields, pick the closest matching option from the available options list\n"
-            "- Format dates as MM/DD/YYYY, currency as digits only (no $), states as 2-letter codes\n"
-            "- Type all values in ALL CAPS\n"
-            "- Only match data you can clearly read from the quote — do not guess\n"
-            "- Skip fields where no matching data exists in the quote\n\n"
-            "Return ONLY valid JSON mapping each field's selector to its value:\n"
-            '{\n'
-            '  "#insured_name": {"value": "ACME CORP LLC"},\n'
-            '  "#state": {"value": "LA"},\n'
-            '  "[name=\\"effective_date\\"]": {"value": "02/10/2026"}\n'
-            '}\n'
-            "Only include fields you have confident matches for."
+            prompt = (
+                f"You are looking at {num_pages} images from an insurance quote document.\n\n"
+                "Below is a list of empty form fields from an AMS (Agency Management System) web form. "
+                "Each field has \"s\" (selector — use as JSON key), \"label\", optional \"type\", "
+                "and for selects the allowed \"options\".\n\n"
+                f"FORM FIELDS:\n{fields_json}\n\n"
+                "YOUR TASK:\n"
+                "1. Read the quote document images to extract ALL relevant insurance data.\n"
+                "2. Match extracted data to the appropriate form fields.\n"
+                "3. For dropdown/select fields, pick the closest matching option from that field's options list.\n"
+                "4. Format: dates MM/DD/YYYY, currency digits only (no $), states as 2-letter codes.\n"
+                "5. Type all text values in ALL CAPS, except select values which must match options exactly.\n"
+                "6. Only match data you can clearly read from the quote — do not guess.\n"
+                "7. Skip fields where no matching data exists in the quote.\n"
+                "8. Broker field = wholesale broker. Producer field = retail agent.\n\n"
+                f"{skip_note}"
+                "Return ONLY valid JSON mapping selector to {{\"value\": \"...\"}}\n"
+                "Example: {\"#insured_name\":{\"value\":\"ACME CORP LLC\"},\"#state\":{\"value\":\"LA\"}}\n\n"
+                "Include ALL fields you have confident matches for. Be thorough — check every field."
+            )
+
+            client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+            fills = client.generate_json_with_images(prompt, quote_images, max_width=1000) or {}
+            facts_source = 'vision'
+
+            # Cache the matched values (keyed by label) so follow-up calls for
+            # newly revealed fields can use a cheap text-only match.
+            flat_facts = {}
+            for selector, payload in fills.items():
+                if isinstance(payload, dict) and payload.get('value'):
+                    label = next((f['label'] for f in compact_fields if f['s'] == selector), selector)
+                    flat_facts[label] = payload['value']
+            _AMS_FACTS_CACHE[job_id] = flat_facts
+
+            # Persist to DB for durability across container restarts
+            try:
+                db_session = get_session()
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job:
+                    job.quote_facts_json = json.dumps(flat_facts)
+                    db_session.commit()
+                db_session.close()
+            except Exception:
+                pass
+
+        # ── Clean up: drop nulls, invalids, already-filled ───────────────────
+        already = set(already_filled)
+        clean_fills = {}
+        for selector, payload in fills.items():
+            if selector not in valid_selectors or selector in already:
+                continue
+            if payload is None:
+                continue
+            value = payload.get('value') if isinstance(payload, dict) else payload
+            if value is None or str(value).strip() == '':
+                continue
+            clean_fills[selector] = {'value': str(value)}
+
+        elapsed = time.time() - request_started
+        logger.info(
+            f"[AMS Extension Fill] job={job_id} source={facts_source} "
+            f"fields={len(compact_fields)} matched={len(clean_fills)} "
+            f"elapsed={elapsed:.2f}s"
         )
 
-        # Call Claude with quote images
-        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
-        fills = client.generate_json_with_images(prompt, quote_images)
-
-        logger.info(f"[AMS Extension Fill] Matched {len(fills)} fields for job {job_id}")
-
-        return jsonify({'success': True, 'fills': fills})
+        return jsonify({
+            'success': True,
+            'fills': clean_fills,
+            'facts_source': facts_source,
+        })
 
     except Exception as e:
         logger.error(f"[AMS Extension Fill] Error: {e}", exc_info=True)
@@ -7085,7 +7234,8 @@ def create_ams_export_job():
             db_session.commit()
             db_session.refresh(job)
             job_id   = job.id
-            job_dict = job.to_dict()             
+            job_dict = job.to_dict()
+
             # Log the action
             log_action(
                 entity_type='submission',

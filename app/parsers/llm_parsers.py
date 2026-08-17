@@ -4,8 +4,37 @@ import json
 import time
 import random
 import base64
+import threading
 from io import BytesIO
 import boto3
+
+# Reused bedrock-runtime clients, keyed by region.
+# Constructing a boto3 client costs real time (session + credential resolution),
+# so never build one per request.
+_BEDROCK_CLIENTS = {}
+_BEDROCK_CLIENT_LOCK = threading.Lock()
+
+
+def _get_bedrock_runtime(region: str):
+    client = _BEDROCK_CLIENTS.get(region)
+    if client is None:
+        with _BEDROCK_CLIENT_LOCK:
+            client = _BEDROCK_CLIENTS.get(region)
+            if client is None:
+                from botocore.config import Config
+                client = boto3.client(
+                    "bedrock-runtime",
+                    region_name=region,
+                    config=Config(
+                        retries={"max_attempts": 2, "mode": "standard"},
+                        read_timeout=120,
+                        connect_timeout=10,
+                        max_pool_connections=25,
+                    ),
+                )
+                _BEDROCK_CLIENTS[region] = client
+    return client
+
 
 class LLMClient:
     def generate_json(self, prompt: str) -> dict:
@@ -20,14 +49,32 @@ class LLMClient:
         raise NotImplementedError("This LLM client does not support vision.")
 
     @staticmethod
-    def _pil_to_base64(image, format="JPEG") -> str:
-        """Convert a PIL image to a base64-encoded string."""
+    def _pil_to_bytes(image, format="JPEG", quality=85, max_width=None) -> bytes:
+        """
+        Encode a PIL image to raw bytes for upload.
+
+        max_width downscales wide images before encoding. A 200-DPI letter page
+        is ~1700px wide; 1000px is plenty for reading printed text and cuts both
+        payload size and model latency substantially.
+        """
+        if max_width and image.width > max_width:
+            from PIL import Image as _PILImage
+            ratio = max_width / image.width
+            image = image.resize(
+                (max_width, int(image.height * ratio)), _PILImage.LANCZOS
+            )
+
         buffer = BytesIO()
         # JPEG doesn't support alpha channel, convert if needed
         if format.upper() == "JPEG" and image.mode in ("RGBA", "P", "LA"):
             image = image.convert("RGB")
-        image.save(buffer, format=format, quality=85)
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        image.save(buffer, format=format, quality=quality)
+        return buffer.getvalue()
+
+    @classmethod
+    def _pil_to_base64(cls, image, format="JPEG") -> str:
+        """Convert a PIL image to a base64-encoded string."""
+        return base64.b64encode(cls._pil_to_bytes(image, format=format)).decode("utf-8")
 
 class GroqClient(LLMClient):
     def __init__(self, api_key: str, model="llama-3.3-70b-versatile"):
@@ -134,9 +181,9 @@ class BedrockClient(LLMClient):
     def __init__(self, model="us.anthropic.claude-haiku-4-5-20251001-v1:0", region="us-east-1"):
         self.model = model
         self.region = region
-        self.client = boto3.client("bedrock-runtime", region_name=self.region) 
+        self.client = _get_bedrock_runtime(region)
 
-    def generate_json(self, prompt: str) -> dict:
+    def generate_json(self, prompt: str, max_tokens: int = 8192) -> dict:
         response = self.client.converse(
             modelId=self.model,
             messages=[
@@ -147,11 +194,15 @@ class BedrockClient(LLMClient):
                     ]
                 }
             ],
+            inferenceConfig={"maxTokens": max_tokens, "temperature": 0},
             # Bedrock usually returns a content list of text blocks
         )
 
         content_blocks = response["output"]["message"]["content"]
         full_text = "".join(block.get("text", "") for block in content_blocks)
+        if response.get("stopReason") == "max_tokens":
+            # Would otherwise surface as a confusing json.loads error below.
+            print(f"[Bedrock] WARNING: output truncated at maxTokens={max_tokens} — JSON is incomplete")
         full_text = full_text.strip()
         if full_text.startswith("```json"):
             full_text = full_text[7:].strip()
@@ -162,21 +213,32 @@ class BedrockClient(LLMClient):
 
         return json.loads(full_text)
 
-    def generate_json_with_images(self, prompt: str, images: list) -> dict:
-        """Send images + prompt to Bedrock Claude vision."""
+    def generate_json_with_images(self, prompt: str, images: list,
+                                  max_tokens: int = 8192, max_width: int = None) -> dict:
+        """
+        Send images + prompt to Bedrock Claude vision.
+
+        max_width defaults to None (no resize) because some callers ask the model
+        for pixel coordinates on the image it was given — downscaling there would
+        silently shift every coordinate. Callers that only read text out of the
+        image should pass max_width=1000 for a large latency win.
+        """
         content_parts = []
+        total_bytes = 0
         for img in images:
-            b64 = self._pil_to_base64(img, format="JPEG")
+            raw = self._pil_to_bytes(img, format="JPEG", max_width=max_width)
+            total_bytes += len(raw)
             content_parts.append({
                 "image": {
                     "format": "jpeg",
                     "source": {
-                        "bytes": base64.b64decode(b64)
+                        "bytes": raw
                     }
                 }
             })
         content_parts.append({"text": prompt})
 
+        started = time.time()
         response = self.client.converse(
             modelId=self.model,
             messages=[
@@ -185,14 +247,23 @@ class BedrockClient(LLMClient):
                     "content": content_parts
                 }
             ],
+            inferenceConfig={"maxTokens": max_tokens, "temperature": 0},
         )
+        elapsed = time.time() - started
 
         content_blocks = response["output"]["message"]["content"]
         full_text = "".join(block.get("text", "") for block in content_blocks)
 
         # Log the raw response for debugging empty/unexpected replies
         stop_reason = response.get("stopReason", "unknown")
-        print(f"[Bedrock Vision] stopReason={stop_reason}, response_len={len(full_text)}, raw={full_text[:300]!r}")
+        usage = response.get("usage", {})
+        print(
+            f"[Bedrock Vision] {elapsed:.2f}s, {len(images)} img ({total_bytes // 1024}KB), "
+            f"in={usage.get('inputTokens')} out={usage.get('outputTokens')}, "
+            f"stopReason={stop_reason}, response_len={len(full_text)}, raw={full_text[:300]!r}"
+        )
+        if stop_reason == "max_tokens":
+            print("[Bedrock Vision] WARNING: output truncated at maxTokens — JSON will be incomplete")
 
         full_text = full_text.strip()
         if full_text.startswith("```json"):

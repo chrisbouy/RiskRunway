@@ -615,6 +615,11 @@ class AmsExportJob(Base):
     json_data = Column(Text, nullable=False)  # The extracted quote data to enter into AMS
     instructions = Column(Text, nullable=True)  # Optional custom instructions
 
+    # Cached result of reading the quote page images with the vision model.
+    # Populated on the first AMS fill request for this job so subsequent
+    # requests skip the vision call entirely.
+    quote_facts_json = Column(Text, nullable=True)
+
     # Status tracking
     status = Column(String(20), default='pending', nullable=False)  # pending, in_progress, completed, failed
     attempt_count = Column(Integer, default=0, nullable=False)

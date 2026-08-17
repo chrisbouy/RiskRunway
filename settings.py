@@ -17,6 +17,10 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 # GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 BEDROCK_VISION_MODEL = os.getenv("BEDROCK_VISION_MODEL", "us.anthropic.claude-sonnet-4-6")
+# Text-only model used to match already-extracted quote facts to AMS form fields.
+# Uses the same model as vision by default since matching requires reasoning about
+# insurance terminology (e.g. "Products / Comp Ops" = products/completed operations limit).
+BEDROCK_MATCH_MODEL = os.getenv("BEDROCK_MATCH_MODEL", "us.anthropic.claude-sonnet-4-6")
 
 BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-east-1")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")

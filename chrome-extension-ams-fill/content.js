@@ -45,6 +45,9 @@ function showBlockingOverlay() {
       <div style="font-size: 14px; color: #8892b0;">
         Do not click or type while data is being transferred
       </div>
+      <div data-rr-status style="font-size: 12px; color: #6b7394; margin-top: 10px;">
+        Starting...
+      </div>
     </div>
   `;
   // Block all interaction
@@ -56,6 +59,14 @@ function showBlockingOverlay() {
   overlay.addEventListener('mousedown', blockMouse, true);
   overlay._blockers = { blockClick, blockKey, blockMouse };
   document.body.appendChild(overlay);
+}
+
+// Update the sub-line of the blocking overlay so the user can see progress.
+function setOverlayStatus(text) {
+  const content = document.getElementById('riskrunway-overlay-content');
+  if (!content) return;
+  const sub = content.querySelector('[data-rr-status]');
+  if (sub) sub.textContent = text;
 }
 
 function showReviewOverlay(filledCount) {
@@ -125,72 +136,118 @@ function showErrorOverlay(errorMsg) {
 
 // ─── Main Fill Logic ─────────────────────────────────────────────────────────
 
+// Max server round trips.
+//
+// Round 1 asks about every field on the page and the model answers every one of
+// them explicitly (match or no-match), so there is nothing for a retry to
+// "recover". Re-asking about a field the model already declined is not free:
+// measured against a real quote, a second pass over the same fields produced
+// mostly wrong values (the underwriter's name pushed into Account Executive, an
+// operations description pushed into the Products/Completed Ops limit, a fee
+// total the quote never stated). That is what the old 6-pass loop was doing.
+//
+// So round 2 exists only for selectors that did not exist during round 1 — a
+// section the form revealed after being filled. Same fields are never re-asked.
+const MAX_ROUNDS = 2;
+
 async function handleEnumerateAndFill({ job_id, server_url }) {
   try {
     // Show blocking overlay immediately
     showBlockingOverlay();
 
-    let totalFilled = 0;
-    let scrollAttempts = 0;
-    const maxScrolls = 6;
+    // Some AMS forms render sections lazily on scroll. Sweep the page once up
+    // front so everything is in the DOM before we enumerate. This used to be
+    // interleaved with the server calls, which cost one LLM call per scroll step.
+    await revealLazyContent();
 
-    while (scrollAttempts <= maxScrolls) {
-      // 1. Enumerate all empty form fields
-      const fields = enumerateFields();
-      
+    const filledSelectors = new Set();
+    const askedSelectors = new Set();
+    let totalFilled = 0;
+
+    for (let round = 1; round <= MAX_ROUNDS; round++) {
+      // 1. Enumerate empty fields, skipping anything already filled or already
+      //    declined by the model. `askedSelectors` is what prevents re-asking.
+      const fields = enumerateFields(askedSelectors);
+
       if (fields.length === 0) {
-        if (scrollAttempts === 0 && totalFilled === 0) {
+        if (round === 1) {
           showErrorOverlay('No empty form fields found on this page');
           return { success: false, error: 'No form fields found on this page' };
         }
+        // Nothing new appeared — done.
         break;
       }
+
+      if (round > 1) {
+        console.log(`[AMS Fill] ${fields.length} field(s) appeared after filling, matching those too`);
+      }
+      fields.forEach(f => askedSelectors.add(f.selector));
+
+      setOverlayStatus(round === 1 ? 'Reading quote and matching fields...' : 'Matching newly revealed fields...');
 
       // 2. Send field list to server for AI matching
       const response = await fetch(`${server_url}/api/ams/extension-fill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id, fields })
+        body: JSON.stringify({
+          job_id,
+          fields,
+          already_filled: Array.from(filledSelectors)
+        })
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        showErrorOverlay(err.error || 'Server error');
-        return { success: false, error: err.error || 'Server error' };
+        let msg = 'Server error';
+        try { msg = (await response.json()).error || msg; } catch (e) {}
+        // A failed top-up round should not discard a successful first round.
+        if (round > 1 && totalFilled > 0) break;
+        showErrorOverlay(msg);
+        return { success: false, error: msg };
       }
 
       const data = await response.json();
       if (!data.success) {
+        if (round > 1 && totalFilled > 0) break;
         showErrorOverlay(data.error || 'Matching failed');
         return { success: false, error: data.error || 'Matching failed' };
       }
 
-      // 3. Fill fields one by one with visual feedback (top to bottom)
       const fills = data.fills || {};
-      let filledThisPass = 0;
+      const entries = Object.entries(fills);
+      if (entries.length === 0) break;
 
-      // Sort fills by vertical position on page so we fill top-to-bottom
-      const sortedFills = Object.entries(fills).sort((a, b) => {
-        const elA = resolveElement(a[0]);
-        const elB = resolveElement(b[0]);
-        const yA = elA ? elA.getBoundingClientRect().top : 0;
-        const yB = elB ? elB.getBoundingClientRect().top : 0;
-        return yA - yB;
-      });
+      // 3. Fill fields with visual feedback, top to bottom.
+      //    Resolve elements and cache positions once instead of per comparison.
+      setOverlayStatus('Filling form...');
+      const targets = entries
+        .map(([selector, fillData]) => {
+          const el = resolveElement(selector);
+          return el ? { selector, fillData, el, y: absoluteTop(el) } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.y - b.y);
 
-      for (const [selector, fillData] of sortedFills) {
-        const filled = await fillFieldWithAnimation(selector, fillData);
-        if (filled) filledThisPass++;
+      // Keep the whole animation inside a fixed time budget so a 60-field form
+      // is not 60x slower than a 5-field one.
+      const perFieldDelay = Math.max(8, Math.min(60, Math.floor(1500 / Math.max(targets.length, 1))));
+
+      let filledThisRound = 0;
+      for (const target of targets) {
+        const filled = await fillFieldWithAnimation(target, perFieldDelay);
+        if (filled) {
+          filledSelectors.add(target.selector);
+          filledThisRound++;
+        }
       }
 
-      totalFilled += filledThisPass;
+      totalFilled += filledThisRound;
 
-      // 4. Scroll down to reveal more fields
-      const scrolled = scrollDown();
-      if (!scrolled) break;
-      
-      scrollAttempts++;
-      await new Promise(r => setTimeout(r, 500));
+      // Nothing landed this round — another round will not do better.
+      if (filledThisRound === 0) break;
+
+      // Give the form a moment to render anything the fills unlocked, then the
+      // next iteration checks whether any genuinely new field appeared.
+      await new Promise(r => setTimeout(r, 250));
     }
 
     // Show review overlay
@@ -203,26 +260,51 @@ async function handleEnumerateAndFill({ job_id, server_url }) {
   }
 }
 
+// Scroll to the bottom and back to trigger lazy rendering / virtualized sections,
+// then restore the original scroll position.
+async function revealLazyContent() {
+  const original = window.scrollY;
+  const step = window.innerHeight * 0.9;
+  let guard = 0;
+  let last = -1;
+
+  while (guard++ < 12 && window.scrollY !== last) {
+    last = window.scrollY;
+    window.scrollBy(0, step);
+    await new Promise(r => setTimeout(r, 60));
+    if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) break;
+  }
+
+  window.scrollTo(0, original);
+  await new Promise(r => setTimeout(r, 60));
+}
+
+function absoluteTop(el) {
+  return el.getBoundingClientRect().top + window.scrollY;
+}
+
 // ─── Fill with animation ─────────────────────────────────────────────────────
 
-async function fillFieldWithAnimation(selector, fillData) {
-  const el = resolveElement(selector);
+async function fillFieldWithAnimation(target, perFieldDelay) {
+  const { el, fillData } = target;
   if (!el) return false;
 
-  const value = fillData.value;
+  const value = fillData && fillData.value;
   if (!value) return false;
 
   try {
-    // Scroll into view only if not visible
+    // Scroll into view only if not visible. Instant scroll — 'smooth' forced a
+    // 300ms wait per off-screen field, which dominated runtime on long forms.
     const rect = el.getBoundingClientRect();
     const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
     if (!inView) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await new Promise(r => setTimeout(r, 300));
+      el.scrollIntoView({ behavior: 'auto', block: 'center' });
     }
 
     // Brief pause so user can see which field is being filled
-    await new Promise(r => setTimeout(r, 150));
+    if (perFieldDelay > 0) {
+      await new Promise(r => setTimeout(r, perFieldDelay));
+    }
 
     // Fill the value
     if (el.tagName === 'SELECT') {
@@ -262,26 +344,27 @@ async function fillFieldWithAnimation(selector, fillData) {
 
     return true;
   } catch (e) {
-    console.error(`Failed to fill ${selector}:`, e);
+    console.error(`Failed to fill ${target.selector}:`, e);
     return false;
   }
 }
 
 // ─── Field Enumeration ───────────────────────────────────────────────────────
 
-function enumerateFields() {
+function enumerateFields(filledSelectors) {
   const fields = [];
-  
+  const skip = filledSelectors || new Set();
+
   // Collect fields from main document
-  collectFieldsFromRoot(document, fields, '');
-  
+  collectFieldsFromRoot(document, fields, '', skip);
+
   // Collect fields from iframes
   const iframes = document.querySelectorAll('iframe');
   for (let i = 0; i < iframes.length; i++) {
     try {
       const iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow?.document;
       if (iframeDoc) {
-        collectFieldsFromRoot(iframeDoc, fields, `iframe[${i}]:`);
+        collectFieldsFromRoot(iframeDoc, fields, `iframe[${i}]:`, skip);
       }
     } catch (e) {
       // Cross-origin iframe — can't access, skip
@@ -291,21 +374,21 @@ function enumerateFields() {
   return fields;
 }
 
-function collectFieldsFromRoot(root, fields, prefix) {
+function collectFieldsFromRoot(root, fields, prefix, skip) {
   const elements = root.querySelectorAll('input, select, textarea');
-  processElements(elements, fields, prefix, root);
+  processElements(elements, fields, prefix, root, skip);
 
   // Pierce Shadow DOM — check all elements for shadow roots
   const allElements = root.querySelectorAll('*');
   for (const el of allElements) {
     if (el.shadowRoot) {
       const shadowElements = el.shadowRoot.querySelectorAll('input, select, textarea');
-      processElements(shadowElements, fields, prefix + 'shadow:', el.shadowRoot);
+      processElements(shadowElements, fields, prefix + 'shadow:', el.shadowRoot, skip);
     }
   }
 }
 
-function processElements(elements, fields, prefix, root) {
+function processElements(elements, fields, prefix, root, skip) {
   for (const el of elements) {
     if (el.type === 'hidden' || el.disabled || el.readOnly) continue;
     if (el.offsetParent === null) continue;
@@ -316,6 +399,11 @@ function processElements(elements, fields, prefix, root) {
 
     const label = getFieldLabel(el, root);
     const selector = prefix + buildSelector(el, root);
+
+    // Selects always report a value, so the check above never excludes them.
+    // Without this, every already-set dropdown gets re-sent to the model on each
+    // round and re-answered forever.
+    if (skip && skip.has(selector)) continue;
 
     const fieldInfo = {
       selector: selector,
@@ -386,12 +474,6 @@ function buildSelector(el, root) {
     current = current.parentElement;
   }
   return path.join(' > ');
-}
-
-function scrollDown() {
-  const before = window.scrollY;
-  window.scrollBy(0, window.innerHeight * 0.8);
-  return window.scrollY > before;
 }
 
 // ─── Element Resolution (handles iframe/shadow prefixes) ─────────────────────
