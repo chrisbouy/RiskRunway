@@ -287,8 +287,22 @@
             color: var(--color-neutral-700);
             cursor: pointer;
             transition: all 0.15s;
+            font-weight: 400;
+            font-size: 1.125rem;
+        }
+
+        /* Bold-to-normal text fade across columns */
+        table tbody td:nth-child(1),
+        table tbody td:nth-child(2) {
+            font-weight: 700;
+        }
+        table tbody td:nth-child(3),
+        table tbody td:nth-child(4) {
+            font-weight: 600;
+        }
+        table tbody td:nth-child(5),
+        table tbody td:nth-child(6) {
             font-weight: 500;
-            font-size: 1rem;
         }
 
         table tbody td:last-child {
@@ -338,7 +352,7 @@
         /* Monospace for data fields */
         .field-value {
             font-family: 'IBM Plex Mono', 'Courier New', monospace;
-            font-size: 0.75rem;
+            font-size: 0.95rem;
         }
 
         .field-value .text-gray-400 {
@@ -347,38 +361,35 @@
             font-weight: 400 !important;
         }
 
-        /* Quote color palette - refined for professionalism */
+        /* Quote color palette - first 3 are shades of blue */
         .quote-color-0 {
-            background: linear-gradient(135deg, #fed7aa5e 0%, #fed7aa 100%) !important;
-            border-left: 3px solid #ffba6c;
+            background: linear-gradient(135deg, #dbeafe88 0%, #dbeafe 100%) !important;
+            border-left: 3px solid #3b82f6;
         }
-        .quote-color-0 .file-icon { fill: #000000; }
-        .quote-color-0 .file-name { color: #000000; }
+        .quote-color-0 .file-icon { fill: #2563eb; }
+        .quote-color-0 .file-name { color: #1e40af; }
         .quote-color-0 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-1 {
-            background: linear-gradient(135deg, #d1fae5aa 0%, #d1fae5 100%) !important;
-            border-left: 3px solid #10b981;
+            background: linear-gradient(135deg, #bfdbfe88 0%, #bfdbfe 100%) !important;
+            border-left: 3px solid #2563eb;
         }
-        .quote-color-1 .file-icon { fill: #000000; }
-        .quote-color-1 .file-name { color: #000000; }
+        .quote-color-1 .file-icon { fill: #1d4ed8; }
+        .quote-color-1 .file-name { color: #1e3a8a; }
         .quote-color-1 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-2 {
-            background: linear-gradient(135deg, #fef3c7bb 0%, #fef3c7 100%) !important;
-            border-left: 3px solid #f59e0b;
+            background: linear-gradient(135deg, #93c5fd66 0%, #93c5fd 100%) !important;
+            border-left: 3px solid #1d4ed8;
         }
-        .quote-color-2 .file-icon { fill: #000000; }
-        .quote-color-2 .file-name { color: #000000; }
+        .quote-color-2 .file-icon { fill: #1e40af; }
+        .quote-color-2 .file-name { color: #172554; }
         .quote-color-2 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-3 {
@@ -389,7 +400,6 @@
         .quote-color-3 .file-name { color: #000000; }
         .quote-color-3 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-4 {
@@ -400,7 +410,6 @@
         .quote-color-4 .file-name { color: #000000; }
         .quote-color-4 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-5 {
@@ -411,7 +420,6 @@
         .quote-color-5 .file-name { color: #000000; }
         .quote-color-5 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-6 {
@@ -422,7 +430,6 @@
         .quote-color-6 .file-name { color: #000000; }
         .quote-color-6 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         .quote-color-7 {
@@ -433,7 +440,6 @@
         .quote-color-7 .file-name { color: #000000; }
         .quote-color-7 td {
             color: #1f2937 !important;
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
         /* File upload section */
@@ -2993,7 +2999,7 @@
                     subCell.colSpan = visibleIndices.length;
                     subCell.style.cssText = 'padding: 0 0.5rem 0.4rem; border-top: none;';
                     const subLink = document.createElement('button');
-                    subLink.style.cssText = 'background:none; border:none; color:#1f2937; cursor:pointer; font-size:0.7rem; padding:0; text-decoration:underline; font-style:italic; font-weight:normal;';
+                    subLink.style.cssText = 'background:none; border:none; color:#1f2937; cursor:pointer; font-size:0.9rem; padding:0; text-decoration:underline; font-style:italic; font-weight:normal;';
                     const quoteObj = quotes.find(q => q.id === quoteId);
                     const hasSubs = quoteObj && quoteObj.subjectivities_json;
                     let subCount = 0;

@@ -73,6 +73,10 @@ def build_fields_from_fake_epic():
         if '${' in fid or '{' in fid:
             continue
 
+        # Skip line-item fields (same logic as the extension content script)
+        if re.match(r'^line[_-].+[_-]\d+$', fid, re.IGNORECASE):
+            continue
+
         fname = re.search(r'name="([^"]+)"', attrs)
 
         # Find the nearest preceding label
@@ -142,7 +146,17 @@ def build_prompt(fields_json, num_pages):
         "5. Type all text values in ALL CAPS, except select values which must match options exactly.\n"
         "6. Only match data you can clearly read from the quote — do not guess.\n"
         "7. Skip fields where no matching data exists in the quote.\n"
-        "8. Broker field = wholesale broker. Producer field = retail agent.\n\n"
+        "8. Broker field = the wholesale broker/MGA who PREPARED the quote (e.g. Brown & Riding, CRC). "
+        "Producer and Account Executive fields = the retail agent the quote is PREPARED FOR "
+        "(look for 'Prepared for:', 'Attention:', or the addressee). "
+        "Do NOT put the wholesale broker's name in Producer or Account Executive.\n"
+        "9. Do not fill computed/total fields (like Total Fees) unless that exact figure is "
+        "explicitly stated on the quote — not derived by adding other numbers.\n"
+        "10. Policy Number is assigned by the carrier AFTER binding. Quote numbers, submission "
+        "numbers, file numbers, and reference numbers visible on the quote are internal "
+        "identifiers for the carrier or wholesale broker — do NOT put them in Policy Number. "
+        "Only fill Policy Number if the document explicitly labels something as a policy number "
+        "(e.g. on a renewal where the expiring policy number is stated).\n\n"
         "Return ONLY valid JSON mapping selector to {\"value\": \"...\"}\n"
         "Example: {\"#insured_name\":{\"value\":\"ACME CORP LLC\"},\"#state\":{\"value\":\"LA\"}}\n\n"
         "Include ALL fields you have confident matches for. Be thorough — check every field."

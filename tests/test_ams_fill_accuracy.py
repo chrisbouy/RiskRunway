@@ -83,6 +83,10 @@ def build_fields_from_fake_epic():
         if '${' in fid or '{' in fid:
             continue
 
+        # Skip line-item fields (same logic as the extension content script)
+        if re.match(r'^line[_-].+[_-]\d+$', fid, re.IGNORECASE):
+            continue
+
         fname = re.search(r'name="([^"]+)"', attrs)
         before = html[:m.start()]
         lab = re.findall(r'<label[^>]*>(.*?)</label>', before, re.S)

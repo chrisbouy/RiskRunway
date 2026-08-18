@@ -16,35 +16,33 @@
       "#general_aggregate": "2000000",
       "#grand_total": "3377.22",
       "#insured_name": "BULL CONTRACTORS, LLC",
-      "#line_coverage_1": "LOST KEY COVERAGE",
-      "#line_limit_1": "25000",
       "#line_of_business": "General Liability",
-      "#line_premium_1": "0",
       "#per_occurrence": "1000000",
-      "#policy_fee": "275.00",
+      "#policy_fee": "275",
       "#policy_number": "QT-08268470",
       "#premium": "2946",
       "#prior_policy_number": "CPS8142298",
       "#products_comp_ops": "2000000",
-      "#reason_for_change": "New Business",
+      "#reason_for_change": "Price",
       "#state": "LA",
       "#surplus_tax": "156.22",
       "#zip": "70817"
     },
     "metadata": {
-      "total_fields": 29,
-      "unanimous": 27,
+      "total_fields": 26,
+      "unanimous": 24,
       "contested": 2,
       "contested_selectors": [
-        "#description",
-        "#policy_number"
+        "#broker",
+        "#reason_for_change"
       ]
     }
   },
   "quote_rooster": {
     "fields": {
+      "#broker": "CFC UNDERWRITING",
       "#broker_fee": "255",
-      "#carrier": "CFC UNDERWRITING LIMITED",
+      "#carrier": "CFC UNDERWRITING",
       "#deductible": "1000",
       "#department": "Surplus Lines",
       "#description": "WEB DESIGN AND GRAPHIC DESIGN",
@@ -53,50 +51,46 @@
       "#general_aggregate": "2000000",
       "#grand_total": "3255.20",
       "#insured_name": "RED ROOSTER DESIGN",
-      "#line_coverage_1": "MEDIA LIABILITY AND CYBER & PRIVACY",
-      "#line_limit_1": "2000000",
-      "#line_of_business": "Professional Liability / E&O",
-      "#line_premium_1": "800",
+      "#line_of_business": "Cyber Liability",
       "#per_occurrence": "1000000",
       "#policy_fee": "325",
       "#policy_number": "6184689",
       "#premium": "2550",
-      "#surplus_tax": "125.20",
-      "#total_fees": "705.20"
+      "#surplus_tax": "125.20"
     },
     "metadata": {
-      "total_fields": 20,
-      "unanimous": 14,
-      "contested": 6,
+      "total_fields": 17,
+      "unanimous": 9,
+      "contested": 8,
       "contested_selectors": [
+        "#broker",
         "#broker_fee",
         "#carrier",
-        "#line_coverage_1",
-        "#line_limit_1",
+        "#general_aggregate",
+        "#grand_total",
         "#line_of_business",
-        "#policy_fee"
+        "#policy_fee",
+        "#policy_number"
       ]
     }
   },
   "quote_wolf": {
     "fields": {
-      "#account_executive": "ROBERT CONYERS",
+      "#account_executive": "JONATHAN STEPHENS",
       "#address": "1109 PLANK ROAD",
       "#bill_method": "Agency Bill",
-      "#broker": "BROWN & RIDING INSURANCE SERVICES, INC.",
+      "#broker": "BROWN & RIDING",
       "#broker_fee": "7522",
       "#carrier": "KEY RISK INSURANCE COMPANY",
       "#city": "SAINT JOSEPH",
       "#commission_pct": "10",
       "#dba": "WOLF DISPOSALS",
-      "#deductible": "0",
+      "#deductible": "1000",
       "#department": "Surplus Lines",
       "#effective_date": "05/01/2026",
       "#expiration_date": "05/01/2027",
       "#grand_total": "258225",
       "#insured_name": "LTR HOLDINGS, LLC",
-      "#line_coverage_1": "LIABILITY (PER ACCIDENT)",
-      "#line_limit_1": "1000000",
       "#line_of_business": "Commercial Auto",
       "#per_occurrence": "1000000",
       "#premium": "250703",
@@ -105,10 +99,12 @@
       "#zip": "71366"
     },
     "metadata": {
-      "total_fields": 23,
-      "unanimous": 22,
-      "contested": 1,
+      "total_fields": 21,
+      "unanimous": 18,
+      "contested": 3,
       "contested_selectors": [
+        "#broker",
+        "#deductible",
         "#insured_name"
       ]
     }

@@ -397,6 +397,13 @@ function processElements(elements, fields, prefix, root, skip) {
     // Skip fields that already have data (except selects which always have a value)
     if (el.value && el.value.trim() !== '' && el.tagName !== 'SELECT') continue;
 
+    // Skip line-item fields (numbered repeating rows like line_coverage_1,
+    // line_limit_2, etc). These are filled through a multi-step AMS workflow,
+    // not a flat form fill. Including them confuses the AI — it can't determine
+    // which of many coverages/limits/premiums belongs in which numbered slot.
+    const fieldId = el.id || el.name || '';
+    if (/^line[_-].+[_-]\d+$/i.test(fieldId)) continue;
+
     const label = getFieldLabel(el, root);
     const selector = prefix + buildSelector(el, root);
 
