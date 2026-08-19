@@ -4,7 +4,7 @@
       "#address": "10221 GINGER PLACE DR",
       "#agency_location": "Branch - Shreveport",
       "#annual_revenue": "300000",
-      "#broker": "CRC INSURANCE SERVICES",
+      "#broker": "CRC GROUP",
       "#carrier": "SCOTTSDALE INSURANCE COMPANY",
       "#city": "BATON ROUGE",
       "#commission_pct": "13.50",
@@ -17,60 +17,53 @@
       "#grand_total": "3377.22",
       "#insured_name": "BULL CONTRACTORS, LLC",
       "#line_of_business": "General Liability",
+      "#payment_plan": "Annual",
       "#per_occurrence": "1000000",
-      "#policy_fee": "275",
-      "#policy_number": "QT-08268470",
+      "#policy_fee": "275.00",
       "#premium": "2946",
       "#prior_policy_number": "CPS8142298",
       "#products_comp_ops": "2000000",
-      "#reason_for_change": "Price",
+      "#quote_number": "QT-08268470",
       "#state": "LA",
       "#surplus_tax": "156.22",
       "#zip": "70817"
     },
     "metadata": {
       "total_fields": 26,
-      "unanimous": 24,
-      "contested": 2,
-      "contested_selectors": [
-        "#broker",
-        "#reason_for_change"
-      ]
+      "unanimous": 26,
+      "contested": 0,
+      "contested_selectors": []
     }
   },
   "quote_rooster": {
     "fields": {
-      "#broker": "CFC UNDERWRITING",
       "#broker_fee": "255",
-      "#carrier": "CFC UNDERWRITING",
+      "#carrier": "CFC UNDERWRITING LIMITED",
       "#deductible": "1000",
       "#department": "Surplus Lines",
       "#description": "WEB DESIGN AND GRAPHIC DESIGN",
       "#effective_date": "10/21/2025",
       "#expiration_date": "10/21/2026",
-      "#general_aggregate": "2000000",
+      "#general_aggregate": "3000000",
       "#grand_total": "3255.20",
       "#insured_name": "RED ROOSTER DESIGN",
       "#line_of_business": "Cyber Liability",
       "#per_occurrence": "1000000",
       "#policy_fee": "325",
-      "#policy_number": "6184689",
       "#premium": "2550",
+      "#quote_number": "6184689",
       "#surplus_tax": "125.20"
     },
     "metadata": {
-      "total_fields": 17,
-      "unanimous": 9,
-      "contested": 8,
+      "total_fields": 16,
+      "unanimous": 11,
+      "contested": 5,
       "contested_selectors": [
-        "#broker",
-        "#broker_fee",
         "#carrier",
         "#general_aggregate",
         "#grand_total",
         "#line_of_business",
-        "#policy_fee",
-        "#policy_number"
+        "#policy_fee"
       ]
     }
   },
@@ -78,14 +71,13 @@
     "fields": {
       "#account_executive": "JONATHAN STEPHENS",
       "#address": "1109 PLANK ROAD",
-      "#bill_method": "Agency Bill",
       "#broker": "BROWN & RIDING",
       "#broker_fee": "7522",
       "#carrier": "KEY RISK INSURANCE COMPANY",
       "#city": "SAINT JOSEPH",
       "#commission_pct": "10",
       "#dba": "WOLF DISPOSALS",
-      "#deductible": "1000",
+      "#deductible": "0",
       "#department": "Surplus Lines",
       "#effective_date": "05/01/2026",
       "#expiration_date": "05/01/2027",
@@ -95,6 +87,7 @@
       "#per_occurrence": "1000000",
       "#premium": "250703",
       "#producer": "JONATHAN STEPHENS",
+      "#quote_number": "BAP549294_Q-11",
       "#state": "LA",
       "#zip": "71366"
     },

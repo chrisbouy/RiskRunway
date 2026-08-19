@@ -930,7 +930,7 @@
                 </button>
                 <div id="settingsPanel" class="settings-panel">
                     <label class="left-checkbox-row">
-                        <input type="checkbox" id="filterMyCards">
+                        <input type="checkbox" id="filterMyCards" checked>
                         <span>My Cards Only</span>
                     </label>
                     <button id="configureBrokersBtn" class="left-btn btn-config">Configure Brokers</button>
@@ -1035,7 +1035,7 @@
 
     <!-- New Submission Modal -->
     <div id="newSubmissionModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]">
-        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-3xl border border-gray-700">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-5xl border border-gray-700">
             <h2 class="text-2xl font-bold mb-2 text-white">Create Submission</h2>
             <p class="text-gray-400 mb-5">This will not submit to markets.</p>
 
@@ -1046,7 +1046,7 @@
                 <div class="border-t border-gray-700 mt-3 mb-3"></div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div class="border border-gray-700 rounded-lg p-4 bg-gray-900 bg-opacity-40">
                     <h3 class="text-sm font-bold uppercase tracking-wide text-gray-200 mb-4">Option 1: Manually Add</h3>
 
@@ -1094,6 +1094,22 @@
                     </form>
                     <p id="applicationUploadStatus" class="mt-3 text-sm text-blue-300 min-h-[20px]"></p>
                 </div>
+
+                <div class="border border-gray-700 rounded-lg p-4 bg-gray-900 bg-opacity-40">
+                    <h3 class="text-sm font-bold uppercase tracking-wide text-gray-200 mb-4">Option 3: Bulk Create from Folder</h3>
+                    <div class="flex flex-col items-center justify-center min-h-[214px] text-center">
+                        <svg class="w-12 h-12 text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                        </svg>
+                        <p class="text-gray-300 font-semibold mb-1">Select a folder</p>
+                        <p class="text-sm text-gray-400 mb-3">All PDFs will be scanned recursively</p>
+                        <p class="text-xs text-gray-500 mb-4">AI classifies each as application or quote, groups by insured, and creates submissions in batch.</p>
+                        <input type="file" id="bulkFolderInput" webkitdirectory directory multiple class="hidden">
+                        <button type="button" id="bulkSelectFolderBtn" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium">
+                            Choose Folder
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Done button (appears after first creation) -->
@@ -1101,6 +1117,83 @@
                 <button id="doneCreatingBtn" class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold text-sm">
                     Done
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Create Preview Modal -->
+    <div id="bulkPreviewModal" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10001]">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl border border-gray-700 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white">Bulk Create Preview</h2>
+                    <p id="bulkPreviewSubtitle" class="text-sm text-gray-400 mt-1"></p>
+                </div>
+                <button id="closeBulkPreview" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+
+            <!-- Scanning progress (shown during classification) -->
+            <div id="bulkScanningProgress" class="hidden mb-4">
+                <div class="flex items-center gap-3 bg-gray-900 rounded-lg p-4 border border-gray-700">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-white font-medium">Scanning and classifying PDFs...</p>
+                        <p id="bulkScanningStatus" class="text-sm text-gray-400 mt-1">Uploading files...</p>
+                        <p class="text-xs text-gray-500 mt-2">This may take a while depending on the number of files.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview results -->
+            <div id="bulkPreviewResults" class="hidden flex-1 overflow-y-auto space-y-3 mb-4">
+                <!-- Groups will be rendered here -->
+            </div>
+
+            <!-- Unmatched/Other files -->
+            <div id="bulkUnmatchedSection" class="hidden mb-4">
+                <div class="text-xs font-bold uppercase tracking-wide text-orange-400 mb-2">Unclassified / No Insured Name</div>
+                <div id="bulkUnmatchedList" class="space-y-1 max-h-24 overflow-y-auto"></div>
+            </div>
+
+            <!-- Action buttons -->
+            <div id="bulkPreviewActions" class="hidden flex items-center justify-between border-t border-gray-700 pt-4">
+                <div class="text-sm text-gray-400">
+                    <span id="bulkSummaryText"></span>
+                </div>
+                <div class="flex gap-3">
+                    <button id="cancelBulkCreate" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm">
+                        Cancel
+                    </button>
+                    <button id="confirmBulkCreate" class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-semibold">
+                        Create All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Creation progress (shown during execution) -->
+            <div id="bulkCreateProgress" class="hidden">
+                <div class="flex items-center gap-3 bg-gray-900 rounded-lg p-4 border border-gray-700">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 flex-shrink-0"></div>
+                    <div>
+                        <p class="text-white font-medium">Creating submissions...</p>
+                        <p id="bulkCreateStatus" class="text-sm text-gray-400 mt-1">Parsing documents and creating records...</p>
+                        <p class="text-xs text-gray-500 mt-2">This may take a while. Each document is being parsed by AI.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Creation complete -->
+            <div id="bulkCreateComplete" class="hidden border-t border-gray-700 pt-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-green-400 text-xl">&#10003;</span>
+                    <span id="bulkCompleteText" class="text-white font-medium"></span>
+                </div>
+                <div id="bulkCreateResults" class="space-y-1 max-h-40 overflow-y-auto mb-4"></div>
+                <div class="flex justify-end">
+                    <button id="bulkDoneBtn" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-semibold">
+                        Done
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1673,7 +1766,7 @@
         let submissions = [];
         let allUsers = [];
         let currentUser = null;
-        let filterMyCards = false;
+        let filterMyCards = true;
         let filterSearch = '';
         let filterStage = '';
         let filterCoverage = '';
@@ -3327,6 +3420,245 @@
             });
 
             await createSubmission(formData, { button: btn });
+        });
+
+        // ============================================================================
+        // BULK CREATE FROM FOLDER
+        // ============================================================================
+
+        let bulkPreviewData = null;
+
+        document.getElementById('bulkSelectFolderBtn').addEventListener('click', () => {
+            document.getElementById('bulkFolderInput').click();
+        });
+
+        document.getElementById('bulkFolderInput').addEventListener('change', async function(e) {
+            const files = Array.from(e.target.files);
+            // Filter to PDFs only (webkitdirectory gives us all files recursively)
+            const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+
+            if (pdfFiles.length === 0) {
+                alert('No PDF files found in the selected folder.');
+                return;
+            }
+
+            // Close new submission modal and open preview modal
+            document.getElementById('newSubmissionModal').classList.add('hidden');
+            document.getElementById('bulkPreviewModal').classList.remove('hidden');
+            document.getElementById('bulkScanningProgress').classList.remove('hidden');
+            document.getElementById('bulkPreviewResults').classList.add('hidden');
+            document.getElementById('bulkPreviewActions').classList.add('hidden');
+            document.getElementById('bulkUnmatchedSection').classList.add('hidden');
+            document.getElementById('bulkCreateProgress').classList.add('hidden');
+            document.getElementById('bulkCreateComplete').classList.add('hidden');
+            document.getElementById('bulkPreviewSubtitle').textContent = `${pdfFiles.length} PDF${pdfFiles.length !== 1 ? 's' : ''} found`;
+            document.getElementById('bulkScanningStatus').textContent = `Uploading ${pdfFiles.length} files for classification...`;
+
+            // Upload all PDFs for classification
+            const formData = new FormData();
+            pdfFiles.forEach(f => formData.append('files', f));
+
+            try {
+                const response = await fetch('/api/bulk-upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    alert('Classification failed: ' + data.error);
+                    document.getElementById('bulkPreviewModal').classList.add('hidden');
+                    return;
+                }
+
+                bulkPreviewData = data.preview;
+                renderBulkPreview(data.preview);
+            } catch (err) {
+                console.error('Bulk upload failed:', err);
+                alert('Bulk upload failed. Check console for details.');
+                document.getElementById('bulkPreviewModal').classList.add('hidden');
+            }
+
+            // Reset file input for next use
+            this.value = '';
+        });
+
+        function renderBulkPreview(preview) {
+            document.getElementById('bulkScanningProgress').classList.add('hidden');
+            document.getElementById('bulkPreviewResults').classList.remove('hidden');
+            document.getElementById('bulkPreviewActions').classList.remove('hidden');
+
+            const container = document.getElementById('bulkPreviewResults');
+            const groups = preview.groups || [];
+
+            // Separate valid groups from unmatched
+            const validGroups = groups.filter(g => g.applications.length > 0 || g.quotes.length > 0 || (g.supporting_docs || []).length > 0);
+            const unmatchedGroups = groups.filter(g => g.applications.length === 0 && g.quotes.length === 0 && (g.supporting_docs || []).length === 0 && g.other.length > 0);
+
+            // Render valid groups
+            container.innerHTML = validGroups.map((group, idx) => {
+                const stageColor = group.stage === 'bound' ? 'green' : group.stage === 'quoting' ? 'orange' : 'blue';
+                const stageLabel = group.stage === 'bound' ? 'Bound' : group.stage === 'quoting' ? 'Quoting' : 'Submission';
+                const stageBadge = `<span class="px-2 py-0.5 rounded text-xs font-medium bg-${stageColor}-900 text-${stageColor}-300 border border-${stageColor}-700">${stageLabel}</span>`;
+
+                const appList = group.applications.map(a =>
+                    `<div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="text-blue-400">APP</span>
+                        <span class="truncate">${escapeHtml(a.filename)}</span>
+                    </div>`
+                ).join('');
+
+                const quoteList = group.quotes.map(q =>
+                    `<div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="text-orange-400">QTE</span>
+                        <span class="truncate">${escapeHtml(q.filename)}</span>
+                    </div>`
+                ).join('');
+
+                const supDocList = (group.supporting_docs || []).map(s => {
+                    const subtypeLabel = (s.doc_subtype || 'doc').toUpperCase().replace('_', ' ');
+                    return `<div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="text-gray-500">${subtypeLabel}</span>
+                        <span class="truncate">${escapeHtml(s.filename)}</span>
+                    </div>`;
+                }).join('');
+
+                const totalDocs = group.applications.length + group.quotes.length + (group.supporting_docs || []).length;
+
+                return `
+                    <div class="border border-gray-700 rounded-lg p-3 bg-gray-900 bg-opacity-50" data-bulk-group="${idx}">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" class="bulk-group-checkbox rounded" checked data-group-idx="${idx}">
+                                <span class="text-white font-medium text-sm">${escapeHtml(group.insured_name)}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${stageBadge}
+                                <span class="text-xs text-gray-500">${totalDocs} file${totalDocs !== 1 ? 's' : ''}</span>
+                            </div>
+                        </div>
+                        <div class="ml-6 space-y-0.5">
+                            ${appList}${quoteList}${supDocList}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Render unmatched
+            if (unmatchedGroups.length > 0) {
+                document.getElementById('bulkUnmatchedSection').classList.remove('hidden');
+                document.getElementById('bulkUnmatchedList').innerHTML = unmatchedGroups.map(g =>
+                    g.other.map(o => `
+                        <div class="flex items-center gap-2 text-xs text-gray-500 px-2 py-1 bg-gray-900 rounded">
+                            <span class="text-orange-400">?</span>
+                            <span class="truncate">${escapeHtml(o.filename)}</span>
+                            <span class="text-gray-600 ml-auto">skipped</span>
+                        </div>
+                    `).join('')
+                ).join('');
+            }
+
+            // Summary
+            const totalSubmissions = validGroups.length;
+            const quotingCount = validGroups.filter(g => g.stage === 'quoting').length;
+            const submissionCount = totalSubmissions - quotingCount;
+            let summary = `${totalSubmissions} submission${totalSubmissions !== 1 ? 's' : ''} will be created`;
+            if (quotingCount > 0) {
+                summary += ` (${submissionCount} in Submission, ${quotingCount} in Quoting)`;
+            }
+            document.getElementById('bulkSummaryText').textContent = summary;
+        }
+
+        document.getElementById('closeBulkPreview').addEventListener('click', () => {
+            document.getElementById('bulkPreviewModal').classList.add('hidden');
+            bulkPreviewData = null;
+        });
+
+        document.getElementById('cancelBulkCreate').addEventListener('click', () => {
+            document.getElementById('bulkPreviewModal').classList.add('hidden');
+            bulkPreviewData = null;
+        });
+
+        document.getElementById('confirmBulkCreate').addEventListener('click', async () => {
+            if (!bulkPreviewData) return;
+
+            // Get only checked groups
+            const checkboxes = document.querySelectorAll('.bulk-group-checkbox:checked');
+            const selectedIndices = new Set(Array.from(checkboxes).map(cb => parseInt(cb.dataset.groupIdx)));
+            const validGroups = (bulkPreviewData.groups || []).filter((g, idx) =>
+                (g.applications.length > 0 || g.quotes.length > 0 || (g.supporting_docs || []).length > 0) && selectedIndices.has(idx)
+            );
+
+            if (validGroups.length === 0) {
+                alert('No groups selected.');
+                return;
+            }
+
+            // Show creation progress
+            document.getElementById('bulkPreviewResults').classList.add('hidden');
+            document.getElementById('bulkPreviewActions').classList.add('hidden');
+            document.getElementById('bulkUnmatchedSection').classList.add('hidden');
+            document.getElementById('bulkCreateProgress').classList.remove('hidden');
+            document.getElementById('bulkCreateStatus').textContent =
+                `Processing ${validGroups.length} group${validGroups.length !== 1 ? 's' : ''}...`;
+
+            try {
+                const response = await fetch('/api/bulk-create', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        temp_dir: bulkPreviewData.temp_dir,
+                        groups: validGroups
+                    })
+                });
+                const data = await response.json();
+
+                document.getElementById('bulkCreateProgress').classList.add('hidden');
+
+                if (!data.success) {
+                    alert('Bulk create failed: ' + data.error);
+                    document.getElementById('bulkPreviewModal').classList.add('hidden');
+                    return;
+                }
+
+                // Show results
+                document.getElementById('bulkCreateComplete').classList.remove('hidden');
+                const summary = data.summary;
+                document.getElementById('bulkCompleteText').textContent =
+                    `${summary.created} submission${summary.created !== 1 ? 's' : ''} created successfully` +
+                    (summary.failed > 0 ? `, ${summary.failed} failed` : '');
+
+                const resultsContainer = document.getElementById('bulkCreateResults');
+                resultsContainer.innerHTML = (data.results || []).map(r => {
+                    const icon = r.status === 'created' ? '&#10003;' : '&#10007;';
+                    const color = r.status === 'created' ? 'green' : 'red';
+                    const stageLabel = r.stage === 'bound' ? 'Bound' : r.stage === 'quoting' ? 'Quoting' : 'Submission';
+                    const errorText = r.errors && r.errors.length > 0 ? ` — ${r.errors[0]}` : '';
+                    return `
+                        <div class="flex items-center justify-between py-1.5 px-3 rounded bg-gray-900">
+                            <div class="flex items-center gap-2">
+                                <span class="text-${color}-400">${icon}</span>
+                                <span class="text-sm text-gray-200">${escapeHtml(r.insured_name)}</span>
+                                ${r.quote_ids && r.quote_ids.length > 0 ? `<span class="text-xs text-gray-500">${r.quote_ids.length} quote${r.quote_ids.length !== 1 ? 's' : ''}</span>` : ''}
+                            </div>
+                            <span class="text-xs text-gray-500">${stageLabel}${errorText}</span>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (err) {
+                console.error('Bulk create failed:', err);
+                document.getElementById('bulkCreateProgress').classList.add('hidden');
+                alert('Bulk create failed. Check console.');
+                document.getElementById('bulkPreviewModal').classList.add('hidden');
+            }
+
+            bulkPreviewData = null;
+        });
+
+        document.getElementById('bulkDoneBtn').addEventListener('click', () => {
+            document.getElementById('bulkPreviewModal').classList.add('hidden');
+            loadSubmissions();
         });
 
         // ============================================================================
@@ -5448,9 +5780,12 @@
             <h3>Table of Contents</h3>
             <ol>
                 <li><a href="#kg-getting-started">Getting Started</a></li>
+                <li><a href="#kg-account-creation">Creating Your Account</a></li>
                 <li><a href="#kg-connecting-inbox">Connecting Your Outlook Inbox</a></li>
                 <li><a href="#kg-submission-board">Understanding the Submission Board</a></li>
+                <li><a href="#kg-menu-actions">Menu Actions &amp; Settings</a></li>
                 <li><a href="#kg-new-risk">Creating a New Risk (Submission)</a></li>
+                <li><a href="#kg-bulk-create">Bulk Create from Folder</a></li>
                 <li><a href="#kg-configure-brokers">Configuring Your Brokers</a></li>
                 <li><a href="#kg-submit-to-market">Submitting to Market</a></li>
                 <li><a href="#kg-check-email">Checking Email &amp; Auto-Importing Quotes</a></li>
@@ -5467,7 +5802,18 @@
         <h2 id="kg-getting-started">1. Getting Started</h2>
         <p><strong>Browser requirements:</strong> Chrome is strongly suggested if you plan to use the AMS data transfer.</p>
 
-        <h2 id="kg-connecting-inbox">2. Connecting Your Outlook Inbox</h2>
+        <h2 id="kg-account-creation">2. Creating Your Account</h2>
+        <p>New users can create their own account directly from the login page:</p>
+        <ol>
+            <li>Navigate to the login page</li>
+            <li>Click <strong>Sign Up</strong> (below the Sign In button)</li>
+            <li>Fill in your full name, email, username, and a password (must be 12+ characters)</li>
+            <li>Click <strong>Create Account</strong></li>
+            <li>You'll be redirected to the login page — sign in with your new credentials</li>
+        </ol>
+        <p>New accounts are created with the <strong>Agent</strong> role. Admin users can promote accounts to Admin from the admin panel if needed.</p>
+
+        <h2 id="kg-connecting-inbox">3. Connecting Your Outlook Inbox</h2>
         <p>RiskRunway connects to your Outlook (or Gmail) inbox so it can automatically detect incoming quotes and broker replies. This uses OAuth — a secure, standard way of granting an app limited access to your email without giving it your password.</p>
         <h3>To connect:</h3>
         <ol>
@@ -5503,7 +5849,27 @@
         </table>
         <p>Each card represents one submission for one insured, for one coverage type. If a client has multiple lines of business with different effective dates, they get separate cards — use the coverage type field/dropdown on the card to tell them apart.</p>
 
-        <h2 id="kg-new-risk">4. Creating a New Risk (Submission)</h2>
+        <h2 id="kg-menu-actions">5. Menu Actions &amp; Settings</h2>
+        <p>The <strong>Settings</strong> button (gear icon) on the left sidebar opens a dropdown with the following actions:</p>
+        <table>
+            <thead><tr><th>Item</th><th>What it does</th></tr></thead>
+            <tbody>
+                <tr><td><strong>My Cards Only</strong></td><td>Toggle to filter the board to only show submissions assigned to you (enabled by default)</td></tr>
+                <tr><td><strong>Configure Brokers</strong></td><td>Add, edit, or remove your broker/MGA contacts (see Section 8)</td></tr>
+                <tr><td><strong>Quote Settings</strong></td><td>Adjust quote comparison thresholds and default binding requirements</td></tr>
+                <tr><td><strong>User Guide</strong></td><td>Opens this guide</td></tr>
+                <tr><td><strong>Report Bug</strong></td><td>Take a screenshot and annotate the issue (see Section 16)</td></tr>
+                <tr><td><strong>Logout</strong></td><td>Sign out of your session</td></tr>
+            </tbody>
+        </table>
+        <p>Additional actions on the board:</p>
+        <ul>
+            <li><strong>Check Email</strong> — Scans your connected inbox for broker replies (see Section 10)</li>
+            <li><strong>New Risk</strong> — Creates a new submission card (see Section 6)</li>
+            <li><strong>Filters</strong> — Search by insured name, filter by stage or coverage type</li>
+        </ul>
+
+        <h2 id="kg-new-risk">6. Creating a New Risk (Submission)</h2>
         <p>You have two ways to start a submission:</p>
         <h3>Option A — Manual entry</h3>
         <ol>
@@ -5520,7 +5886,20 @@
         <p><strong>Note:</strong> RiskRunway does not generate the ACORD forms for you — those still come from your AMS. RiskRunway picks up from there: once you have the completed application on hand, drag it in to start the submission.</p>
         <p>Once created, you can attach additional supporting documents to the card via the <strong>Documents</strong> dropdown on the card.</p>
 
-        <h2 id="kg-configure-brokers">5. Configuring Your Brokers</h2>
+        <h2 id="kg-bulk-create">7. Bulk Create from Folder</h2>
+        <p>If you have a folder of existing PDFs (applications, quotes, or a mix), you can create multiple submissions at once:</p>
+        <ol>
+            <li>Click <strong>New Risk</strong> to open the new submission modal</li>
+            <li>Under <strong>Option 3: Bulk Create from Folder</strong>, click <strong>Choose Folder</strong></li>
+            <li>Select a folder on your computer — RiskRunway will scan it recursively for all PDF files</li>
+            <li>AI classifies each PDF (application vs. quote) and groups them by insured name</li>
+            <li>A preview appears showing what will be created — review and uncheck any groups you don't want</li>
+            <li>Click <strong>Create All</strong> to process the batch</li>
+        </ol>
+        <p><strong>How classification works:</strong> Each PDF is analyzed by AI to determine whether it's an application (which creates a new submission) or a quote (which gets attached to the matching insured's card). Files that can't be classified appear in an "Unclassified" section you can handle manually.</p>
+        <p><strong>Tip:</strong> This is particularly useful when onboarding a backlog of existing submissions — just point it at your folder structure and let it sort things out.</p>
+
+        <h2 id="kg-configure-brokers">8. Configuring Your Brokers</h2>
         <p>Before you can submit to market, you need to set up the brokers/MGAs you work with.</p>
         <ol>
             <li>Go to <strong>Configure Brokers</strong> (in Settings)</li>
@@ -5528,7 +5907,7 @@
             <li>Save</li>
         </ol>
 
-        <h2 id="kg-submit-to-market">6. Submitting to Market</h2>
+        <h2 id="kg-submit-to-market">9. Submitting to Market</h2>
         <p>Once your submission card has the application and supporting docs attached:</p>
         <ol>
             <li>Open the card and click <strong>Submit to Market</strong></li>
@@ -5539,7 +5918,7 @@
         <p>The email will appear to the broker as coming from your own connected Outlook address — not a generic RiskRunway address.</p>
         <p>Once sent, the card automatically moves into the <strong>Quoting</strong> stage.</p>
 
-        <h2 id="kg-check-email">7. Checking Email &amp; Auto-Importing Quotes</h2>
+        <h2 id="kg-check-email">10. Checking Email &amp; Auto-Importing Quotes</h2>
         <p>When a broker replies with a quote:</p>
         <ol>
             <li>Click <strong>Check Email</strong></li>
@@ -5553,7 +5932,7 @@
             <li>You'll get an SMS text alert when a new matching email comes in (see Section 12)</li>
         </ul>
 
-        <h2 id="kg-comparing-quotes">8. Comparing Quotes</h2>
+        <h2 id="kg-comparing-quotes">11. Comparing Quotes</h2>
         <p>Once quotes come in, they appear attached to the submission card. Open the card to compare:</p>
         <ul>
             <li>Each quote shows key parsed fields: carrier, premium, tax, fees, effective/expiration dates, limits, etc.</li>
@@ -5578,18 +5957,18 @@
         </ul>
         <p>These settings are saved per-tenant — all users in your agency share the same thresholds.</p>
 
-        <h2 id="kg-correspondence">9. Saving Correspondence</h2>
+        <h2 id="kg-correspondence">12. Saving Correspondence</h2>
         <ol>
             <li>From the email view, click <strong>Save as Correspondence</strong></li>
             <li>Choose which submission card to save it to</li>
             <li>RiskRunway cleans up the thread with AI — splitting it into individual messages and giving it a readable summary</li>
         </ol>
 
-        <h2 id="kg-binding">10. Moving to Binding</h2>
+        <h2 id="kg-binding">13. Moving to Binding</h2>
         <p>Once a single quote is selected, click <strong>Into Bind</strong> (or drag the card) to move it to Binding.</p>
         <p>Once the broker confirms the bind, click <strong>Mark as Bound</strong>.</p>
 
-        <h2 id="kg-export-ams">11. Exporting to Your AMS</h2>
+        <h2 id="kg-export-ams">14. Exporting to Your AMS</h2>
         <p>RiskRunway fills in the screen you're looking at — you review and save. You are always the final check.</p>
         <h3>A. Web-based AMS</h3>
         <ol>
@@ -5605,21 +5984,21 @@
             <li>Review every field before saving</li>
         </ol>
 
-        <h2 id="kg-sms">12. SMS Alerts</h2>
+        <h2 id="kg-sms">15. SMS Alerts</h2>
         <ol>
             <li>Go to <strong>SMS Alerts</strong> (in Settings)</li>
             <li>Enter your phone number including country code, e.g. <code>+12255551234</code></li>
             <li>Click <strong>Send Test</strong> to confirm, then <strong>Save</strong></li>
         </ol>
 
-        <h2 id="kg-report-bug">13. Reporting a Bug</h2>
+        <h2 id="kg-report-bug">16. Reporting a Bug</h2>
         <ol>
             <li>Open a submission and click the hamburger menu → <strong>Report Bug</strong></li>
             <li>Use the drawing tool to highlight the area</li>
             <li>Add a description and click <strong>Send Bug Report</strong></li>
         </ol>
 
-        <h2 id="kg-data-accuracy">14. Data Accuracy &amp; Your Responsibility</h2>
+        <h2 id="kg-data-accuracy">17. Data Accuracy &amp; Your Responsibility</h2>
         <p>RiskRunway helps extract, organize, and transfer your quote data — but <strong>you are always the final check</strong> before anything is saved in your AMS or anywhere else.</p>
         <p>Users are solely responsible for reviewing, verifying, and confirming all information before finalizing or submitting data within any external system.</p>
         <ul>

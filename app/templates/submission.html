@@ -643,11 +643,6 @@
             background: var(--border-color);
         }
 
-        .menu-action-btn#deleteSubmissionBtn:hover {
-            background: rgba(220, 38, 38, 0.1);
-            color: var(--color-danger);
-        }
-
         select {
             font-family: 'IBM Plex Sans', sans-serif;
             background: white;
@@ -692,28 +687,6 @@
         }
 
 
-
-        #deleteSubmissionBtn {
-            background: var(--color-danger);
-            color: white;
-        }
-
-        #deleteSubmissionBtn:hover {
-            background: #b91c1c;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        #reportBugBtn {
-            background: var(--color-danger);
-            color: white;
-        }
-
-        #reportBugBtn:hover {
-            background: #b91c1c;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
 
         /* Appetite score badge */
         .appetite-badge {
@@ -1345,9 +1318,12 @@
                                 <option value="RECEIVED">Received</option>
                                 <option value="IN_PROGRESS">In Progress</option>
                                 <option value="CHOSEN">Chosen</option>
-                                <option value="SENT_TO_FINANCE">Sent to Finance</option>
+                                <option value="SENT_TO_FINANCE">Bound</option>
                             </select>
                         </div>
+                        <button id="checkEmailBtnMenu" class="menu-action-btn">Check Email</button>
+                        <button id="addSupportingDocsBtnMenu" class="menu-action-btn">Upload Supporting Docs</button>
+                        <input type="file" id="supportingDocFileInput" accept=".pdf,.png,.jpg,.jpeg" style="display:none;" multiple>
                         <button id="deleteSubmissionBtn" class="menu-action-btn">Delete Submission</button>
                         <button id="reportBugBtn" class="menu-action-btn">Report Bug</button>
                         <button id="userGuideBtn" class="menu-action-btn">User Guide</button>
@@ -1484,6 +1460,16 @@
                 </div>
             </div>
         </div>
+        <!-- Supporting Documents (only shown if docs exist) -->
+        <div id="quotingSupportingDocsCard" class="card" style="margin-top: 1rem; margin-bottom: 1rem; display: none;">
+            <div class="card-header">
+                <h2 class="card-title">📎 Supporting Documents</h2>
+            </div>
+            <div style="padding: 0.5rem 0.75rem;">
+                <div id="quotingSupportingDocsList" class="doc-list"></div>
+            </div>
+        </div>
+
         <div class="card" style="margin-top: 1rem; margin-bottom: 1rem;">
             <div class="card-header">
                 <h2 class="card-title">Notes</h2>
@@ -2209,8 +2195,22 @@
             const bindDocs = submissionDocuments.filter((d) =>
                 ['Application', 'SOV', 'Loss Run', 'Quote', 'Other', 'Binder', 'Finance Agreement'].includes(d.document_type)
             );
+            const supportingDocs = submissionDocuments.filter((d) =>
+                ['SOV', 'Loss Run', 'Correspondence', 'Other'].includes(d.document_type)
+            );
             renderDocList('stage1DocsList', stage1Docs);
             renderDocList('bindDocsList', bindDocs);
+
+            // Show/hide supporting docs section in quoting stage
+            const supportingCard = document.getElementById('quotingSupportingDocsCard');
+            if (supportingCard) {
+                if (supportingDocs.length > 0) {
+                    supportingCard.style.display = '';
+                    renderDocList('quotingSupportingDocsList', supportingDocs);
+                } else {
+                    supportingCard.style.display = 'none';
+                }
+            }
         }
 
         async function uploadSubmissionDocument(file, documentType, extra = {}) {
@@ -4612,6 +4612,89 @@ Thank you for your attention to this matter.`;
             }
         });
 
+        // ============================================================================
+        // CHECK EMAIL (from hamburger menu)
+        // ============================================================================
+        document.getElementById('checkEmailBtnMenu').addEventListener('click', async function() {
+            const btn = this;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '🔄 Checking...';
+
+            // Close menu
+            document.getElementById('headerMenu').classList.remove('open');
+
+            try {
+                const response = await fetch('/api/email/scrape', { method: 'POST' });
+                const data = await response.json();
+
+                if (!data.success && data.needs_connect) {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                    alert('No email account connected. Please connect your email from the kanban board first.');
+                    return;
+                }
+
+                if (!data.success && data.needs_reauth) {
+                    const provider = data.provider || 'outlook';
+                    const returnUrl = encodeURIComponent(window.location.href);
+                    const oauthResponse = await fetch(`/api/oauth/connect/${provider}?return_url=${returnUrl}`);
+                    const oauthData = await oauthResponse.json();
+                    if (oauthData.success && oauthData.authorization_url) {
+                        window.location.href = oauthData.authorization_url;
+                        return;
+                    }
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                    alert('Re-authentication failed. Please try again.');
+                    return;
+                }
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Email check failed');
+                }
+
+                const emails = data.emails || [];
+                btn.textContent = '✅ Done!';
+                setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+
+                if (emails.length > 0) {
+                    alert(`Found ${emails.length} new email(s). Return to the kanban board to process them.`);
+                } else {
+                    alert('No new emails found.\n\nHint: mark messages as unread in your inbox to pick them up.');
+                }
+            } catch (error) {
+                console.error('Email check failed:', error);
+                btn.textContent = '❌ Failed';
+                setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+                alert('Error: ' + error.message);
+            }
+        });
+
+        // ============================================================================
+        // ADD SUPPORTING DOCS (from hamburger menu)
+        // ============================================================================
+        document.getElementById('addSupportingDocsBtnMenu').addEventListener('click', function() {
+            // Close menu and trigger file picker
+            document.getElementById('headerMenu').classList.remove('open');
+            document.getElementById('supportingDocFileInput').click();
+        });
+
+        document.getElementById('supportingDocFileInput').addEventListener('change', async function() {
+            const files = this.files;
+            if (!files.length) return;
+
+            try {
+                for (const file of files) {
+                    await uploadSubmissionDocument(file, 'OTHER', { term_key: submissionData?.effective_date });
+                }
+                this.value = '';
+                await loadDocuments();
+            } catch (error) {
+                alert('Upload failed: ' + error.message);
+            }
+        });
+
         document.getElementById('moveToBindBtn').addEventListener('click', async function() {
             if (!quotes.length) {
                 alert('No quotes to move.');
@@ -5664,9 +5747,12 @@ Thank you for your attention to this matter.`;
             <h3>Table of Contents</h3>
             <ol>
                 <li><a href="#guide-getting-started">Getting Started</a></li>
+                <li><a href="#guide-account-creation">Creating Your Account</a></li>
                 <li><a href="#guide-connecting-inbox">Connecting Your Outlook Inbox</a></li>
                 <li><a href="#guide-submission-board">Understanding the Submission Board</a></li>
+                <li><a href="#guide-menu-actions">Menu Actions &amp; Settings</a></li>
                 <li><a href="#guide-new-risk">Creating a New Risk (Submission)</a></li>
+                <li><a href="#guide-bulk-create">Bulk Create from Folder</a></li>
                 <li><a href="#guide-configure-brokers">Configuring Your Brokers</a></li>
                 <li><a href="#guide-submit-to-market">Submitting to Market</a></li>
                 <li><a href="#guide-check-email">Checking Email &amp; Auto-Importing Quotes</a></li>
@@ -5683,7 +5769,18 @@ Thank you for your attention to this matter.`;
         <h2 id="guide-getting-started">1. Getting Started</h2>
         <p><strong>Browser requirements:</strong> Chrome is strongly suggested if you plan to use the AMS data transfer.</p>
 
-        <h2 id="guide-connecting-inbox">2. Connecting Your Outlook Inbox</h2>
+        <h2 id="guide-account-creation">2. Creating Your Account</h2>
+        <p>New users can create their own account directly from the login page:</p>
+        <ol>
+            <li>Navigate to the login page</li>
+            <li>Click <strong>Sign Up</strong> (below the Sign In button)</li>
+            <li>Fill in your full name, email, username, and a password (must be 12+ characters)</li>
+            <li>Click <strong>Create Account</strong></li>
+            <li>You'll be redirected to the login page — sign in with your new credentials</li>
+        </ol>
+        <p>New accounts are created with the <strong>Agent</strong> role. Admin users can promote accounts to Admin from the admin panel if needed.</p>
+
+        <h2 id="guide-connecting-inbox">3. Connecting Your Outlook Inbox</h2>
         <p>RiskRunway connects to your Outlook (or Gmail) inbox so it can automatically detect incoming quotes and broker replies. This uses OAuth — a secure, standard way of granting an app limited access to your email without giving it your password.</p>
         <h3>To connect:</h3>
         <ol>
@@ -5719,7 +5816,24 @@ Thank you for your attention to this matter.`;
         </table>
         <p>Each card represents one submission for one insured, for one coverage type. If a client has multiple lines of business with different effective dates (e.g. Workers' Comp effective Jan 1, Property effective Jan 15), they get separate cards — use the coverage type field/dropdown on the card to tell them apart.</p>
 
-        <h2 id="guide-new-risk">4. Creating a New Risk (Submission)</h2>
+        <h2 id="guide-menu-actions">5. Menu Actions &amp; Settings</h2>
+        <p>The hamburger menu (top-right of the submission page) and the Settings dropdown on the board provide these actions:</p>
+        <table>
+            <thead><tr><th>Item</th><th>What it does</th></tr></thead>
+            <tbody>
+                <tr><td><strong>My Cards Only</strong></td><td>Toggle to filter the board to only show submissions assigned to you (enabled by default)</td></tr>
+                <tr><td><strong>Configure Brokers</strong></td><td>Add, edit, or remove your broker/MGA contacts (see Section 8)</td></tr>
+                <tr><td><strong>Quote Settings</strong></td><td>Adjust quote comparison thresholds and default binding requirements</td></tr>
+                <tr><td><strong>Check Email</strong></td><td>Scan your connected inbox for broker replies (see Section 10)</td></tr>
+                <tr><td><strong>Add Supporting Docs</strong></td><td>Upload additional documents (loss runs, SOVs, supplemental forms) to the current submission</td></tr>
+                <tr><td><strong>User Guide</strong></td><td>Opens this guide</td></tr>
+                <tr><td><strong>Report Bug</strong></td><td>Take a screenshot and annotate the issue</td></tr>
+                <tr><td><strong>Delete Submission</strong></td><td>Permanently remove the current submission and all associated data</td></tr>
+                <tr><td><strong>Logout</strong></td><td>Sign out of your session</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="guide-new-risk">6. Creating a New Risk (Submission)</h2>
         <p>You have two ways to start a submission:</p>
         <h3>Option A — Manual entry</h3>
         <ol>
@@ -5736,7 +5850,20 @@ Thank you for your attention to this matter.`;
         <p><strong>Note:</strong> RiskRunway does not generate the ACORD 125/126/140 forms for you — those still come from your AMS (EasyApps, Epic, etc.) as they do today. RiskRunway picks up from there: once you have the completed application on hand (from your AMS or your hard drive), drag it in to start the submission.</p>
         <p>Once created, you can attach additional supporting documents to the card — loss runs, statements of value, supplemental forms, etc. — via the <strong>Documents</strong> dropdown on the card.</p>
 
-        <h2 id="guide-configure-brokers">5. Configuring Your Brokers</h2>
+        <h2 id="guide-bulk-create">7. Bulk Create from Folder</h2>
+        <p>If you have a folder of existing PDFs (applications, quotes, or a mix), you can create multiple submissions at once:</p>
+        <ol>
+            <li>Click <strong>New Risk</strong> to open the new submission modal</li>
+            <li>Under <strong>Option 3: Bulk Create from Folder</strong>, click <strong>Choose Folder</strong></li>
+            <li>Select a folder on your computer — RiskRunway will scan it recursively for all PDF files</li>
+            <li>AI classifies each PDF (application vs. quote) and groups them by insured name</li>
+            <li>A preview appears showing what will be created — review and uncheck any groups you don't want</li>
+            <li>Click <strong>Create All</strong> to process the batch</li>
+        </ol>
+        <p><strong>How classification works:</strong> Each PDF is analyzed by AI to determine whether it's an application (which creates a new submission) or a quote (which gets attached to the matching insured's card). Files that can't be classified appear in an "Unclassified" section you can handle manually.</p>
+        <p><strong>Tip:</strong> This is particularly useful when onboarding a backlog of existing submissions — just point it at your folder structure and let it sort things out.</p>
+
+        <h2 id="guide-configure-brokers">8. Configuring Your Brokers</h2>
         <p>Before you can submit to market, you need to set up the brokers/MGAs you work with.</p>
         <ol>
             <li>Go to <strong>Configure Brokers</strong></li>
@@ -5746,7 +5873,7 @@ Thank you for your attention to this matter.`;
             <li>Save</li>
         </ol>
 
-        <h2 id="guide-submit-to-market">6. Submitting to Market</h2>
+        <h2 id="guide-submit-to-market">9. Submitting to Market</h2>
         <p>Once your submission card has the application and supporting docs attached:</p>
         <ol>
             <li>Open the card and click <strong>Submit to Market</strong></li>
@@ -5757,7 +5884,7 @@ Thank you for your attention to this matter.`;
         <p>The email will appear to the broker as coming from your own connected Outlook address — not a generic RiskRunway address.</p>
         <p>Once sent, the card automatically moves into the <strong>Quoting</strong> stage. (You can also skip this and move a card into Quoting manually if you're submitting outside the app.)</p>
 
-        <h2 id="guide-check-email">7. Checking Email &amp; Auto-Importing Quotes</h2>
+        <h2 id="guide-check-email">10. Checking Email &amp; Auto-Importing Quotes</h2>
         <p>When a broker replies with a quote:</p>
         <ol>
             <li>Click <strong>Check Email</strong></li>
@@ -5772,14 +5899,14 @@ Thank you for your attention to this matter.`;
             <li>You'll also get an SMS text alert when a new matching email comes in (see Section 12), even if you're away from your desk</li>
         </ul>
 
-        <h2 id="guide-comparing-quotes">8. Comparing Quotes</h2>
+        <h2 id="guide-comparing-quotes">11. Comparing Quotes</h2>
         <p>Once quotes come in, they appear attached to the submission card. Open the card to compare:</p>
         <ul>
             <li>Each quote shows key parsed fields: carrier, premium, tax, fees, effective/expiration dates, limits, etc.</li>
             <li>You can have multiple quotes on a card while comparing. You must narrow down to a single selected quote per coverage type before the card can move to Binding.</li>
         </ul>
 
-        <h2 id="guide-correspondence">9. Saving Correspondence</h2>
+        <h2 id="guide-correspondence">12. Saving Correspondence</h2>
         <p>If an email thread with a broker has important context you want documented on a submission (not just a throwaway reply):</p>
         <ol>
             <li>From the email view, click <strong>Save as Correspondence</strong></li>
@@ -5788,12 +5915,12 @@ Thank you for your attention to this matter.`;
         </ol>
         <p>The saved correspondence appears under that card's <strong>Documents</strong> dropdown alongside your other attachments.</p>
 
-        <h2 id="guide-binding">10. Moving to Binding</h2>
+        <h2 id="guide-binding">13. Moving to Binding</h2>
         <p>Once a single quote is selected for a coverage type, click <strong>Into Bind</strong> (or drag the card manually) to move it to the Binding stage.</p>
         <p>If you still need to send a formal bind request to your broker/MGA (with any required subjectivities/supplemental forms), do that the same way you always have — via email — and attach the confirmation into the card once you have it.</p>
         <p>Once the broker confirms the bind and you've received the binder/invoice (and eventually the policy + dec page), click <strong>Mark as Bound</strong>.</p>
 
-        <h2 id="guide-export-ams">11. Exporting to Your AMS</h2>
+        <h2 id="guide-export-ams">14. Exporting to Your AMS</h2>
         <p>RiskRunway does not directly write into any AMS — instead, it fills in the screen you're looking at, and you review and save it yourself. You are always the final check before anything is saved.</p>
         <h3>A. Web-based AMS</h3>
         <ol>
@@ -5814,7 +5941,7 @@ Thank you for your attention to this matter.`;
         </ol>
         <p><strong>Reminder:</strong> Quote PDFs over 5 pages may not parse reliably (see Section 14).</p>
 
-        <h2 id="guide-sms">12. SMS Alerts</h2>
+        <h2 id="guide-sms">15. SMS Alerts</h2>
         <p>RiskRunway can text you when a matching broker email comes in, so you don't have to be at your desk.</p>
         <h3>To set up:</h3>
         <ol>
@@ -5825,7 +5952,7 @@ Thank you for your attention to this matter.`;
         </ol>
         <p>Once set up, any email matching your configured brokers (Section 5) will trigger a text summary — even before you click Check Email yourself. You can reply to the text or open the app to process it.</p>
 
-        <h2 id="guide-report-bug">13. Reporting a Bug</h2>
+        <h2 id="guide-report-bug">16. Reporting a Bug</h2>
         <p>If something looks wrong or broken:</p>
         <ol>
             <li>Click the menu icon (top right, "hamburger" icon)</li>
@@ -5837,7 +5964,7 @@ Thank you for your attention to this matter.`;
         </ol>
         <p>This is the fastest way to get an issue in front of the RiskRunway team — no need to email or call separately.</p>
 
-        <h2 id="guide-data-accuracy">14. Data Accuracy &amp; Your Responsibility</h2>
+        <h2 id="guide-data-accuracy">17. Data Accuracy &amp; Your Responsibility</h2>
         <p>RiskRunway helps extract, organize, and transfer your quote data — but <strong>you are always the final check</strong> before anything is saved in your AMS or anywhere else.</p>
         <p><strong>Review Before Submission:</strong> RiskRunway is assisting with data entry based on extracted and user-provided information. Please verify all values in the target system before saving.</p>
         <h3>Data Entry Assistance &amp; User Responsibility</h3>

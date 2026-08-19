@@ -481,7 +481,7 @@
                 <option value="">All Coverages</option>
             </select>
             <label class="doc-check-row" style="padding:10px 0;">
-                <input type="checkbox" id="mFilterMyCards">
+                <input type="checkbox" id="mFilterMyCards" checked>
                 <span style="font-size:15px;font-weight:500;">My Cards Only</span>
             </label>
             <button class="modal-btn-primary" id="applyFiltersBtn">Apply Filters</button>
@@ -515,7 +515,7 @@
         const NUM_DOTS = 20;
 
         // ── Filter state ──
-        let filterMyCards = false;
+        let filterMyCards = true;
         let filterSearch = '';
         let filterStage = '';
         let filterCoverage = '';

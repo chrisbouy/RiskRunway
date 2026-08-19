@@ -400,6 +400,88 @@ def logout():
 
 
 # ============================================================================
+# REGISTRATION ROUTES
+# ============================================================================
+
+@bp.route('/register', methods=['GET'])
+def register_page():
+    """Display the registration form"""
+    if 'user_id' in session:
+        return redirect(url_for('main.kanban'))
+    return render_template('register.html')
+
+
+@bp.route('/api/register', methods=['POST'])
+def register():
+    """Self-service user registration"""
+    try:
+        data = request.get_json()
+        full_name = (data.get('full_name') or '').strip()
+        email = (data.get('email') or '').strip().lower()
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+
+        # Validate required fields
+        if not all([full_name, email, username, password]):
+            return jsonify({'success': False, 'error': 'All fields are required'}), 400
+
+        # Validate email format
+        if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+            return jsonify({'success': False, 'error': 'Invalid email address'}), 400
+
+        # Validate username (alphanumeric + underscores, 3-50 chars)
+        if not re.match(r'^[a-zA-Z0-9_]{3,50}$', username):
+            return jsonify({'success': False, 'error': 'Username must be 3-50 characters (letters, numbers, underscores only)'}), 400
+
+        # Validate password
+        is_valid, error_msg = User.validate_password(password)
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        db_session = get_session()
+        try:
+            # Check if username already exists
+            existing_user = db_session.query(User).filter_by(username=username).first()
+            if existing_user:
+                return jsonify({'success': False, 'error': 'Username already taken'}), 400
+
+            # Check if email already exists
+            existing_email = db_session.query(User).filter_by(email=email).first()
+            if existing_email:
+                return jsonify({'success': False, 'error': 'An account with this email already exists'}), 400
+
+            # Create new user with AGENT role (non-admin)
+            new_user = User(
+                username=username,
+                full_name=full_name,
+                email=email,
+                role=UserRole.AGENT,
+                is_active=True
+            )
+            new_user.set_password(password)
+
+            db_session.add(new_user)
+            db_session.commit()
+
+            log_action(
+                entity_type='user',
+                entity_id=new_user.id,
+                action='registered',
+                details=f"Self-registered user {username} ({email})"
+            )
+
+            logger.info(f"New user registered: {username} ({email})")
+
+            return jsonify({'success': True, 'message': 'Account created successfully'})
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        return jsonify({'success': False, 'error': 'An error occurred. Please try again.'}), 500
+
+
+# ============================================================================
 # PASSWORD RESET ROUTES
 # ============================================================================
 
@@ -1147,6 +1229,161 @@ def create_submission_entry():
             'submission_intake': intake_data
         })
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# BULK CREATE
+# ============================================================================
+
+@bp.route('/api/bulk-upload', methods=['POST'])
+@login_required
+def bulk_upload_classify():
+    """
+    Receive multiple PDF files (from folder upload), classify each as
+    application or quote, extract insured names, and group them.
+    Returns a preview for user confirmation before actual creation.
+    """
+    try:
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'success': False, 'error': 'No files uploaded'}), 400
+
+        # Filter to PDFs only
+        pdf_files = [f for f in files if f.filename and f.filename.lower().endswith('.pdf')]
+        if not pdf_files:
+            return jsonify({'success': False, 'error': 'No PDF files found in upload'}), 400
+
+        # Save all files to a temp directory
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], f'bulk_{timestamp}')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        saved_files = []
+        for f in pdf_files:
+            filename = secure_filename(f.filename)
+            filepath = os.path.join(temp_dir, filename)
+            # Handle duplicate filenames
+            if os.path.exists(filepath):
+                base, ext = os.path.splitext(filename)
+                filepath = os.path.join(temp_dir, f"{base}_{len(saved_files)}{ext}")
+                filename = os.path.basename(filepath)
+            f.save(filepath)
+            saved_files.append({'filename': filename, 'filepath': filepath})
+
+        print(f"[Bulk Upload] Saved {len(saved_files)} PDFs to {temp_dir}")
+
+        # Classify each PDF
+        from app.bulk_create import classify_pdf, group_by_insured
+        classified = []
+        for file_info in saved_files:
+            print(f"  Classifying: {file_info['filename']}...")
+            result = classify_pdf(file_info['filepath'])
+            classified.append(result)
+            print(f"    → {result['type']} (confidence: {result['confidence']:.2f}, "
+                  f"insured: {result['insured_name']}, method: {result['method']})")
+
+        # Group by insured name
+        groups = group_by_insured(classified)
+
+        # Build preview response
+        preview = {
+            'temp_dir': temp_dir,
+            'total_files': len(saved_files),
+            'groups': []
+        }
+        for group in groups:
+            preview['groups'].append({
+                'insured_name': group['insured_name'],
+                'stage': group['stage'],
+                'applications': [
+                    {'filename': a['filename'], 'filepath': a['filepath'],
+                     'confidence': a['confidence'], 'method': a['method']}
+                    for a in group['applications']
+                ],
+                'quotes': [
+                    {'filename': q['filename'], 'filepath': q['filepath'],
+                     'confidence': q['confidence'], 'method': q['method']}
+                    for q in group['quotes']
+                ],
+                'supporting_docs': [
+                    {'filename': s['filename'], 'filepath': s['filepath'],
+                     'confidence': s['confidence'], 'method': s['method'],
+                     'doc_subtype': s.get('doc_subtype')}
+                    for s in group.get('supporting_docs', [])
+                ],
+                'other': [
+                    {'filename': o['filename'], 'filepath': o['filepath'],
+                     'confidence': o['confidence'], 'method': o['method']}
+                    for o in group['other']
+                ],
+            })
+
+        print(f"[Bulk Upload] Classification complete: {len(groups)} groups")
+        return jsonify({'success': True, 'preview': preview})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/bulk-create', methods=['POST'])
+@login_required
+def bulk_create_execute():
+    """
+    Execute bulk creation from confirmed preview groups.
+    Expects JSON body with:
+    {
+        "temp_dir": "path to temp dir from upload step",
+        "groups": [
+            {
+                "insured_name": "...",
+                "stage": "submission" | "quoting",
+                "applications": [{"filename": "...", "filepath": "..."}],
+                "quotes": [{"filename": "...", "filepath": "..."}]
+            }
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON body'}), 400
+
+        temp_dir = data.get('temp_dir', '')
+        groups = data.get('groups', [])
+
+        if not groups:
+            return jsonify({'success': False, 'error': 'No groups to create'}), 400
+
+        # Validate temp_dir exists
+        if not temp_dir or not os.path.exists(temp_dir):
+            return jsonify({'success': False, 'error': 'Upload session expired. Please re-upload files.'}), 400
+
+        print(f"[Bulk Create] Executing {len(groups)} groups from {temp_dir}")
+
+        from app.bulk_create import execute_bulk_create
+        results = execute_bulk_create(groups, temp_dir)
+
+        created_count = sum(1 for r in results if r['status'] == 'created')
+        failed_count = sum(1 for r in results if r['status'] == 'failed')
+
+        print(f"[Bulk Create] Done: {created_count} created, {failed_count} failed")
+
+        return jsonify({
+            'success': True,
+            'results': results,
+            'summary': {
+                'created': created_count,
+                'failed': failed_count,
+                'total': len(results)
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
