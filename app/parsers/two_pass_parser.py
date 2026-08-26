@@ -505,6 +505,46 @@ def _normalize_quote_coverage_types(data):
                 policy["coverage_type"] = normalize_coverage_type(policy["coverage_type"])
 
 
+def _auto_orient_image(img, llm=None):
+    """
+    Detect and correct the rotation of a photographed document.
+
+    Photos of physical documents frequently arrive rotated 90/180/270 degrees,
+    often with no EXIF orientation tag to rely on. Vision models read upright
+    documents far more accurately.
+
+    We use Tesseract's Orientation and Script Detection (OSD), which is
+    deterministic and reliable for this — far more so than asking a small
+    vision model. Tesseract reports how many degrees to rotate the image so
+    the text is upright.
+
+    Returns the (possibly rotated) PIL image. On any failure, returns the
+    original image unchanged so parsing can still proceed.
+    """
+    try:
+        import pytesseract
+        import re
+
+        osd = pytesseract.image_to_osd(img)
+        # OSD reports e.g. "Rotate: 90" — degrees to rotate CLOCKWISE to upright
+        match = re.search(r"Rotate:\s*(\d+)", osd)
+        conf_match = re.search(r"Orientation confidence:\s*([\d.]+)", osd)
+        rotate = int(match.group(1)) if match else 0
+        confidence = float(conf_match.group(1)) if conf_match else 0.0
+
+        # Low-confidence readings are unreliable; skip rotating in that case.
+        if rotate in (90, 180, 270) and confidence >= 1.0:
+            print(f"    ↻ Auto-orient: rotating {rotate}° (OSD confidence {confidence:.2f})")
+            # PIL rotate() is counter-clockwise; rotate CCW by (360 - rotate)
+            # to achieve a clockwise rotation of `rotate` degrees.
+            img = img.rotate(-rotate, expand=True)
+        else:
+            print(f"    ↻ Auto-orient: no rotation (rotate={rotate}, confidence={confidence:.2f})")
+    except Exception as e:
+        print(f"    ⚠ Auto-orient failed ({e}); using image as-is")
+    return img
+
+
 def pass2_normalize_quote_data(layout_data):
     """
     Pass 2: Normalize to structured JSON.
@@ -524,6 +564,10 @@ def pass2_normalize_quote_data(layout_data):
             img_path = page.get("image_path")
             if img_path and os.path.exists(img_path):
                 img = Image.open(img_path).convert("RGB")
+                # Auto-correct orientation (photos of physical docs are often rotated,
+                # and EXIF is frequently missing). The vision model reads upright docs
+                # far more accurately than rotated ones.
+                img = _auto_orient_image(img, llm)
                 if img.width > vision_max_width:
                     ratio = vision_max_width / img.width
                     new_size = (vision_max_width, int(img.height * ratio))

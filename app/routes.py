@@ -4638,6 +4638,307 @@ def get_oauth_config_status():
 
 
 # ============================================================================
+# MOBILE SCAN: MULTI-PHOTO → PDF
+# ============================================================================
+
+@bp.route('/api/scan-to-pdf', methods=['POST'])
+@login_required
+def scan_to_pdf():
+    """
+    Accept multiple image files (JPG/PNG from mobile camera), stitch them into
+    a single multi-page PDF, and optionally parse it as a quote.
+
+    Form fields:
+        images[]: multiple image files (required, at least 1)
+        submission_id: (optional) existing submission to attach to
+        document_type: (optional) APPLICATION | QUOTE | OTHER (default: QUOTE)
+        filename: (optional) desired PDF filename (default: scan_YYYYMMDD_HHMMSS.pdf)
+        parse: (optional) 'true' to also run quote parsing after PDF creation
+    """
+    from PIL import Image
+    import io
+
+    try:
+        images = request.files.getlist('images[]')
+        if not images:
+            images = request.files.getlist('images')
+        if not images or len(images) == 0:
+            return jsonify({'success': False, 'error': 'No images provided'}), 400
+
+        # Validate all files are images
+        allowed_img_exts = {'png', 'jpg', 'jpeg', 'heic', 'heif'}
+        for img_file in images:
+            if not img_file.filename:
+                return jsonify({'success': False, 'error': 'Empty file in upload'}), 400
+            ext = img_file.filename.rsplit('.', 1)[-1].lower() if '.' in img_file.filename else ''
+            if ext not in allowed_img_exts:
+                return jsonify({'success': False, 'error': f'Invalid image type: {img_file.filename}. Only JPG/PNG/HEIC allowed.'}), 400
+
+        # Convert images to RGB PIL Images (PDF doesn't support RGBA)
+        pil_images = []
+        for img_file in images:
+            img = Image.open(img_file.stream)
+            # Apply EXIF orientation (iPhone photos are often rotated in metadata)
+            img = ImageOps.exif_transpose(img)
+            if img.mode == 'RGBA':
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[3])
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            pil_images.append(img)
+
+        if len(pil_images) == 0:
+            return jsonify({'success': False, 'error': 'No valid images could be processed'}), 400
+
+        # Enhance images for better OCR/LLM readability
+        from PIL import ImageEnhance, ImageFilter, ImageOps
+        enhanced_images = []
+        for img in pil_images:
+            # Auto-contrast: stretch histogram to use full range
+            img = ImageOps.autocontrast(img, cutoff=1)
+            # Convert to grayscale then back to RGB (removes color noise, emphasizes text)
+            gray = img.convert('L')
+            # Sharpen to crisp up text edges
+            gray = gray.filter(ImageFilter.SHARPEN)
+            # Boost contrast further (makes text darker, background whiter)
+            enhancer = ImageEnhance.Contrast(gray)
+            gray = enhancer.enhance(1.5)
+            # Back to RGB for PDF
+            img = gray.convert('RGB')
+            enhanced_images.append(img)
+        pil_images = enhanced_images
+
+        # Stitch into multi-page PDF in memory
+        pdf_buffer = io.BytesIO()
+        if len(pil_images) == 1:
+            pil_images[0].save(pdf_buffer, format='PDF', resolution=200.0)
+        else:
+            pil_images[0].save(
+                pdf_buffer,
+                format='PDF',
+                resolution=200.0,
+                save_all=True,
+                append_images=pil_images[1:]
+            )
+        pdf_buffer.seek(0)
+
+        # Determine output filename
+        custom_filename = (request.form.get('filename') or '').strip()
+        if custom_filename:
+            if not custom_filename.lower().endswith('.pdf'):
+                custom_filename += '.pdf'
+        else:
+            custom_filename = f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        # Save the PDF to a temp file
+        safe_name = secure_filename(custom_filename)
+        temp_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}_{safe_name}"
+        temp_path = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_name)
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
+        with open(temp_path, 'wb') as f:
+            f.write(pdf_buffer.getvalue())
+
+        submission_id = request.form.get('submission_id', type=int)
+        document_type_raw = (request.form.get('document_type') or 'QUOTE').strip().upper()
+        should_parse = (request.form.get('parse') or '').lower() == 'true'
+
+        try:
+            document_type = DocumentType[document_type_raw]
+        except KeyError:
+            document_type = DocumentType.QUOTE
+
+        # ── If parse=true AND document_type is QUOTE, do stitch+parse in one go ──
+        if should_parse and document_type == DocumentType.QUOTE:
+            existing_quotes = []
+            if submission_id:
+                sub_data = get_submission_by_id(submission_id)
+                if not sub_data:
+                    return jsonify({'success': False, 'error': 'Submission not found'}), 404
+                if sub_data.get('quotes'):
+                    existing_quotes = [
+                        json.loads(q['extracted_json']) if q.get('extracted_json') else {}
+                        for q in sub_data['quotes']
+                    ]
+
+            three_pass_result = process_quote_two_pass(temp_path, existing_quotes)
+            layout_data = three_pass_result['pass1_layout']
+            parsed_data = three_pass_result['pass2_normalized']
+
+            insured_name = parsed_data.get('insured', {}).get('name', 'Unknown')
+            carrier_name = None
+            effective_date = None
+            state = parsed_data.get('insured', {}).get('address', {}).get('state')
+
+            if parsed_data.get('policies') and len(parsed_data['policies']) > 0:
+                first_policy = parsed_data['policies'][0]
+                carrier_name = first_policy.get('carrier')
+                effective_date = first_policy.get('effective_date')
+
+            if submission_id:
+                sub_check = get_submission_by_id(submission_id)
+                if not sub_check:
+                    return jsonify({'success': False, 'error': 'Submission not found'}), 404
+            else:
+                if not effective_date:
+                    effective_date = datetime.now().strftime('%Y-%m-%d')
+                submission_id = create_submission(
+                    insured_name=insured_name,
+                    effective_date=effective_date,
+                    state=state,
+                    user=session.get('username'),
+                    assigned_to=session.get('user_id')
+                )
+
+            subjectivities = parsed_data.get('subjectivities')
+            subjectivities_json_str = json.dumps(subjectivities) if subjectivities else None
+
+            quote_id = create_quote(
+                submission_id=submission_id,
+                carrier_name=carrier_name,
+                raw_document_path=temp_path,
+                extracted_json=json.dumps(parsed_data),
+                pass1_layout_json=json.dumps(layout_data),
+                subjectivities_json=subjectivities_json_str,
+                user=None
+            )
+
+            # Store in Documents table
+            db_session = get_session()
+            try:
+                quote_doc_key = _build_storage_key(submission_id, DocumentType.QUOTE.name, safe_name, session.get('user_id'), insured_name)
+                storage_provider, storage_key = _storage_upload(temp_path, quote_doc_key, 'application/pdf')
+                doc = Document(
+                    submission_id=submission_id,
+                    quote_id=quote_id,
+                    document_type=DocumentType.QUOTE,
+                    carrier=carrier_name,
+                    term_key=effective_date,
+                    version=1,
+                    is_active=True,
+                    storage_provider=storage_provider,
+                    storage_key=storage_key,
+                    original_filename=safe_name,
+                    content_type='application/pdf',
+                    size_bytes=os.path.getsize(temp_path) if os.path.exists(temp_path) else None,
+                    uploaded_by=session.get('username')
+                )
+                db_session.add(doc)
+                db_session.commit()
+            finally:
+                db_session.close()
+
+            # Clean up temp
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='scan_to_pdf_parsed',
+                user=session.get('username'),
+                submission_id=submission_id,
+                quote_id=quote_id,
+                details=json.dumps({
+                    'pages': len(pil_images),
+                    'filename': safe_name,
+                    'carrier': carrier_name
+                })
+            )
+
+            return jsonify({
+                'success': True,
+                'submission_id': submission_id,
+                'quote_id': quote_id,
+                'parsed_data': parsed_data,
+                'pages': len(pil_images),
+                'processing_metadata': three_pass_result['processing_metadata']
+            })
+
+        # ── Store-only mode (no parse) ──
+        if submission_id:
+            db_session = get_session()
+            try:
+                submission = db_session.query(Submission).filter_by(id=submission_id).first()
+                if not submission:
+                    return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+                insured_name = submission.insured_name
+                term_key = submission.effective_date or datetime.now().strftime('%Y-%m-%d')
+
+                latest = db_session.query(Document).filter(
+                    Document.submission_id == submission_id,
+                    Document.document_type == document_type,
+                    Document.term_key == term_key
+                ).order_by(Document.version.desc()).first()
+                next_version = (latest.version + 1) if latest else 1
+
+                object_key = _build_storage_key(submission_id, document_type.name, safe_name, session.get('user_id'), insured_name)
+                storage_provider, storage_key = _storage_upload(temp_path, object_key, 'application/pdf')
+
+                doc = Document(
+                    submission_id=submission_id,
+                    document_type=document_type,
+                    term_key=term_key,
+                    version=next_version,
+                    is_active=True,
+                    storage_provider=storage_provider,
+                    storage_key=storage_key,
+                    original_filename=safe_name,
+                    content_type='application/pdf',
+                    size_bytes=os.path.getsize(temp_path),
+                    uploaded_by=session.get('username')
+                )
+                db_session.add(doc)
+                db_session.commit()
+                doc_id = doc.id
+            finally:
+                db_session.close()
+
+            # Clean up temp
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+
+            log_action(
+                entity_type='submission',
+                entity_id=submission_id,
+                action='scan_to_pdf_uploaded',
+                user=session.get('username'),
+                submission_id=submission_id,
+                details=json.dumps({
+                    'document_type': document_type.name,
+                    'pages': len(pil_images),
+                    'filename': safe_name
+                })
+            )
+
+            return jsonify({
+                'success': True,
+                'document_id': doc_id,
+                'filename': safe_name,
+                'pages': len(pil_images)
+            })
+
+        else:
+            # No submission_id, no parse — just stitch and store temporarily
+            # (edge case: shouldn't normally happen from mobile UI)
+            return jsonify({
+                'success': True,
+                'filename': safe_name,
+                'pages': len(pil_images)
+            })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
 # QUOTE UPLOAD & PROCESSING
 # ============================================================================
 
@@ -4669,6 +4970,34 @@ def upload_quote():
         unique_filename = f"{timestamp}_{filename}"
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
         file.save(filepath)
+
+        # If the file is an image (JPG/PNG), convert to PDF with enhancement
+        img_exts = {'jpg', 'jpeg', 'png'}
+        file_ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if file_ext in img_exts:
+            from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+            import io as _io
+            img = Image.open(filepath)
+            if img.mode == 'RGBA':
+                bg = Image.new('RGB', img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[3])
+                img = bg
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            # Enhance for OCR readability
+            img = ImageOps.autocontrast(img, cutoff=1)
+            gray = img.convert('L')
+            gray = gray.filter(ImageFilter.SHARPEN)
+            enhancer = ImageEnhance.Contrast(gray)
+            gray = enhancer.enhance(1.5)
+            img = gray.convert('RGB')
+            # Save as PDF, overwrite the original file
+            pdf_filepath = filepath.rsplit('.', 1)[0] + '.pdf'
+            img.save(pdf_filepath, format='PDF', resolution=200.0)
+            # Remove original image, use PDF going forward
+            os.remove(filepath)
+            filepath = pdf_filepath
+            filename = filename.rsplit('.', 1)[0] + '.pdf'
 
         # Parse the document with three-pass system
         try:
