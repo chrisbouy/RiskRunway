@@ -120,7 +120,7 @@
         }
         .runway-dot {
             width: 4px; height: 4px; border-radius: 50%;
-            background: #b8860b; opacity: 0.4;
+            background: #b8860b; opacity: 0.25;
             animation: dot-glow 3s ease-in-out infinite;
         }
         .runway-dot:nth-child(2) { animation-delay: 0.3s; }
@@ -143,8 +143,8 @@
         .runway-dot:nth-child(19) { animation-delay: 2.25s; }
         .runway-dot:nth-child(20) { animation-delay: 2.55s; }
         @keyframes dot-glow {
-            0%, 100% { opacity: 0.3; transform: scale(1); }
-            50% { opacity: 0.9; transform: scale(1.4); background: #ffd700; }
+            0%, 100% { opacity: 0.2; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.15); background: #d4af37; }
         }
 
         /* ── CARD ROW (3 columns) ── */
@@ -714,8 +714,8 @@
 
             // Renewal countdown for bound cards
             let countdownHtml = '';
-            if (stage === 'bind' && submission.effective_date) {
-                const days = getDaysUntilRenewal(submission.effective_date);
+            if (stage === 'bind' && submission.expiration_date) {
+                const days = getDaysUntilExpiration(submission.expiration_date);
                 if (days !== null) {
                     const color = days <= 30 ? '#ef4444' : days <= 60 ? '#ff9f40' : 'var(--text-muted)';
                     countdownHtml = '<div style="font-size:10px;font-weight:600;color:'+color+';text-align:center;margin-top:2px;">T-'+days+'d</div>';
@@ -753,8 +753,8 @@
             const stageLabel = stage === 'submission' ? 'Submission' : stage === 'quoting' ? 'Quoting' : 'Bound';
 
             let renewalHtml = '';
-            if (stage !== 'submission' && submission.effective_date) {
-                const days = getDaysUntilRenewal(submission.effective_date);
+            if (stage !== 'submission' && submission.expiration_date) {
+                const days = getDaysUntilExpiration(submission.expiration_date);
                 if (days !== null) {
                     const c = days <= 30 ? '#ef4444' : days <= 60 ? '#ff9f40' : '#4ade80';
                     renewalHtml = '<div class="preview-row"><span class="preview-label">Renewal In</span><span class="preview-value" style="color:'+c+'">'+days+' days</span></div>';
@@ -831,12 +831,26 @@
         });
 
         // ── Helpers ──
-        function getDaysUntilRenewal(effectiveDate) {
-            if (!effectiveDate) return null;
-            const parsed = new Date(String(effectiveDate).slice(0,10) + 'T00:00:00');
-            if (isNaN(parsed.getTime())) return null;
-            const exp = new Date(parsed); exp.setFullYear(exp.getFullYear() + 1);
-            const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        // Demo clock: cached simulated "now" fetched from /api/demo-clock.
+        let __demoNowMs = null;
+        function demoNow() {
+            return __demoNowMs !== null ? new Date(__demoNowMs) : new Date();
+        }
+        async function loadDemoClock() {
+            try {
+                const res = await fetch('/api/demo-clock');
+                const data = await res.json();
+                __demoNowMs = (data && data.success && data.enabled && data.now) ? new Date(data.now).getTime() : null;
+            } catch (e) {
+                __demoNowMs = null;
+            }
+        }
+        // Days until expiration = expiration_date (from bound quote) - now. No math on effective date.
+        function getDaysUntilExpiration(expirationDate) {
+            if (!expirationDate) return null;
+            const exp = new Date(String(expirationDate).slice(0,10) + 'T00:00:00');
+            if (isNaN(exp.getTime())) return null;
+            const now = demoNow(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             return Math.ceil((exp.getTime() - today.getTime()) / 86400000);
         }
         function escapeHtml(v) {
@@ -1233,7 +1247,7 @@
         document.getElementById('newMessagesModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('active'); });
 
         // ── Init ──
-        loadSubmissions();
+        (async () => { await loadDemoClock(); loadSubmissions(); })();
     })();
     </script>
 </body>

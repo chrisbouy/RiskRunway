@@ -2244,9 +2244,9 @@
             const attention = submissions.filter(s => {
                 const stageKey = getStageKey(s);
                 if (stageKey === 'quoting' && (!s.quote_count || s.quote_count === 0)) return true;
-                // Lapsed renewal: bound submissions past their effective date
-                if (isBoundStatus(s.status) && s.effective_date) {
-                    const daysUntil = getDaysUntilRenewal(s.effective_date);
+                // Lapsed renewal: bound submissions past their expiration date
+                if (isBoundStatus(s.status) && s.expiration_date) {
+                    const daysUntil = getDaysUntilExpiration(s.expiration_date);
                     if (daysUntil !== null && daysUntil < 0) return true;
                 }
                 if (s.updated_at) {
@@ -2265,8 +2265,8 @@
                     let reason = 'Stale';
                     let badgeClass = 'badge-info';
                     if (stageKey === 'quoting' && (!s.quote_count || s.quote_count === 0)) reason = 'No quotes';
-                    if (isBoundStatus(s.status) && s.effective_date) {
-                        const daysUntil = getDaysUntilRenewal(s.effective_date);
+                    if (isBoundStatus(s.status) && s.expiration_date) {
+                        const daysUntil = getDaysUntilExpiration(s.expiration_date);
                         if (daysUntil !== null && daysUntil < 0) { reason = 'Lapsed'; badgeClass = 'badge-critical'; }
                     }
                     return '<a href="/submission/' + s.id + '" class="widget-item"><span class="widget-item-name">' + (s.insured_name || 'Unnamed') + '</span><span class="widget-item-badge ' + badgeClass + '">' + reason + '</span></a>';
@@ -2665,17 +2665,35 @@
                 .replace(/'/g, '&#39;');
         }
 
-        function getDaysUntilRenewal(effectiveDate) {
-            if (!effectiveDate) return null;
-            const datePart = String(effectiveDate).slice(0, 10);
-            const parsed = new Date(`${datePart}T00:00:00`);
-            if (Number.isNaN(parsed.getTime())) return null;
+        // Demo clock: cached simulated "now" fetched from /api/demo-clock.
+        // Defaults to the real clock until loaded / when the override is off.
+        let __demoNowMs = null;
+        function demoNow() {
+            return __demoNowMs !== null ? new Date(__demoNowMs) : new Date();
+        }
+        async function loadDemoClock() {
+            try {
+                const res = await fetch('/api/demo-clock');
+                const data = await res.json();
+                if (data && data.success && data.enabled && data.now) {
+                    __demoNowMs = new Date(data.now).getTime();
+                } else {
+                    __demoNowMs = null;
+                }
+            } catch (e) {
+                __demoNowMs = null;
+            }
+        }
 
-            // Expiration = effective date + 1 year
-            const expiration = new Date(parsed);
-            expiration.setFullYear(expiration.getFullYear() + 1);
+        // Days until expiration = expiration_date (from the bound quote) - now.
+        // No date math on effective date — we use whatever the quote says.
+        function getDaysUntilExpiration(expirationDate) {
+            if (!expirationDate) return null;
+            const datePart = String(expirationDate).slice(0, 10);
+            const expiration = new Date(`${datePart}T00:00:00`);
+            if (Number.isNaN(expiration.getTime())) return null;
 
-            const now = new Date();
+            const now = demoNow();
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             return Math.ceil((expiration.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
         }
@@ -2827,7 +2845,7 @@
 
                 // Dynamic bind lane tint based on renewal countdown
                 if (laneKey === 'bind' && stageKey === 'bind') {
-                    const daysUntil = getDaysUntilRenewal(submission.effective_date);
+                    const daysUntil = getDaysUntilExpiration(submission.expiration_date);
                     if (daysUntil !== null && daysUntil <= 30) {
                         tint = '';
                         lane.style.background = 'rgba(239, 68, 68, 0.15)';
@@ -2937,7 +2955,7 @@
             card.dataset.submissionId = submission.id;
             card.draggable = true;
 
-            const daysUntilRenewal = getDaysUntilRenewal(submission.effective_date);
+            const daysUntilRenewal = getDaysUntilExpiration(submission.expiration_date);
             const displayLabel = (submission.status_label || '').trim();
             const quoteReceivedCount = Number(submission.quote_count || 0);
 
@@ -4310,6 +4328,9 @@
         async function initializePage() {
             // Load current database first
             await loadCurrentDatabase();
+
+            // Load demo clock override (renewal countdown demo)
+            await loadDemoClock();
 
             // Load users
             try {

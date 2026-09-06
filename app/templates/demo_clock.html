@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Clock - RiskRunway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black text-gray-100">
+    <div class="container mx-auto px-4 py-6 max-w-xl">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold text-white">🕐 Demo Clock</h1>
+            <a href="/" class="text-blue-400 hover:text-blue-300">← Back to Board</a>
+        </div>
+
+        <div class="bg-gray-900 rounded-lg shadow border border-gray-700 p-5">
+            <p class="text-sm text-gray-400 mb-5 leading-relaxed">
+                Override the "current date/time" used for <strong class="text-gray-200">renewal countdowns</strong>.
+                When enabled, RiskRunway computes days remaining as <span class="font-mono text-gray-300">expiration&nbsp;&minus;&nbsp;this&nbsp;date</span>
+                instead of the real clock. This only affects the countdown display — email and SMS still use the real time.
+            </p>
+
+            <label class="flex items-center gap-3 mb-5 cursor-pointer">
+                <input type="checkbox" id="enabledCheckbox" class="w-5 h-5 accent-blue-600">
+                <span class="text-sm text-gray-200">Use this as system date/time</span>
+            </label>
+
+            <div class="mb-5">
+                <label class="block text-xs text-gray-500 uppercase tracking-wide mb-2">Simulated date &amp; time</label>
+                <input type="datetime-local" id="demoDatetime"
+                       class="w-full text-sm px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white">
+            </div>
+
+            <div class="flex items-center justify-between pt-3 border-t border-gray-700">
+                <button id="resetBtn" class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 text-sm">Reset to real time</button>
+                <button id="saveBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Save</button>
+            </div>
+
+            <div id="statusMsg" class="mt-4 text-sm hidden"></div>
+
+            <div class="mt-5 pt-4 border-t border-gray-700 text-xs text-gray-500">
+                Current effective "now": <span id="currentNow" class="font-mono text-gray-300">loading…</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showStatus(msg, ok) {
+            const el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'mt-4 text-sm ' + (ok ? 'text-green-400' : 'text-red-400');
+            el.classList.remove('hidden');
+        }
+
+        // Format a Date into the value a datetime-local input expects (local, no seconds).
+        function toLocalInputValue(d) {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        async function loadCurrent() {
+            try {
+                const res = await fetch('/api/demo-clock');
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to load');
+
+                document.getElementById('currentNow').textContent =
+                    new Date(data.now).toLocaleString() + (data.enabled ? '  (SIMULATED)' : '  (real time)');
+
+                document.getElementById('enabledCheckbox').checked = !!data.enabled;
+                const input = document.getElementById('demoDatetime');
+                if (data.datetime) {
+                    // Stored value may or may not include seconds; datetime-local wants YYYY-MM-DDTHH:MM
+                    input.value = String(data.datetime).slice(0, 16);
+                } else if (!input.value) {
+                    input.value = toLocalInputValue(new Date());
+                }
+            } catch (e) {
+                showStatus('Could not load current clock: ' + e.message, false);
+            }
+        }
+
+        async function save() {
+            const enabled = document.getElementById('enabledCheckbox').checked;
+            const dtValue = document.getElementById('demoDatetime').value;
+            if (enabled && !dtValue) {
+                showStatus('Pick a date/time before enabling.', false);
+                return;
+            }
+            try {
+                const res = await fetch('/api/tenant-settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ demo_clock: { enabled, datetime: dtValue || null } })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Save failed');
+                showStatus(enabled ? 'Demo clock enabled and saved.' : 'Saved. Using real time.', true);
+                await loadCurrent();
+            } catch (e) {
+                showStatus('Save failed: ' + e.message, false);
+            }
+        }
+
+        async function reset() {
+            document.getElementById('enabledCheckbox').checked = false;
+            try {
+                const res = await fetch('/api/tenant-settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ demo_clock: { enabled: false, datetime: null } })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Reset failed');
+                showStatus('Reset. Renewal countdowns now use real time.', true);
+                await loadCurrent();
+            } catch (e) {
+                showStatus('Reset failed: ' + e.message, false);
+            }
+        }
+
+        document.getElementById('saveBtn').addEventListener('click', save);
+        document.getElementById('resetBtn').addEventListener('click', reset);
+        loadCurrent();
+    </script>
+</body>
+</html>

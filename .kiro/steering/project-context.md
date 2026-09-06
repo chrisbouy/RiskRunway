@@ -26,7 +26,7 @@ Cards represent insureds, move left to right. Each stage has a distinct color.
 
 **Stage 3 — Selection & Bind (green)**: Selected quote locked in. Binder status tracking. "Export to AMS" action. Finance agreement generation (not yet implemented).
 
-**Card lifecycle (circular)**: Created → Submission → Quoting → Bound → [120 days before expiration] → Quoting (renewal) → repeat. Renewal card shows countdown. Prior bound quote carries forward as reference.
+**Card lifecycle (circular)**: Created → Submission → Quoting → Bound → [120 days before expiration] → Quoting (renewal) → repeat. Renewal card shows a countdown to expiration (see "Renewal Countdown & Demo Clock"). Prior bound quote carries forward as reference.
 
 ## Developer Environment
 - Python virtual environment: `source "/Users/chrisbouy/code_base/IPFS Mapper/myenv/bin/activate"`
@@ -292,6 +292,17 @@ Located in `sample_docs/misc/`:
 - "Needs Attention" widget field name: `s.quote_count` (not `quotes_count` — was a bug, fixed)
 - `updateWidgets()` called after every `loadSubmissions()` — widgets refresh on any board action
 - Docs dropdown z-index fix: `.submission-card:has(.docs-dropdown.open) { z-index: 100 }` elevates card when dropdown is open
+
+## Renewal Countdown & Demo Clock
+- Countdown = `expiration_date - now`. NO date math — expiration comes straight from the bound quote's parsed data (`policies[0].expiration_date`), not derived from effective date + 1 year.
+- `Submission._expiration_date()` (models.py) reads expiration verbatim: prefers the WON quote, falls back to any quote with an expiration, returns None otherwise. Exposed as `expiration_date` in `Submission.to_dict()`.
+- Frontend function is `getDaysUntilExpiration(expirationDate)` (renamed from `getDaysUntilRenewal`) in kanban.html, mobile.html, submission.html. Called with `submission.expiration_date`.
+- Consequence: a bound card whose quote has no parsed expiration shows NO countdown (correct — we don't guess).
+- Backend `_days_until_renewal(expiration_date)` in routes.py now also uses expiration (was previously effective_date — that inconsistency is fixed). It has no callers; countdown is computed client-side.
+- **Demo clock** (for demoing renewals): admin page at `/demo-clock` sets an arbitrary "now" with a "Use this as system date/time" checkbox. Stored per-tenant in `TenantSettings` under key `demo_clock` = `{enabled, datetime}`.
+  - `demo_now()` in routes.py returns the fake datetime when enabled, else `datetime.now()`. `GET /api/demo-clock` exposes the effective `now` to the frontend; each template caches it via `loadDemoClock()` before first render and `demoNow()` feeds the countdown subtraction.
+  - Scoped to renewal countdown display ONLY. Email/SMS polling still uses the real clock — no accidental sends mid-demo.
+  - No UI link yet — navigate to `/demo-clock` directly.
 
 ## Known Issues & Gotchas
 - `routes.py` is 7000+ lines — tools may truncate it. Search for specific functions.

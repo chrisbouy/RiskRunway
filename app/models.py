@@ -184,6 +184,7 @@ class Submission(Base):
             'insured_name': self.insured_name,
             'short_name': self.short_name,
             'effective_date': self.effective_date,
+            'expiration_date': self._expiration_date(),
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'status': self.status.value if self.status else None,
@@ -226,6 +227,34 @@ class Submission(Base):
             return parsed if isinstance(parsed, dict) else None
         except (json.JSONDecodeError, TypeError):
             return None
+
+    def _expiration_date(self):
+        """Expiration date taken directly from the bound quote (no math).
+
+        Reads whatever the quote's parsed data says under
+        policies[0].expiration_date. Prefers the WON quote; falls back to any
+        quote that has one. Returns a YYYY-MM-DD string or None.
+        """
+        if not self.quotes:
+            return None
+        # Prefer the won/bound quote, then any quote with an expiration.
+        ordered = sorted(
+            self.quotes,
+            key=lambda q: 0 if (q.quote_outcome == 'WON') else 1
+        )
+        for quote in ordered:
+            if not quote.extracted_json:
+                continue
+            try:
+                data = json.loads(quote.extracted_json)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            policies = data.get('policies') if isinstance(data, dict) else None
+            if policies and isinstance(policies, list) and policies:
+                exp = policies[0].get('expiration_date')
+                if exp:
+                    return str(exp)[:10]
+        return None
 
 
 class Quote(Base):

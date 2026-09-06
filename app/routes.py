@@ -666,14 +666,49 @@ def mobile_kanban():
     return render_template('mobile.html')
 
 
-def _days_until_renewal(effective_date):
-    if not effective_date:
+def demo_now():
+    """Return the current 'now' for renewal countdowns.
+
+    If a demo clock override is enabled in TenantSettings (key 'demo_clock'),
+    return the configured fake datetime. Otherwise return the real datetime.now().
+
+    Scoped to renewal countdown display only — do NOT use this for anything
+    that sends email/SMS or has real side effects.
+    """
+    try:
+        db_session = get_session()
+        try:
+            from app.models import TenantSettings
+            row = db_session.query(TenantSettings).first()
+            settings = row.get_settings() if row else {}
+        finally:
+            db_session.close()
+        clock = settings.get('demo_clock') or {}
+        if clock.get('enabled') and clock.get('datetime'):
+            raw = str(clock['datetime']).strip()
+            for fmt in ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M'):
+                try:
+                    return datetime.strptime(raw, fmt)
+                except ValueError:
+                    continue
+    except Exception:
+        # Any failure falls back to the real clock — never break the board.
+        pass
+    return datetime.now()
+
+
+def _days_until_renewal(expiration_date):
+    """Days until the policy expires: expiration_date - now (no derivation).
+
+    expiration_date is taken directly from the bound quote (YYYY-MM-DD).
+    """
+    if not expiration_date:
         return None
     try:
-        renewal_date = datetime.strptime(str(effective_date)[:10], '%Y-%m-%d').date()
+        exp = datetime.strptime(str(expiration_date)[:10], '%Y-%m-%d').date()
     except ValueError:
         return None
-    return (renewal_date - datetime.now().date()).days
+    return (exp - demo_now().date()).days
 
 
 def _board_stage_key(submission):
@@ -5865,6 +5900,42 @@ def update_tenant_settings():
 # ============================================================================
 # ADMIN PAGE
 # ============================================================================
+
+@bp.route('/api/demo-clock', methods=['GET'])
+@login_required
+def get_demo_clock():
+    """Return the simulated 'now' used for renewal countdowns.
+
+    Frontend uses this as the right-hand side of (expiration - now) so the
+    countdown reflects the demo clock override when enabled.
+    """
+    try:
+        db_session = get_session()
+        try:
+            from app.models import TenantSettings
+            row = db_session.query(TenantSettings).first()
+            settings = row.get_settings() if row else {}
+        finally:
+            db_session.close()
+        clock = settings.get('demo_clock') or {}
+        enabled = bool(clock.get('enabled') and clock.get('datetime'))
+        now = demo_now()
+        return jsonify({
+            'success': True,
+            'now': now.isoformat(),
+            'enabled': enabled,
+            'datetime': clock.get('datetime') if enabled else None,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/demo-clock', methods=['GET'])
+@admin_required
+def demo_clock_page():
+    """Admin-only demo clock control page."""
+    return render_template('demo_clock.html')
+
 
 @bp.route('/api/admin/generate-short-names', methods=['POST'])
 @admin_required

@@ -288,21 +288,17 @@
             cursor: pointer;
             transition: all 0.15s;
             font-weight: 400;
-            font-size: 1.125rem;
+            font-size: 0.9375rem;
         }
 
-        /* Bold-to-normal text fade across columns */
+        /* Subtle emphasis fade across leading columns */
         table tbody td:nth-child(1),
         table tbody td:nth-child(2) {
-            font-weight: 700;
+            font-weight: 300;
         }
         table tbody td:nth-child(3),
         table tbody td:nth-child(4) {
-            font-weight: 600;
-        }
-        table tbody td:nth-child(5),
-        table tbody td:nth-child(6) {
-            font-weight: 500;
+            font-weight: 200;
         }
 
         table tbody td:last-child {
@@ -2024,15 +2020,31 @@
             await loadSubmission();
         }
 
-        function getDaysUntilRenewal(effectiveDate) {
-            if (!effectiveDate) return null;
-            const datePart = String(effectiveDate).slice(0, 10);
-            const parsed = new Date(`${datePart}T00:00:00`);
-            if (Number.isNaN(parsed.getTime())) return null;
+        // Demo clock: cached simulated "now" fetched from /api/demo-clock.
+        let __demoNowMs = null;
+        function demoNow() {
+            return __demoNowMs !== null ? new Date(__demoNowMs) : new Date();
+        }
+        async function loadDemoClock() {
+            try {
+                const res = await fetch('/api/demo-clock');
+                const data = await res.json();
+                __demoNowMs = (data && data.success && data.enabled && data.now) ? new Date(data.now).getTime() : null;
+            } catch (e) {
+                __demoNowMs = null;
+            }
+        }
 
-            const now = new Date();
+        // Days until expiration = expiration_date (from bound quote) - now. No math on effective date.
+        function getDaysUntilExpiration(expirationDate) {
+            if (!expirationDate) return null;
+            const datePart = String(expirationDate).slice(0, 10);
+            const expiration = new Date(`${datePart}T00:00:00`);
+            if (Number.isNaN(expiration.getTime())) return null;
+
+            const now = demoNow();
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            return Math.ceil((parsed.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+            return Math.ceil((expiration.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
         }
 
         function statusToStage(statusValue, effectiveDate) {
@@ -2432,6 +2444,7 @@
         // Load submission data on page load
         async function loadSubmission() {
             try {
+                await loadDemoClock();
                 const response = await fetch(`/api/submission/${submissionId}`);
                 const data = await response.json();
 
