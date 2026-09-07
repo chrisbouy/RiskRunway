@@ -6401,7 +6401,17 @@ def _send_email_via_oauth(to_email, subject, body, documents=None, raw_attachmen
                 # Token decryption failed - need re-auth
                 account.status = ConnectedAccountStatus.ERROR
                 account.last_error = "Token decryption failed - re-authentication required"
-                db_session.commit()
+                # Don't expire the caller's ORM objects on commit. This is a shared
+                # scoped session; callers (submit_to_market, send_follow_up, etc.) hold
+                # Submission/Document instances and read them in a loop AFTER this call.
+                # Default expire_on_commit=True would detach those -> DetachedInstanceError
+                # on the 2nd broker. Persist the account change without expiring anything.
+                _prev_expire = db_session.expire_on_commit
+                db_session.expire_on_commit = False
+                try:
+                    db_session.commit()
+                finally:
+                    db_session.expire_on_commit = _prev_expire
                 raise ValueError("Email account tokens could not be read. Please re-connect your email account via Check Email.")
 
             access_token = tokens.get('access_token')
@@ -6433,7 +6443,18 @@ def _send_email_via_oauth(to_email, subject, body, documents=None, raw_attachmen
                 account.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
                 account.status = ConnectedAccountStatus.ACTIVE
                 account.last_error = None
-                db_session.commit()
+                # Persist the refreshed token WITHOUT expiring the caller's ORM objects.
+                # This shared scoped session holds the caller's Submission/Document
+                # instances; a default commit (expire_on_commit=True) would detach them
+                # and the next broker in submit_to_market's loop would blow up with
+                # DetachedInstanceError. This is the exact bug that only surfaces when the
+                # token is stale (e.g. after clearing connected_accounts / first send).
+                _prev_expire = db_session.expire_on_commit
+                db_session.expire_on_commit = False
+                try:
+                    db_session.commit()
+                finally:
+                    db_session.expire_on_commit = _prev_expire
                 access_token = new_tokens.get('access_token')
                 print(f"[EMAIL] Token refreshed successfully for {account.email_address}")
 
