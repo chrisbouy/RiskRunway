@@ -90,21 +90,59 @@ def extension_privacy_policy():
     return render_template('extension_privacy.html')
 
 
-# Server-side OAuth flow cache — avoids Flask cookie 4KB size limit
-# The MSAL flow object (with PKCE verifier) is too large for cookie-based sessions
+# Server-side OAuth flow store — avoids Flask cookie 4KB size limit AND survives
+# across multiple ECS tasks/processes. The MSAL flow object (with PKCE verifier) is
+# too large for a cookie-based session, and an in-memory dict is per-process: on
+# Fargate the authorize request and the OAuth callback can hit different tasks, so
+# an in-memory cache caused intermittent "OAuth session expired" errors on prod.
+# We persist the flow to the shared tenant DB (oauth_flows table) keyed by state.
 import time
-_oauth_flow_cache = {}
 
-def _store_flow(state: str, flow: dict, user_id: int = None):
-    """Store MSAL flow object server-side, keyed by state. Also store user_id."""
-    _oauth_flow_cache[state] = {'flow': flow, 'user_id': user_id, 'ts': time.time()}
+_OAUTH_FLOW_TTL_SECONDS = 300  # 5 minutes
+
+def _store_flow(state: str, flow: dict, user_id: int = None, provider: str = None):
+    """Persist an in-flight MSAL flow to the DB, keyed by OAuth state."""
+    from app.models import OAuthFlow
+    db_session = get_session()
+    try:
+        # Replace any existing row for this state (defensive; state is unique).
+        db_session.query(OAuthFlow).filter_by(state=state).delete()
+        db_session.add(OAuthFlow(
+            state=state,
+            provider=provider,
+            user_id=user_id,
+            flow_json=json.dumps(flow),
+            created_at=datetime.utcnow(),
+        ))
+        db_session.commit()
+    except Exception as e:
+        db_session.rollback()
+        print(f"[OAUTH] Failed to store flow for state={state}: {e}")
 
 def _get_flow(state: str) -> tuple:
-    """Retrieve and remove MSAL flow object. Returns (flow, user_id) or (None, None) if missing or expired."""
-    entry = _oauth_flow_cache.pop(state, None)
-    if entry and time.time() - entry['ts'] < 300:  # 5 minute expiry
-        return entry['flow'], entry.get('user_id')
-    return None, None
+    """Retrieve and remove the MSAL flow for `state`.
+    Returns (flow_dict, user_id) or (None, None) if missing/expired."""
+    from app.models import OAuthFlow
+    if not state:
+        return None, None
+    db_session = get_session()
+    try:
+        row = db_session.query(OAuthFlow).filter_by(state=state).first()
+        if not row:
+            return None, None
+        age = (datetime.utcnow() - row.created_at).total_seconds() if row.created_at else None
+        flow = json.loads(row.flow_json) if row.flow_json else None
+        user_id = row.user_id
+        # Single-use: always consume the row.
+        db_session.delete(row)
+        db_session.commit()
+        if age is not None and age > _OAUTH_FLOW_TTL_SECONDS:
+            return None, None
+        return flow, user_id
+    except Exception as e:
+        db_session.rollback()
+        print(f"[OAUTH] Failed to load flow for state={state}: {e}")
+        return None, None
 
 
 def _storage_upload(local_path, object_key, content_type=None):
@@ -4378,7 +4416,7 @@ def oauth_connect(provider):
                 oauth_service._login_hint = login_hint
             auth_url, flow = oauth_service.get_authorization_url()
             flow_state = flow.get('state', '')
-            _store_flow(flow_state, flow, user_id=user_id)  # Store user_id server-side with flow
+            _store_flow(flow_state, flow, user_id=user_id, provider='outlook')  # Persisted to DB (shared across tasks)
             state = flow_state
         else:
             auth_url, state = oauth_service.get_authorization_url()

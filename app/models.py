@@ -788,3 +788,27 @@ class TenantSettings(Base):
     def set_settings(self, data):
         """Serialize settings dict to JSON."""
         self.settings_json = json.dumps(data)
+
+
+class OAuthFlow(Base):
+    """
+    Server-side store for an in-flight OAuth flow, keyed by the OAuth `state`.
+
+    Why this exists: the MSAL flow object (with the PKCE code_verifier) is too
+    large for a 4KB Flask session cookie, and an in-memory dict does NOT survive
+    across multiple processes/containers. On ECS Fargate the authorize request and
+    the callback can land on different tasks, so an in-memory cache produces
+    intermittent "OAuth session expired" errors. Persisting to the (shared) tenant
+    DB makes the flow retrievable by whichever worker handles the callback.
+
+    Rows are short-lived: written when the authorize URL is generated, popped on
+    callback, and anything older than a few minutes is treated as expired.
+    """
+    __tablename__ = 'oauth_flows'
+
+    id = Column(Integer, primary_key=True)
+    state = Column(String(255), unique=True, nullable=False, index=True)  # OAuth state param
+    provider = Column(String(50), nullable=True)  # 'outlook' | 'gmail'
+    user_id = Column(Integer, nullable=True)  # user who started the flow
+    flow_json = Column(Text, nullable=False, default='{}')  # serialized MSAL flow dict
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
