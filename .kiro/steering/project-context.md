@@ -304,6 +304,19 @@ Located in `sample_docs/misc/`:
   - Scoped to renewal countdown display ONLY. Email/SMS polling still uses the real clock — no accidental sends mid-demo.
   - No UI link yet — navigate to `/demo-clock` directly.
 
+## Expiration Reminder Emails
+- Automated emails sent for cards in the **Bound stage** at **30, 15, 5, and 1 days** before the policy expiration date. "Bound stage" = any card NOT in Submission (RECEIVED) or Quoting (IN_PROGRESS) — i.e. `CHOSEN` or `SENT_TO_FINANCE`. This matches `_board_stage_key()` and the intent of "all cards in the bound stage, actually bound or not." A CHOSEN card (in the green column but not yet sent to finance) still gets reminders.
+- Expiration comes from `Submission._expiration_date()` (the bound/any quote's `policies[0].expiration_date`). A Bound card with no parsed expiration is skipped — no countdown, no reminder (we don't guess dates).
+- Recipient: `submission.assigned_user.email`, falling back to the tenant's connected mailbox address if the assigned user has no email. Sender: a connected Outlook account (see caveat below).
+- Dedup: `Submission.reminders_sent_json` (TEXT column, JSON list of milestones already emailed, e.g. `[30, 15]`). Helpers `Submission.reminders_sent()` / `mark_reminder_sent()`. Exposed in `to_dict()` so it shows on `/admin`. Auto-migrated via `_add_missing_columns` (`_safe_add_column('submissions', 'reminders_sent_json', 'TEXT')`).
+- Skip-safe milestone logic: fires every not-yet-sent milestone `>= days_left`, so a card that jumps past a threshold between runs (e.g. 6 → 4 days) still gets the missed reminder. Nothing fires once expired (`days_left < 0`).
+- Scheduler: `send_expiration_reminders_task()` in `app/__init__.py`, registered on the shared `BackgroundScheduler` (interval, `EXPIRATION_REMINDER_INTERVAL_HOURS`, default 12). Loops tenants via `iter_tenants()` + `tenant_context` (database.py). Gated on `EXPIRATION_REMINDERS_ENABLED` (config.py, default false). `EXPIRATION_REMINDER_DAYS = [30, 15, 5, 1]`.
+- Core logic: `process_expiration_reminders_for_current_tenant()` (routes.py). Manual trigger for testing/ops: `POST /api/admin/run-expiration-reminders` (admin only) — runs the sweep for the current tenant and returns count sent. A "Run reminder sweep now" button on `/demo-clock` calls it.
+- Clock: uses the **real** clock by default (never demo_now for real sends). Opt-in flag `REMINDERS_USE_DEMO_CLOCK` (config.py, default false) makes the sweep honor the demo clock — for testing only, so a stray demo clock in prod can't fire real emails. When on, set the demo clock to a card's expiration minus 30/15/5/1 and hit the sweep button.
+- Email helper: `_send_email_via_account(account, to_email, subject, body)` (routes.py) — background-safe (does NOT read the Flask session, unlike `_send_email_via_oauth`). CRITICAL: `get_session()` is a shared scoped session; the helper must NOT close it and any commit (token refresh, `mark_reminder_sent`) must use `expire_on_commit=False`, or the sweep loop hits DetachedInstanceError on `_expiration_date()`/`quotes`.
+- **Known caveat (not yet fixed):** sender account is chosen via `.first()` on active connected accounts, so in a multi-user tenant reminders may send from an arbitrary user's mailbox rather than the assigned user's own connected account.
+- Sender display name is the connected mailbox's own name (Graph `/me/sendMail` can't override "from" without shared-mailbox/Send-As). Reminder identity lives in the subject line, not the sender name.
+
 ## Known Issues & Gotchas
 - `routes.py` is 7000+ lines — tools may truncate it. Search for specific functions.
 - Table row hover effects disabled on submission.html (was distracting)

@@ -42,6 +42,22 @@
                 Current effective "now": <span id="currentNow" class="font-mono text-gray-300">loading…</span>
             </div>
         </div>
+
+        <div class="bg-gray-900 rounded-lg shadow border border-gray-700 p-5 mt-6">
+            <h2 class="text-lg font-semibold text-white mb-2">📧 Test expiration reminders</h2>
+            <p class="text-sm text-gray-400 mb-4 leading-relaxed">
+                Runs the reminder sweep for <strong class="text-gray-200">this tenant</strong> right now — the same one
+                the scheduler runs. It emails Bound-stage cards at 30/15/5/1 days before expiration.
+                Set the demo clock above to a card's expiration minus 30 (or 15/5/1) days, save, then click below.
+                <span class="text-yellow-400">Requires <span class="font-mono">REMINDERS_USE_DEMO_CLOCK=true</span> for the demo clock to drive the countdown — otherwise the real clock is used.</span>
+                Real emails send from the connected mailbox, so keep recipients on a test address.
+            </p>
+            <div class="flex items-center justify-between pt-1">
+                <span id="reminderClockNote" class="text-xs text-gray-500 font-mono"></span>
+                <button id="runRemindersBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium">Run reminder sweep now</button>
+            </div>
+            <div id="reminderStatus" class="mt-4 text-sm hidden"></div>
+        </div>
     </div>
 
     <script>
@@ -119,8 +135,40 @@
             }
         }
 
+        function showReminderStatus(msg, ok) {
+            const el = document.getElementById('reminderStatus');
+            el.textContent = msg;
+            el.className = 'mt-4 text-sm ' + (ok ? 'text-green-400' : 'text-red-400');
+            el.classList.remove('hidden');
+        }
+
+        async function runReminders() {
+            const btn = document.getElementById('runRemindersBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running…';
+            try {
+                const res = await fetch('/api/admin/run-expiration-reminders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Run failed');
+                const clock = data.using_demo_clock ? 'demo clock' : 'real clock';
+                const plural = data.sent === 1 ? '' : 's';
+                showReminderStatus(`Sweep complete — ${data.sent} reminder${plural} sent (using ${clock}).`, true);
+                document.getElementById('reminderClockNote').textContent =
+                    'Last run used: ' + clock;
+            } catch (e) {
+                showReminderStatus('Run failed: ' + e.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run reminder sweep now';
+            }
+        }
+
         document.getElementById('saveBtn').addEventListener('click', save);
         document.getElementById('resetBtn').addEventListener('click', reset);
+        document.getElementById('runRemindersBtn').addEventListener('click', runReminders);
         loadCurrent();
     </script>
 </body>

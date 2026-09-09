@@ -147,6 +147,7 @@ class Submission(Base):
     assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)  # User assignment
     is_renewal = Column(Boolean, default=False, nullable=False)  # True when policy is being renewed
     notes = Column(Text, nullable=True)  # JSON object with stage-keyed notes
+    reminders_sent_json = Column(Text, nullable=True)  # JSON list of expiration-reminder milestones already emailed, e.g. [30, 15]
 
     # Applied Epic integration fields
     ams_type = Column(String(20), nullable=True)  # 'epic' or None for local-only
@@ -195,6 +196,7 @@ class Submission(Base):
             'assigned_to': self.assigned_to,
             'assigned_user': self.assigned_user.to_dict() if self.assigned_user else None,
             'is_renewal': self.is_renewal,
+            'reminders_sent_json': self.reminders_sent_json,
             'notes': self._parse_notes(),
             'ams_type': self.ams_type,
             'epic_client_id': self.epic_client_id,
@@ -203,6 +205,27 @@ class Submission(Base):
             'epic_exported_at': self.epic_exported_at.isoformat() if self.epic_exported_at else None,
             'submission_intake': self._parse_submission_intake(),
         }
+
+    def reminders_sent(self):
+        """Parse the list of expiration-reminder milestones already emailed.
+
+        Returns a list of ints (e.g. [30, 15]). Empty list if none/invalid.
+        """
+        if not self.reminders_sent_json:
+            return []
+        try:
+            parsed = json.loads(self.reminders_sent_json)
+            if isinstance(parsed, list):
+                return [int(x) for x in parsed]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+        return []
+
+    def mark_reminder_sent(self, milestone):
+        """Record that the reminder for `milestone` days has been sent."""
+        sent = set(self.reminders_sent())
+        sent.add(int(milestone))
+        self.reminders_sent_json = json.dumps(sorted(sent, reverse=True))
 
     def _parse_notes(self):
         """Parse notes JSON safely, handling legacy plain-text values."""

@@ -1411,6 +1411,11 @@
                     <input id="brokerPortalName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="e.g., Carrier Portal, XYZ Broker Portal">
                 </div>
 
+                <div class="mb-3">
+                    <label for="brokerLetterhead" class="block text-sm font-semibold text-gray-300 mb-1">Letterhead / Signature (optional)</label>
+                    <textarea id="brokerLetterhead" rows="4" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="Custom letterhead/signature to include on emails to this broker"></textarea>
+                </div>
+
                 <button id="addBrokerBtn" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
                     Add Broker
                 </button>
@@ -1431,12 +1436,22 @@
 
             <div class="mb-3">
                 <label for="editBrokerName" class="block text-sm font-semibold text-gray-300 mb-1">Broker Name</label>
-                <input id="editBrokerName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" readonly>
+                <input id="editBrokerName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white">
+            </div>
+
+            <div id="editEmailSection" class="mb-3">
+                <label for="editBrokerEmail" class="block text-sm font-semibold text-gray-300 mb-1">Email Address</label>
+                <input id="editBrokerEmail" type="email" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="broker@example.com">
+            </div>
+
+            <div id="editPortalSection" class="mb-3 hidden">
+                <label for="editBrokerPortalName" class="block text-sm font-semibold text-gray-300 mb-1">Portal Site Name</label>
+                <input id="editBrokerPortalName" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="e.g., Carrier Portal, XYZ Broker Portal">
             </div>
 
             <div class="mb-3">
-                <label for="editBrokerContact" class="block text-sm font-semibold text-gray-300 mb-1">Contact</label>
-                <input id="editBrokerContact" type="text" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" readonly>
+                <label for="editBrokerLetterhead" class="block text-sm font-semibold text-gray-300 mb-1">Letterhead / Signature (optional)</label>
+                <textarea id="editBrokerLetterhead" rows="4" class="w-full border border-gray-600 rounded px-3 py-2 text-sm bg-gray-700 text-white" placeholder="Custom letterhead/signature to include on emails to this broker"></textarea>
             </div>
 
             <div class="flex justify-end gap-2">
@@ -2220,22 +2235,22 @@
             const expContainer = document.getElementById('widgetExpiring');
             const attContainer = document.getElementById('widgetAttention');
 
-            // Expiring soon: submissions with effective_date within next 30 days
-            const expiring = submissions.filter(s => {
-                if (!s.effective_date) return false;
-                const eff = new Date(s.effective_date);
-                const diffDays = (eff - now) / (1000 * 60 * 60 * 24);
-                return diffDays >= 0 && diffDays <= 30;
-            }).sort((a, b) => new Date(a.effective_date) - new Date(b.effective_date)).slice(0, 5);
+            // Expiring soon: bound-stage cards whose policy expires within the next
+            // 30 days. Uses getDaysUntilExpiration() (the same expiration-based,
+            // demo-clock-aware helper the countdown badges use) so the widget stays
+            // in sync with the cards — including when the demo clock is active.
+            const expiring = submissions
+                .map(s => ({ s, days: getDaysUntilExpiration(s.expiration_date) }))
+                .filter(x => isBoundStatus(x.s.status) && x.days !== null && x.days >= 0 && x.days <= 30)
+                .sort((a, b) => a.days - b.days)
+                .slice(0, 5);
 
             if (expiring.length === 0) {
                 expContainer.innerHTML = '<div class="widget-empty">No upcoming expirations</div>';
             } else {
-                expContainer.innerHTML = expiring.map(s => {
-                    const eff = new Date(s.effective_date);
-                    const diffDays = Math.ceil((eff - now) / (1000 * 60 * 60 * 24));
-                    const badgeClass = diffDays <= 7 ? 'badge-critical' : 'badge-warning';
-                    const label = diffDays === 0 ? 'Today' : diffDays + 'd';
+                expContainer.innerHTML = expiring.map(({ s, days }) => {
+                    const badgeClass = days <= 7 ? 'badge-critical' : 'badge-warning';
+                    const label = days === 0 ? 'Today' : days + 'd';
                     return '<a href="/submission/' + s.id + '" class="widget-item"><span class="widget-item-name">' + (s.insured_name || 'Unnamed') + '</span><span class="widget-item-badge ' + badgeClass + '">' + label + '</span></a>';
                 }).join('');
             }
@@ -4509,23 +4524,22 @@
         });
 
         async function updateBroker(brokerId, updates) {
-            try {
-                const response = await fetch(`/api/brokers/${brokerId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updates)
-                });
+            const response = await fetch(`/api/brokers/${brokerId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
 
-                const data = await response.json();
-                if (data.success) {
-                    const broker = brokers.find(b => b.id === brokerId);
-                    if (broker) {
-                        Object.assign(broker, data.broker);
-                    }
-                }
-            } catch (error) {
-                console.error('Error updating broker:', error);
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Update failed');
             }
+
+            const broker = brokers.find(b => b.id === brokerId);
+            if (broker) {
+                Object.assign(broker, data.broker);
+            }
+            return data;
         }
 
         async function deleteBroker(brokerId) {
@@ -4549,13 +4563,21 @@
 
         let currentEditingBrokerId = null;
 
+        let currentEditingBrokerIsPortal = false;
+
         function openEditBrokerModal(broker) {
             currentEditingBrokerId = broker.id;
+            currentEditingBrokerIsPortal = !!broker.is_portal;
+
             document.getElementById('editBrokerName').value = broker.name || '';
-            document.getElementById('editBrokerContact').value = broker.is_portal
-                ? `Portal: ${broker.portal_name}`
-                : `Email: ${broker.email}`;
+            document.getElementById('editBrokerEmail').value = broker.email || '';
+            document.getElementById('editBrokerPortalName').value = broker.portal_name || '';
             document.getElementById('editBrokerLetterhead').value = broker.letterhead || '';
+
+            // Show the field relevant to this broker's delivery type
+            document.getElementById('editEmailSection').classList.toggle('hidden', currentEditingBrokerIsPortal);
+            document.getElementById('editPortalSection').classList.toggle('hidden', !currentEditingBrokerIsPortal);
+
             document.getElementById('editBrokerModal').classList.remove('hidden');
         }
 
@@ -4567,19 +4589,40 @@
         document.getElementById('saveEditBrokerBtn').addEventListener('click', async () => {
             if (!currentEditingBrokerId) return;
 
+            const name = document.getElementById('editBrokerName').value.trim();
+            const email = document.getElementById('editBrokerEmail').value.trim();
+            const portalName = document.getElementById('editBrokerPortalName').value.trim();
             const letterhead = document.getElementById('editBrokerLetterhead').value.trim();
 
+            if (currentEditingBrokerIsPortal && !portalName) {
+                alert('Please enter a portal site name.');
+                return;
+            }
+            if (!currentEditingBrokerIsPortal && !email) {
+                alert('Please enter an email address.');
+                return;
+            }
+
+            const updates = {
+                name: name,
+                letterhead: letterhead
+            };
+            if (currentEditingBrokerIsPortal) {
+                updates.portal_name = portalName;
+            } else {
+                updates.email = email;
+            }
+
             try {
-                await updateBroker(currentEditingBrokerId, {
-                    letterhead: letterhead
-                });
+                await updateBroker(currentEditingBrokerId, updates);
 
                 document.getElementById('editBrokerModal').classList.add('hidden');
+                currentEditingBrokerId = null;
                 renderBrokersList();
                 alert('Broker updated successfully!');
             } catch (error) {
                 console.error('Error saving broker:', error);
-                alert('Error saving broker');
+                alert('Error saving broker: ' + error.message);
             }
         });
 
@@ -5988,6 +6031,14 @@
         <h2 id="kg-binding">13. Moving to Binding</h2>
         <p>Once a single quote is selected, click <strong>Into Bind</strong> (or drag the card) to move it to Binding.</p>
         <p>Once the broker confirms the bind, click <strong>Mark as Bound</strong>.</p>
+
+        <h3>Renewal Reminders</h3>
+        <p>For any card in the Binding stage, RiskRunway automatically emails you as the policy expiration approaches — at <strong>30, 15, 5, and 1 days</strong> before expiration. This gives you a running head start on the renewal.</p>
+        <ul>
+            <li>The expiration date is read from the bound quote. If a card has no expiration on its quote, no reminder is sent.</li>
+            <li>Reminders go to the email address on the account the card is assigned to.</li>
+            <li>Each milestone is sent once — you won't get repeat emails for the same day.</li>
+        </ul>
 
         <h2 id="kg-export-ams">14. Exporting to Your AMS</h2>
         <p>RiskRunway fills in the screen you're looking at — you review and save. You are always the final check.</p>

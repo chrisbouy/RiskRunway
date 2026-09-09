@@ -3779,12 +3779,31 @@ Thank you for your attention to this matter.`;
                 ['Application', 'SOV', 'Loss Run'].includes(d.document_type)
             );
 
-            submitToMarketBrokerEntries = emailBrokers.map(broker => ({
-                id: broker.id,
-                checked: true,
-                body: getDefaultSubmitBody(broker.name || broker.email),
-                document_ids: attachableDocs.map(d => d.id)
-            }));
+            // Preserve any prior selections/edits (e.g. after adding a file re-renders the list).
+            const priorEntries = submitToMarketBrokerEntries;
+            const attachableIds = attachableDocs.map(d => d.id);
+
+            submitToMarketBrokerEntries = emailBrokers.map(broker => {
+                const prior = priorEntries.find(e => e.id === broker.id);
+                if (prior) {
+                    // Keep prior checked state and body; keep the subset of previously
+                    // selected docs that are still attachable, plus any newly added docs.
+                    const keptDocIds = (prior.document_ids || []).filter(id => attachableIds.includes(id));
+                    const mergedDocIds = Array.from(new Set([...keptDocIds, ...attachableIds]));
+                    return {
+                        id: broker.id,
+                        checked: prior.checked,
+                        body: prior.body,
+                        document_ids: prior.checked ? mergedDocIds : keptDocIds
+                    };
+                }
+                return {
+                    id: broker.id,
+                    checked: true,
+                    body: getDefaultSubmitBody(broker.name || broker.email),
+                    document_ids: [...attachableIds]
+                };
+            });
 
             list.innerHTML = emailBrokers.map((broker, index) => {
                 const safeName = escapeHtml(broker.name || broker.email);
@@ -3792,7 +3811,7 @@ Thank you for your attention to this matter.`;
                 const entry = submitToMarketBrokerEntries[index];
                 const docsHtml = attachableDocs.map(doc => `
                     <label class="flex items-center gap-1 text-xs text-gray-400">
-                        <input type="checkbox" class="stm-doc-checkbox" data-index="${index}" data-doc-id="${doc.id}" checked>
+                        <input type="checkbox" class="stm-doc-checkbox" data-index="${index}" data-doc-id="${doc.id}" ${entry.document_ids.includes(doc.id) ? 'checked' : ''}>
                         ${escapeHtml(doc.name || doc.original_filename || 'file')}
                     </label>
                 `).join('');
@@ -3877,10 +3896,11 @@ Thank you for your attention to this matter.`;
                     const file = this.files[0];
                     if (!file) return;
 
-                    // Upload the file as a document
+                    // Upload the file as a document. Use APPLICATION so it lands in the
+                    // attachable set (Application/SOV/Loss Run) rather than being filtered out.
                     const formData = new FormData();
                     formData.append('file', file);
-                    formData.append('document_type', 'OTHER');
+                    formData.append('document_type', 'APPLICATION');
 
                     try {
                         const response = await fetch(`/api/submission/${submissionId}/documents`, {
@@ -3889,6 +3909,12 @@ Thank you for your attention to this matter.`;
                         });
                         const data = await response.json();
                         if (data.success) {
+                            // Attach the freshly uploaded doc to this broker on re-render
+                            const newDocId = data.document && data.document.id;
+                            if (newDocId != null && submitToMarketBrokerEntries[index]) {
+                                const ids = submitToMarketBrokerEntries[index].document_ids;
+                                if (!ids.includes(newDocId)) ids.push(newDocId);
+                            }
                             await loadDocuments();
                             await loadSubmitToMarketBrokers();
                         } else {
@@ -5932,6 +5958,14 @@ Thank you for your attention to this matter.`;
         <p>Once a single quote is selected for a coverage type, click <strong>Into Bind</strong> (or drag the card manually) to move it to the Binding stage.</p>
         <p>If you still need to send a formal bind request to your broker/MGA (with any required subjectivities/supplemental forms), do that the same way you always have — via email — and attach the confirmation into the card once you have it.</p>
         <p>Once the broker confirms the bind and you've received the binder/invoice (and eventually the policy + dec page), click <strong>Mark as Bound</strong>.</p>
+
+        <h3>Renewal Reminders</h3>
+        <p>For any card in the Binding stage, RiskRunway automatically emails you as the policy expiration approaches — at <strong>30, 15, 5, and 1 days</strong> before expiration. This gives you a running head start on the renewal.</p>
+        <ul>
+            <li>The expiration date is read from the bound quote. If a card has no expiration on its quote, no reminder is sent.</li>
+            <li>Reminders go to the email address on the account the card is assigned to.</li>
+            <li>Each milestone is sent once — you won't get repeat emails for the same day.</li>
+        </ul>
 
         <h2 id="guide-export-ams">14. Exporting to Your AMS</h2>
         <p>RiskRunway does not directly write into any AMS — instead, it fills in the screen you're looking at, and you review and save it yourself. You are always the final check before anything is saved.</p>

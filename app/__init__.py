@@ -252,21 +252,56 @@ def create_app():
             finally:
                 db_session.close()
 
-    # Start scheduler if email polling is enabled
-    if app.config.get('EMAIL_POLLING_ENABLED', False):
+    # Background task: send expiration reminders for Bound-stage cards.
+    def send_expiration_reminders_task():
+        """Send policy-expiration reminder emails (30/15/5/1 days) across tenants."""
+        with app.app_context():
+            print("[REMINDERS] Running expiration reminder sweep")
+            try:
+                from app.database import iter_tenants, tenant_context
+                from app.routes import process_expiration_reminders_for_current_tenant
+
+                total = 0
+                for tenant in iter_tenants():
+                    try:
+                        with tenant_context(tenant):
+                            sent = process_expiration_reminders_for_current_tenant()
+                            total += sent or 0
+                    except Exception as tenant_err:
+                        print(f"[REMINDERS] Tenant '{tenant}' failed: {tenant_err}")
+                print(f"[REMINDERS] Sweep complete — {total} reminder(s) sent")
+            except Exception as err:
+                print(f"[REMINDERS] Sweep error: {err}")
+
+    # Start scheduler if any background job is enabled
+    _email_polling = app.config.get('EMAIL_POLLING_ENABLED', False)
+    _reminders = app.config.get('EXPIRATION_REMINDERS_ENABLED', False)
+
+    if _email_polling or _reminders:
         scheduler = BackgroundScheduler()
-        scheduler.add_job(
-            func=scrape_emails_task,
-            trigger='interval',
-            minutes=app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5),
-            id='email_scraper'
-        )
+
+        if _email_polling:
+            scheduler.add_job(
+                func=scrape_emails_task,
+                trigger='interval',
+                minutes=app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5),
+                id='email_scraper'
+            )
+            print(f"[EMAIL SCRAPER] Polling scheduler started - runs every {app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)} minutes")
+
+        if _reminders:
+            scheduler.add_job(
+                func=send_expiration_reminders_task,
+                trigger='interval',
+                hours=app.config.get('EXPIRATION_REMINDER_INTERVAL_HOURS', 12),
+                id='expiration_reminders'
+            )
+            print(f"[REMINDERS] Expiration reminder scheduler started - runs every {app.config.get('EXPIRATION_REMINDER_INTERVAL_HOURS', 12)} hours")
+
         scheduler.start()
-        
+
         # Register shutdown hook
         atexit.register(lambda: scheduler.shutdown())
-        
-        print(f"[EMAIL SCRAPER] Polling scheduler started - runs every {app.config.get('EMAIL_SCRAPE_INTERVAL_MINUTES', 5)} minutes")
 
     @app.errorhandler(HTTPException)
     def handle_http_exception(e):

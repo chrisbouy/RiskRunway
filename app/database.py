@@ -162,6 +162,41 @@ def get_current_tenant():
     return _current_tenant.get()
 
 
+def iter_tenants():
+    """Yield every configured tenant identifier for background jobs.
+
+    In production this is the set of keys in TENANT_DATABASE_MAP (always
+    includes 'default'). In local/dev environments tenant routing is not used
+    by get_db(), so we yield the current db-name context only ('default')
+    to keep behavior predictable.
+    """
+    if is_production_environment():
+        return list(_load_tenant_config().keys())
+    return ['default']
+
+
+class tenant_context:
+    """Context manager that pins get_db()/get_session() to a specific tenant.
+
+    Sets the _current_tenant ContextVar for the duration of the block and
+    resets it on exit. Use in background threads (no request context) so
+    get_db() routes to the intended tenant database.
+    """
+
+    def __init__(self, tenant):
+        self.tenant = tenant
+        self._token = None
+
+    def __enter__(self):
+        self._token = _current_tenant.set(self.tenant)
+        return self.tenant
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._token is not None:
+            _current_tenant.reset(self._token)
+        return False
+
+
 def get_tenant_database_url(tenant=None):
     """Get the database URL for the given (or current) tenant."""
     if tenant is None:
@@ -352,6 +387,7 @@ def _add_missing_columns(engine, inspector):
         _safe_add_column('submissions', 'status_label', 'VARCHAR(255)')
         _safe_add_column('submissions', 'notes', 'TEXT')
         _safe_add_column('submissions', 'is_renewal', 'BOOLEAN DEFAULT FALSE NOT NULL')
+        _safe_add_column('submissions', 'reminders_sent_json', 'TEXT')
         _safe_add_column('submissions', 'ams_type', 'VARCHAR(20)')
         _safe_add_column('submissions', 'epic_client_id', 'VARCHAR(100)')
         _safe_add_column('submissions', 'epic_policy_id', 'VARCHAR(100)')

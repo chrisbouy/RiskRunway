@@ -5893,6 +5893,29 @@ def update_quote_subjectivities(quote_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/api/admin/run-expiration-reminders', methods=['POST'])
+@admin_required
+def run_expiration_reminders():
+    """Manually trigger the expiration-reminder sweep for the CURRENT tenant.
+
+    Testing/ops aid so you don't have to wait on the background scheduler. Runs
+    the exact same sweep the scheduler runs. When REMINDERS_USE_DEMO_CLOCK is on
+    and the tenant demo clock is enabled, day thresholds are computed from the
+    demo clock — letting the /demo-clock widget drive reminder testing.
+
+    Returns the number of reminder emails sent.
+    """
+    try:
+        sent = process_expiration_reminders_for_current_tenant()
+        return jsonify({
+            'success': True,
+            'sent': sent,
+            'using_demo_clock': bool(current_app.config.get('REMINDERS_USE_DEMO_CLOCK', False)),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bp.route('/api/tenant-settings', methods=['GET'])
 @login_required
 def get_tenant_settings():
@@ -6578,6 +6601,205 @@ def _send_email_via_oauth(to_email, subject, body, documents=None, raw_attachmen
     except Exception as e:
         print(f"[EMAIL] OAuth send FAILED to {to_email}: {type(e).__name__}: {str(e)}")
         raise
+
+
+def _send_email_via_account(account, to_email, subject, body):
+    """Send a plain-text email using a specific ConnectedAccount.
+
+    Background-safe variant of _send_email_via_oauth: it does NOT read the
+    Flask session, so it works from scheduler threads. Handles token refresh.
+    Outlook only (matches the app's send capability).
+
+    IMPORTANT: get_session() returns a shared scoped session — the SAME object
+    the caller (the reminder sweep) is iterating over. So this function must NOT
+    close that session, and any commit here (token refresh) must use
+    expire_on_commit=False so the caller's Submission objects aren't detached
+    mid-loop (the DetachedInstanceError / lazy-load 'quotes' bug).
+    """
+    from datetime import timedelta
+    from app.oauth_services import get_oauth_service
+
+    db_session = get_session()
+
+    tokens = account.get_decrypted_tokens()
+    if not tokens:
+        raise ValueError(f"Cannot decrypt tokens for {account.email_address}")
+
+    access_token = tokens.get('access_token')
+    refresh_token = tokens.get('refresh_token')
+
+    provider_str = account.provider.value.lower()
+    config = {
+        'GMAIL_CLIENT_ID': current_app.config.get('GMAIL_CLIENT_ID'),
+        'GMAIL_CLIENT_SECRET': current_app.config.get('GMAIL_CLIENT_SECRET'),
+        'GMAIL_REDIRECT_URI': current_app.config.get('GMAIL_REDIRECT_URI'),
+        'MICROSOFT_CLIENT_ID': current_app.config.get('MICROSOFT_CLIENT_ID'),
+        'MICROSOFT_CLIENT_SECRET': current_app.config.get('MICROSOFT_CLIENT_SECRET'),
+        'MICROSOFT_REDIRECT_URI': current_app.config.get('MICROSOFT_REDIRECT_URI'),
+        'MICROSOFT_TENANT_ID': current_app.config.get('MICROSOFT_TENANT_ID', 'common')
+    }
+    oauth_service = get_oauth_service(provider_str, config)
+
+    # Auto-refresh token if expired
+    if not access_token or (account.expires_at and account.expires_at < datetime.utcnow()):
+        if not refresh_token:
+            raise ValueError(f"Token expired and no refresh token for {account.email_address}")
+        new_tokens = oauth_service.refresh_access_token(refresh_token)
+        account.set_encrypted_tokens(new_tokens)
+        expires_in = new_tokens.get('expires_in', 3600)
+        account.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        account.status = ConnectedAccountStatus.ACTIVE
+        account.last_error = None
+        # Commit the refreshed token WITHOUT expiring the caller's ORM objects.
+        _prev_expire = db_session.expire_on_commit
+        db_session.expire_on_commit = False
+        try:
+            db_session.commit()
+        finally:
+            db_session.expire_on_commit = _prev_expire
+        access_token = new_tokens.get('access_token')
+
+    if provider_str == 'outlook':
+        oauth_service.send_email(
+            access_token=access_token,
+            to_recipients=[to_email],
+            subject=subject,
+            body_text=body,
+            attachments=None
+        )
+    else:
+        raise ValueError(f"Unsupported email provider for reminders: {provider_str}")
+
+
+def _build_expiration_reminder_email(submission, days_left, expiration_date):
+    """Return (subject, body) for an expiration reminder email."""
+    name = submission.insured_name or f"Submission #{submission.id}"
+    day_word = "day" if days_left == 1 else "days"
+    subject = f"Policy expiring in {days_left} {day_word}: {name}"
+    lines = [
+        f"Heads up — the policy for {name} expires in {days_left} {day_word}.",
+        "",
+        f"Expiration date: {expiration_date}",
+        f"Insured: {name}",
+    ]
+    if submission.state:
+        lines.append(f"State: {submission.state}")
+    lines += [
+        "",
+        "This card is in the Bound stage. Start the renewal process if you "
+        "haven't already.",
+        "",
+        "— RiskRunway",
+    ]
+    return subject, "\n".join(lines)
+
+
+def process_expiration_reminders_for_current_tenant():
+    """Send due expiration reminders for Bound-stage cards in the current tenant DB.
+
+    Must be called with the tenant already pinned (tenant_context) and inside a
+    Flask app context. Dedupes per submission via Submission.reminders_sent_json
+    so each milestone fires once.
+
+    Clock: uses the REAL clock by default. If REMINDERS_USE_DEMO_CLOCK is enabled
+    AND the tenant's demo clock is turned on, it uses demo_now() instead so the
+    /demo-clock widget can drive reminder testing. This is opt-in precisely so a
+    demo clock left enabled in prod can never trigger real reminder emails.
+
+    Returns the number of reminder emails sent.
+    """
+    from datetime import date as _date
+
+    milestones = current_app.config.get('EXPIRATION_REMINDER_DAYS', [30, 15, 5, 1])
+
+    # Choose the reference "today". Real clock unless demo-clock testing is
+    # explicitly enabled, in which case demo_now() (which itself falls back to
+    # the real clock when the tenant demo clock is off) drives the countdown.
+    if current_app.config.get('REMINDERS_USE_DEMO_CLOCK', False):
+        today = demo_now().date()
+    else:
+        today = _date.today()
+    sent_count = 0
+
+    db_session = get_session()
+    try:
+        # Find the sender mailbox for this tenant: the active connected account.
+        account = db_session.query(ConnectedAccount).filter(
+            ConnectedAccount.status == ConnectedAccountStatus.ACTIVE
+        ).first()
+        if not account:
+            print("[REMINDERS] No active connected account; skipping tenant")
+            return 0
+
+        # "Bound stage" on the board is any card NOT in the Submission (RECEIVED)
+        # or Quoting (IN_PROGRESS) columns — i.e. CHOSEN or SENT_TO_FINANCE. This
+        # matches _board_stage_key() and the user's intent: all cards in the bound
+        # stage, actually bound (SENT_TO_FINANCE) or not (CHOSEN).
+        bound = db_session.query(Submission).filter(
+            Submission.status.notin_([
+                SubmissionStatus.RECEIVED,
+                SubmissionStatus.IN_PROGRESS,
+            ])
+        ).all()
+
+        for submission in bound:
+            expiration = submission._expiration_date()
+            if not expiration:
+                continue  # no parsed expiration → nothing to count down from
+            try:
+                exp_date = datetime.strptime(str(expiration)[:10], '%Y-%m-%d').date()
+            except ValueError:
+                continue
+
+            days_left = (exp_date - today).days
+            already = set(submission.reminders_sent())
+
+            # Determine which milestone this submission is currently at or past.
+            # Fire the largest milestone that is >= days_left and not yet sent,
+            # so a card that skips a run (e.g. jumps from 6 to 4 days) still gets
+            # the 5-day reminder. Do not fire once already expired past day 1.
+            due = [m for m in milestones if days_left <= m and m not in already]
+            if days_left < 0:
+                due = []  # policy already expired; stop reminding
+
+            if not due:
+                continue
+
+            recipient = None
+            if submission.assigned_user and submission.assigned_user.email:
+                recipient = submission.assigned_user.email
+            else:
+                recipient = account.email_address  # fall back to the tenant mailbox
+
+            try:
+                subject, body = _build_expiration_reminder_email(
+                    submission, days_left, expiration
+                )
+                _send_email_via_account(account, recipient, subject, body)
+                # Mark every due milestone as sent so we don't double-fire the
+                # skipped ones on the next run.
+                for m in due:
+                    submission.mark_reminder_sent(m)
+                # Commit WITHOUT expiring: this is a shared scoped session and we
+                # keep iterating `bound` after this. A default commit would detach
+                # the remaining Submissions and break _expiration_date() next loop.
+                _prev_expire = db_session.expire_on_commit
+                db_session.expire_on_commit = False
+                try:
+                    db_session.commit()
+                finally:
+                    db_session.expire_on_commit = _prev_expire
+                sent_count += 1
+                print(f"[REMINDERS] Sent {days_left}-day reminder for "
+                      f"'{submission.insured_name}' to {recipient} "
+                      f"(milestones {sorted(due)})")
+            except Exception as send_err:
+                db_session.rollback()
+                print(f"[REMINDERS] Failed for submission {submission.id}: {send_err}")
+
+        return sent_count
+    finally:
+        db_session.close()
 
 
 def _generate_broker_zip(submission, broker, documents):

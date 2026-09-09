@@ -51,6 +51,17 @@ class Config:
     # Background polling scheduler
     EMAIL_POLLING_ENABLED = os.environ.get('EMAIL_POLLING_ENABLED', 'false').lower() == 'true'
     EMAIL_SCRAPE_INTERVAL_MINUTES = int(os.environ.get('EMAIL_SCRAPE_INTERVAL_MINUTES', '5'))
+
+    # Expiration reminder emails (Bound-stage cards): sent at these day thresholds
+    # before the policy expiration date. Job runs once per interval and dedupes
+    # per submission so each milestone fires at most once.
+    EXPIRATION_REMINDERS_ENABLED = os.environ.get('EXPIRATION_REMINDERS_ENABLED', 'true').lower() == 'true'
+    EXPIRATION_REMINDER_INTERVAL_HOURS = int(os.environ.get('EXPIRATION_REMINDER_INTERVAL_HOURS', '12'))
+    EXPIRATION_REMINDER_DAYS = [30, 15, 5, 1]
+    # Testing aid: when true, the reminder sweep uses the /demo-clock time instead
+    # of the real clock (only takes effect when a tenant's demo clock is enabled).
+    # Keep this OFF in prod so a stray demo clock can never fire real reminders.
+    REMINDERS_USE_DEMO_CLOCK = os.environ.get('REMINDERS_USE_DEMO_CLOCK', 'true').lower() == 'true'
     
     # Token encryption key (generate a new one for production)
     TOKEN_ENCRYPTION_KEY = os.environ.get('TOKEN_ENCRYPTION_KEY', '')
