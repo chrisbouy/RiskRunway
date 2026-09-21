@@ -515,7 +515,8 @@
         const NUM_DOTS = 20;
 
         // ── Filter state ──
-        let filterMyCards = true;
+        // Persist "My Cards Only" toggle across navigation. Defaults to true when unset.
+        let filterMyCards = localStorage.getItem('filterMyCards') !== 'false';
         let filterSearch = '';
         let filterStage = '';
         let filterCoverage = '';
@@ -925,6 +926,7 @@
             filterStage = document.getElementById('mFilterStage').value;
             filterCoverage = document.getElementById('mFilterCoverage').value;
             filterMyCards = document.getElementById('mFilterMyCards').checked;
+            localStorage.setItem('filterMyCards', filterMyCards);
             document.getElementById('filterBoardModal').classList.remove('active');
             loadSubmissions();
         });
@@ -933,6 +935,7 @@
             filterStage = '';
             filterCoverage = '';
             filterMyCards = false;
+            localStorage.setItem('filterMyCards', filterMyCards);
             document.getElementById('mFilterSearch').value = '';
             document.getElementById('mFilterStage').value = '';
             document.getElementById('mFilterCoverage').value = '';

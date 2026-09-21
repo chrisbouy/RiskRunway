@@ -1,0 +1,4 @@
+config.ini
+sent-log.csv
+preview/
+__pycache__/

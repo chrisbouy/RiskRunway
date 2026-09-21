@@ -1,0 +1,15 @@
+Subject: Still rekeying quotes into your AMS?
+
+Hi {first_name},
+
+Most agencies I talk to lose hours a week on the same thing: comparing surplus lines quotes in a spreadsheet, chasing brokers for the missing pieces, then retyping it all into the AMS by hand. It's slow and it's where the E&O typos creep in.
+
+I built something that handles that part. It watches your inbox for quotes, parses them, lets you compare carriers at a glance, and drops clean data into your AMS — no rekeying, no license changes.
+
+We're running free pilots with a few agencies right now. If getting a submission from quote to bind is a headache at {company}, I'd love to show you 20 minutes of it on your actual carrier formats.
+
+Worth a look?
+
+{from_name}
+{from_email}
+Risk-Runway — https://risk-runway.com

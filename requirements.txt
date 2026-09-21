@@ -16,7 +16,6 @@ flask-login
 werkzeug
 sqlalchemy
 gunicorn
-sendgrid
 resend
 twilio
 boto3

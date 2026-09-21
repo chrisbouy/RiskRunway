@@ -36,6 +36,27 @@ def create_app():
         tenant = set_tenant_for_request(request.host)
         print(f"[TENANT] host={request.host} tenant={tenant}")
 
+    # SEO: keep the entire app out of search engines. This is an authenticated
+    # app (login / password-reset surface) that should never appear in search
+    # results. The X-Robots-Tag header is what actually deindexes pages — it is
+    # applied to EVERY response (all routes, all content types) so Google drops
+    # anything it recrawls. See also the /robots.txt route below.
+    @app.after_request
+    def add_noindex_header(response):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+
+    # robots.txt: disallow all crawling. Note this alone will NOT deindex
+    # already-indexed URLs (a disallowed URL can't be recrawled to see the
+    # noindex) — the X-Robots-Tag header above does the removal work; this
+    # reduces ongoing crawl of the private surface.
+    @app.route("/robots.txt")
+    def robots_txt():
+        return app.response_class(
+            "User-agent: *\nDisallow: /\n",
+            mimetype="text/plain",
+        )
+
     # Initialize email scraping scheduler if enabled
     def scrape_emails_task():
         """Background task to scrape emails"""

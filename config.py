@@ -23,12 +23,11 @@ class Config:
     
 # ... rest of config (email, oauth, storage, rules) remains unchanged below ...
 
-    # Email settings (using SendGrid HTTP API for both bug reports and broker submissions)
+    # Email settings (all outbound email goes through the Resend HTTP API)
     BUG_REPORT_RECIPIENT = os.environ.get('BUG_REPORT_RECIPIENT', 'chrisbouy@gmail.com')
     BUG_REPORT_SENDER = os.environ.get('BUG_REPORT_SENDER', 'chrisbouy@gmail.com')
-    SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 
-    # Resend (transactional emails: password resets, etc.)
+    # Resend (transactional emails: password resets, bug reports, etc.)
     RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
     RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'noreply@risk-runway.com')
     APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:5001')

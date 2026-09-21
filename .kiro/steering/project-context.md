@@ -30,13 +30,15 @@ Cards represent insureds, move left to right. Each stage has a distinct color.
 
 ## Developer Environment
 - Python virtual environment: `source "/Users/chrisbouy/code_base/IPFS Mapper/myenv/bin/activate"`
-- Local Postgres databases: riskrunway (prod mirror), riskrunway_dev (development), riskrunway_use_cases, riskrunway_test
+- Local Postgres databases (three, switchable in-app via the dev DB dropdown → maps to `DEVELOPMENT_/USE_CASES_/TEST_DATABASE_URL` in `.env`): `riskrunway_dev` (development — the DEFAULT, also what plain `DATABASE_URL` points at), `riskrunway_use_cases` (reproducing customer problems / scenarios), `riskrunway_test` (manual + automated test cases). The old `riskrunway_demo` local DB was DROPPED 9/21/26 — "demo" is prod (RDS), not a local DB. NOTE: the local names collide with the prod RDS DB names (`riskrunway`, `riskrunway_classic`) but are different servers/data — local is `localhost:5432`, prod is the RDS endpoint.
+- All three local DBs share the SAME three users with the SAME ids so you can switch DBs in-app WITHOUT re-login (session `user_id` stays valid, avoids the `submissions_assigned_to_fkey` FK error on bulk create): `chrisbouy` (id=2, ADMIN), `AgentSmith` (id=3, AGENT), `brookebouy` (id=5, ADMIN). Re-seed via `scripts/seed_local_users.py`. Login authenticates against the currently-selected DB and sets `session['user_id']` from that row, so ids must match across DBs.
 - App runs locally on port 5001: `flask run --port 5001`
 - No Docker needed for local dev — Docker is only for prod builds via GitHub Actions
 - Deploy: push to `main` → GitHub Actions builds image → pushes to ECR → deploys to ECS
 - AWS CLI user: `ams-agent-dev` (has read + write access)
 - **Important**: Space in project folder name ("IPFS Mapper") breaks aws CLI when run from virtualenv — always deactivate first
 - **Important**: zsh and exclamation marks — always use single quotes for strings containing `!`
+- **Important**: connecting to prod RDS with psql — the RDS password (`RiskRunway2026!`) has a `!`, which silently hangs psql under zsh when embedded in the connection URL (`postgresql://user:pass@host/db`). Pass it via `PGPASSWORD='RiskRunway2026!'` (single-quoted) with `-h/-U/-d` flags instead. RDS is reachable from a whitelisted IP on 5432.
 
 ## Architecture
 
@@ -67,6 +69,15 @@ Cards represent insureds, move left to right. Each stage has a distinct color.
 - `app.risk-runway.com` → ALB → ECS (the Flask app)
 - `www.risk-runway.com` → CloudFront (marketing site) — fixed during teardown, was incorrectly pointing at ALB
 - `classic.risk-runway.com` → ALB → ECS (same app, different DB)
+
+### Search Engine Indexing (SEO / noindex)
+- The app must be **entirely absent from search results** — it's an authenticated app (login/password-reset surface). It should never eat marketing-site search impressions.
+- Enforced in the app repo (version-controlled, survives redeploys — NOT in an ALB rule or console), in `app/__init__.py`:
+  - `@app.after_request add_noindex_header` — sets `X-Robots-Tag: noindex, nofollow` on **every** response (all routes, all content types). This header is what actually deindexes pages: Google must be able to crawl a URL to see the noindex, so the header does the removal work.
+  - `@app.route("/robots.txt")` — serves `User-agent: *\nDisallow: /\n`. This stops future crawling but does NOT deindex already-indexed URLs on its own (a disallowed URL can't be recrawled to see the removal signal).
+- Both ship together. Verify after deploy: `curl -sI https://app.risk-runway.com/ | grep -i x-robots-tag` (expect `noindex, nofollow`) and `curl -s https://app.risk-runway.com/robots.txt`.
+- To speed removal of already-indexed URLs (e.g. `/forgot-password`): Google Search Console → app.risk-runway.com property → Removals → Temporary Removals (~6 months, enough time for the noindex to become permanent).
+- Marketing site (`risk-runway.com`, separate CloudFront repo/origin) is unaffected — do NOT apply this there.
 
 ### Key AWS Resources
 - Account ID: 703671916421
@@ -200,12 +211,14 @@ Located in `sample_docs/misc/`:
 - AI agent with a Twilio phone number
 - When email arrives matching broker filters → texts agent with AI summary
 - Agent can text back "draft" to have AI draft a reply (with confirmation before sending)
-- Twilio A2P 10DLC registration: one Brand (Risk Runway LLC, EIN in hand), one Campaign (transactional alerts)
-- Twilio trial account set up. Low-Volume Standard tier (~$4.50 brand + $15 campaign vetting + $1.50-10/mo)
+- Twilio A2P 10DLC registration: COMPLETE — one Brand (Risk Runway LLC), one Campaign (transactional alerts). Low-Volume Standard tier.
 - Confirmation loop required: AI never auto-sends email on agent's behalf without explicit text confirmation
 - Built on existing OAuth email scraping infrastructure
 - Uses Claude Haiku for summary (cheap), Sonnet only for draft reply
 - Phone: +18882546161
+- **UI is live**: the SMS Alerts settings (button "📱 SMS Alerts", modal, and JS) in `kanban.html` were fully commented out while A2P was pending. Re-enabled 9/10/26 — do not re-comment thinking it's still disabled.
+- **Two-gate design**: automatic SMS fires only when BOTH are true — (1) app-level env flag `SMS_ALERTS_ENABLED`, AND (2) per-user `sms_alerts_enabled=true` with a `phone_number` set. The background poller (`app/__init__.py`) also only runs when the scheduler starts, which is gated on `EMAIL_POLLING_ENABLED` (or `EXPIRATION_REMINDERS_ENABLED`).
+- **Current state (as of 9/10/26)**: all users in all DBs (local riskrunway_dev, prod `riskrunway`, prod `riskrunway_classic`) have `sms_alerts_enabled=false` and `phone_number=NULL` — SMS is off via the per-user gate. BUT the ECS task def still has `SMS_ALERTS_ENABLED=true` and `EMAIL_POLLING_ENABLED=true` (task def intentionally left unchanged), so the app-level path stays armed: if anyone re-enters a phone and toggles SMS on in the UI, prod will text them again. To hard-kill SMS globally, set `SMS_ALERTS_ENABLED=false` in the task def and redeploy.
 
 ## Installer / Agent Setup
 - S3 bucket: `riskrunway-uploads/agent-setup/`
@@ -353,7 +366,6 @@ Located in `sample_docs/misc/`:
 - Get Applied Epic DB name and Epic ID from a real agency for production API use
 - Figure out coverage limit workflow (agents enter manually in Epic — no API for it)
 - Finance agreement generation (PFConverge integration — not yet implemented)
-- SMS: Twilio A2P 10DLC brand/campaign registration
 
 ## Things NOT to Do
 - Don't touch `risk-runway.com` DNS (marketing site on CloudFront)

@@ -1,0 +1,21 @@
+Subject: Free pilot — software for surplus lines agencies
+
+Hi {first_name},
+
+I'm reaching out because you run an independent agency and I think you'd be a good fit for something we're piloting. We've built a tool for E&S/surplus lines work that takes the busywork out of getting a submission from quote to bind:
+
+- kanban workflow visibility
+- fast and accurate parsing of applications and quotes
+- submit to multiple markets at once
+- text alerts when quotes hit your inbox
+- compare carrier quotes side by side
+- tracks what's still outstanding
+- clean mobile app
+- renewal alert emails
+- drops clean data into your AMS so nobody's rekeying. It runs alongside your current AMS with no integration or license changes required to transfer data.
+
+We're a Microsoft verified publisher and all your data is heavily encrypted. We're letting a handful of agencies use it free while we get feedback. No cost, no commitment — just looking for agencies to try it and tell us what's useful. Would you be open to a quick 20-minute look? Happy to work around your schedule.
+
+Thanks,
+the Risk Runway team
+https://risk-runway.com
