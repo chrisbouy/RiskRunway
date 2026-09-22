@@ -8149,6 +8149,19 @@ def create_ams_export_job():
                         'quotes': []
                     }
             
+            # Supersede any leftover jobs from earlier/abandoned exports so the
+            # desktop agent can never pick up a stale quote's data. This keeps
+            # the queue effectively empty when a new export starts.
+            db_session.query(AmsExportJob).filter(
+                AmsExportJob.status.in_(['pending', 'in_progress'])
+            ).update(
+                {
+                    AmsExportJob.status: 'cancelled',
+                    AmsExportJob.error_message: 'Superseded by newer export'
+                },
+                synchronize_session=False
+            )
+
             # Create the job
             job = AmsExportJob(
                 submission_id=submission_id,
@@ -8294,7 +8307,7 @@ def update_ams_export_job_status(job_id):
         if new_status == 'complete':
             new_status = 'completed'
         
-        valid_statuses = ['pending', 'in_progress', 'completed', 'failed']
+        valid_statuses = ['pending', 'in_progress', 'completed', 'failed', 'cancelled']
         if new_status not in valid_statuses:
             return jsonify({'success': False, 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
         
@@ -8313,13 +8326,13 @@ def update_ams_export_job_status(job_id):
             if new_status == 'completed':
                 job.completed_at = datetime.utcnow()
             
-            # Use message as error_message if status is failed
-            if new_status == 'failed' and message:
+            # Use message as error_message if status is failed/cancelled
+            if new_status in ('failed', 'cancelled') and message:
                 job.error_message = message
             
-            # If failed and attempts remaining, reset to pending for retry
-            if new_status == 'failed' and job.attempt_count < job.max_attempts:
-                job.status = 'pending'
+            # NOTE: a failed job stays failed — it is NOT reset to pending. Auto-retry
+            # used to resurrect abandoned jobs and let a later export pick up a stale
+            # quote's data. The queue must stay clean.
             
             db_session.commit()
             
@@ -8369,7 +8382,7 @@ def update_ams_export_job(job_id):
         agent_id = data.get('agent_id')
         error_message = data.get('error_message')
         
-        valid_statuses = ['pending', 'in_progress', 'completed', 'failed']
+        valid_statuses = ['pending', 'in_progress', 'completed', 'failed', 'cancelled']
         if new_status not in valid_statuses:
             return jsonify({'success': False, 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
         
@@ -8394,9 +8407,9 @@ def update_ams_export_job(job_id):
             if error_message:
                 job.error_message = error_message
             
-            # If failed and attempts remaining, reset to pending for retry
-            if new_status == 'failed' and job.attempt_count < job.max_attempts:
-                job.status = 'pending'
+            # NOTE: a failed job stays failed — it is NOT reset to pending. Auto-retry
+            # used to resurrect abandoned jobs and let a later export pick up a stale
+            # quote's data. The queue must stay clean.
             
             db_session.commit()
             

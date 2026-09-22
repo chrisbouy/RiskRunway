@@ -1126,8 +1126,11 @@ class SpinnerOverlay:
         self.root.configure(bg="#1a1f2e")
         self.root.resizable(False, False)
 
-        # Position where the popup was
-        self.root.geometry(f"140x36+{x}+{y}")
+        # cancel_requested: set True when the user clicks the ✕ (permanent feature).
+        self.cancel_requested = False
+
+        # Position where the popup was. Wider now to fit the status text + cancel X.
+        self.root.geometry(f"300x36+{x}+{y}")
 
         self.spinner_chars = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
         self.spinner_idx = 0
@@ -1142,6 +1145,18 @@ class SpinnerOverlay:
         )
         self.spinner_label.pack(side="left", padx=(2, 4))
 
+        # Permanent: X to cancel the export. Packed on the right so it stays
+        # pinned regardless of how long the status text gets.
+        self.cancel_label = tk.Label(
+            frame, text="\u2715",
+            font=("Helvetica", 12, "bold"), fg="#8892b0", bg="#1a1f2e",
+            cursor="hand2",
+        )
+        self.cancel_label.pack(side="right", padx=(4, 2))
+        self.cancel_label.bind("<Button-1>", self._on_cancel_click)
+        self.cancel_label.bind("<Enter>", lambda e: self.cancel_label.config(fg="#ff5c5c"))
+        self.cancel_label.bind("<Leave>", lambda e: self.cancel_label.config(fg="#8892b0"))
+
         self.status_label = tk.Label(
             frame, text="exporting...",
             font=("Helvetica", 10), fg="#8892b0", bg="#1a1f2e",
@@ -1150,6 +1165,15 @@ class SpinnerOverlay:
 
         self.root.configure(highlightbackground="#4f8ef7", highlightthickness=1)
         logger.info("Spinner overlay created")
+
+    def _on_cancel_click(self, event=None):
+        self.cancel_requested = True
+        logger.info("User requested export cancellation via spinner ✕")
+        try:
+            self.status_label.config(text="cancelling...")
+            self.cancel_label.config(fg="#ff5c5c")
+        except self.tk.TclError:
+            pass
 
     def set_text(self, text: str):
         try:
@@ -1217,6 +1241,10 @@ class PersistentOverlay:
     def set_status(self, status: str, color: str = "#5a6180", indicator_color: str = "#2ecc8a"):
         if self.spinner:
             self.spinner.set_text(status)
+
+    def is_cancel_requested(self) -> bool:
+        """True once the user clicks the ✕ on the spinner (permanent cancel feature)."""
+        return bool(self.spinner and self.spinner.cancel_requested)
 
     def set_button_enabled(self, enabled: bool):
         pass  # No button in spinner mode
@@ -1455,13 +1483,18 @@ def run_job(job: dict, server_url: str):
     # Destroy the selection popup and show the tiny spinner
     persistent_overlay.begin_work()
 
-    # Store result from thread to avoid widget updates in background thread
-    result = {"success": None, "error": None}
+    # Store result from thread to avoid widget updates in background thread.
+    # "pass" is a plain string the worker sets and the main thread renders.
+    result = {"success": None, "error": None, "pass": "exporting..."}
 
     # Define the work function to run in a thread
     def do_work():
         try:
             # ── Pass 1: Vision/coordinates for textboxes (fast) ──
+            # TEMP — remove before production: record which pass is running. The
+            # main thread reads result["pass"] and updates the spinner label —
+            # tkinter widgets must NOT be touched from this worker thread.
+            result["pass"] = "Pass 1: pyautogui (textboxes)..."
             print(f"\n  Pass 1: Filling textboxes via vision...")
             vision_success = run_vision_job(server_url, json_data, region, job_id=job_id)
             if vision_success:
@@ -1470,10 +1503,18 @@ def run_job(job: dict, server_url: str):
                 logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) filled nothing — continuing to pass 2")
 
             # ── Pass 2: Computer-use for dropdowns, scrolling, anything missed ──
+            # TEMP — remove before production: record which pass is running (see note above).
+            result["pass"] = "Pass 2: computer use (dropdowns)..."
             print(f"  Pass 2: Handling dropdowns and scrolling via computer-use...")
             cu_success = run_computer_use_job(server_url, region, job_id=job_id)
             if cu_success:
                 logger.info(f"[Job {job_id}] Pass 2 (computer-use) succeeded")
+
+            # If the user cancelled while we were working, don't overwrite the
+            # 'cancelled' status the main thread already set on the server.
+            if result.get("cancelled"):
+                print(f"\n  Job #{job_id} cancelled by user")
+                return
 
             # Overall success if either pass did something
             success = vision_success or cu_success
@@ -1494,9 +1535,20 @@ def run_job(job: dict, server_url: str):
     work_thread = threading.Thread(target=do_work, daemon=True)
     work_thread.start()
 
-    # Keep updating the widget while work is happening
+    # Keep updating the widget while work is happening. All widget writes happen
+    # HERE, on the main thread — never inside do_work (tkinter is not thread-safe).
     while work_thread.is_alive():
+        # TEMP — remove before production: reflect the current pass on the spinner.
+        persistent_overlay.set_status(result["pass"])
         persistent_overlay.update()
+        # User clicked the ✕ on the spinner — cancel the job so it can never be
+        # re-run and tear down. The worker thread is a daemon; it won't block exit.
+        if persistent_overlay.is_cancel_requested():
+            result["cancelled"] = True
+            logger.info(f"[Job {job_id}] Cancel requested by user — marking cancelled")
+            update_job_status(server_url, job_id, "cancelled", "Cancelled by user")
+            print(f"\n  Job #{job_id} cancelled by user")
+            break
         time.sleep(0.05)
 
     # Flash result and auto-destroy
