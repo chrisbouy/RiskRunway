@@ -27,14 +27,29 @@ _Last updated: 2026-09-18_
 
 ## Progress
 ### SIAA / Brooke Tennessee (137 unique)
-- **Sent so far: 50**
-- **Remaining: 87**
+- **Sent so far: 75**
+- **Remaining: 62**
 - Batches:
   - Batch 1: 25 sent (contacts 1–25), 2026-09-18. 0 failures. Did NOT include
     the website link in the signature (link was added afterward).
   - Batch 2: 25 sent (contacts 26–50), 2026-09-21. 0 failures. First batch to
     include `https://risk-runway.com` in the signature.
+  - Batch 3: 25 sent (contacts 51–75), 2026-09-22. 0 failures.
 - All sends logged with Resend message ids in `sent-log.csv`.
+
+### How to monitor delivery / spam (no code changes)
+- Resend dashboard -> Emails/Logs shows per-message status: Delivered, Bounced,
+  Complained (spam report), Deferred. This is the real delivery signal.
+- Resend only shows messages that have ACTUALLY been sent. Mid-batch the tool
+  drips ~1 email/45–90s, so the dashboard will show fewer than the batch size
+  until the batch finishes. It also paginates and can lag a few seconds.
+- Inbox-vs-spam placement is NOT visible to any sender. To gauge it, keep a seed
+  address or two of your own across providers in a batch and check where it
+  lands. (The pre-batch-1 test to 5 personal addresses all landed in inbox.)
+- Opens/reads: NOT tracked (plain-text sends, no pixel — intentional, better for
+  deliverability). Truest read signal = replies to chris@try-risk-runway.com.
+- To reconcile counts: pick a Resend message id from sent-log.csv and search it
+  in the Resend dashboard; confirm status = Delivered.
 - None landed in spam across Gmail / iCloud / Outlook / Proton / risk-runway.com
   during the 5-address test send that preceded batch 1.
 
