@@ -672,6 +672,11 @@ class AmsExportJob(Base):
     # requests skip the vision call entirely.
     quote_facts_json = Column(Text, nullable=True)
 
+    # The desktop field-map plan: the enumerated form fields (name, control_type,
+    # x, y) filled with values from the quote. Source of truth for the export and
+    # a debugging record of exactly what was entered where.
+    field_map_json = Column(Text, nullable=True)
+
     # Status tracking
     status = Column(String(20), default='pending', nullable=False)  # pending, in_progress, completed, failed
     attempt_count = Column(Integer, default=0, nullable=False)
@@ -709,6 +714,7 @@ class AmsExportJob(Base):
             'max_attempts': self.max_attempts,
             'error_message': self.error_message,
             'agent_id': self.agent_id,
+            'field_map_json': self.field_map_json,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,

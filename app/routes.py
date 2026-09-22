@@ -7625,6 +7625,268 @@ def ams_vision():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _format_dropdown_list(dropdown_fields):
+    """Render the dropdown field->value list for the computer-use prompt."""
+    if not dropdown_fields:
+        return "(none — nothing to do; stop immediately)"
+    lines = []
+    for f in dropdown_fields:
+        name = f.get('field_name', '?')
+        val = f.get('value', '')
+        lines.append(f"- {name} -> {val}")
+    return "\n".join(lines)
+
+
+def _load_quote_images_by_job_id(job_id):
+    """Return a list of PIL quote page images for a job id (source data for the LLM).
+    Convenience wrapper for the field-map endpoints. Returns [] if none found.
+    NOTE: distinct from the existing _load_quote_images_for_job(job) which takes a
+    job OBJECT — do not merge the two names (that caused an int.quote_id crash)."""
+    from PIL import Image
+    images = []
+    if not job_id:
+        return images
+    db_session = get_session()
+    try:
+        job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+        if not job:
+            return images
+        quotes = []
+        if job.quote_id:
+            q = db_session.query(Quote).filter_by(id=job.quote_id).first()
+            if q:
+                quotes = [q]
+        if not quotes:
+            quotes = db_session.query(Quote).filter_by(submission_id=job.submission_id).all()
+        for quote in quotes:
+            if quote.pass1_layout_json:
+                layout = json.loads(quote.pass1_layout_json)
+                for page in layout.get('pages', []):
+                    img_path = page.get('image_path')
+                    if img_path and os.path.exists(img_path):
+                        images.append(Image.open(img_path).convert("RGB"))
+                if images:
+                    break  # first quote with images
+    finally:
+        db_session.close()
+    return images
+
+
+@bp.route('/api/ams/enumerate-fields', methods=['POST'])
+def ams_enumerate_fields():
+    """
+    Step 1 of the desktop field-map flow.
+
+    Input:  { screenshot (base64) }
+    Output: { success, fields: [ {field_name, control_type, x, y, value: null} ] }
+
+    Enumerates every visible, editable field on the current AMS viewport with its
+    control type and pixel coordinates. Values are left null — this is the empty
+    plan. No quote data involved; this only reads the form.
+    """
+    try:
+        from PIL import Image
+        from io import BytesIO
+        import settings as settings_module
+        from app.parsers.llm_parsers import BedrockClient
+
+        data = request.get_json() or {}
+        screenshot_b64 = data.get('screenshot')
+        job_id = data.get('job_id')
+        if not screenshot_b64:
+            return jsonify({'success': False, 'error': 'screenshot is required'}), 400
+
+        screenshot_image = Image.open(BytesIO(base64.b64decode(screenshot_b64))).convert("RGB")
+
+        prompt = (
+            "You are looking at a screenshot of an insurance AMS (Agency Management "
+            "System) form. Enumerate EVERY visible, editable field.\n\n"
+            "For each field return:\n"
+            "- field_name: the visible label of the field\n"
+            "- control_type: one of 'text_field', 'dropdown', 'date', 'checkbox', 'other'\n"
+            "- x, y: pixel coordinates of the INPUT control itself (not the label)\n\n"
+            "RULES:\n"
+            "- Include every editable control you can see, filled or empty.\n"
+            "- A native <select> or a control with a chevron/arrow is a 'dropdown'.\n"
+            "- A free-text input is a 'text_field'. A date input is 'date'.\n"
+            "- Do NOT invent fields that are not visible.\n"
+            "- Do NOT provide values — only the field structure.\n\n"
+            "Return ONLY valid JSON in exactly this shape. No explanation:\n"
+            '{\n'
+            '  "fields": [\n'
+            '    {"field_name": "Named Insured", "control_type": "text_field", "x": 630, "y": 354},\n'
+            '    {"field_name": "State", "control_type": "dropdown", "x": 322, "y": 727}\n'
+            '  ]\n'
+            '}'
+        )
+
+        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+        result = client.generate_json_with_images(prompt, [screenshot_image])
+
+        # Normalize into a list of field dicts. The model may return any of:
+        #   {"fields": [ {...}, ... ]}                        (requested shape)
+        #   [ {...}, ... ]                                    (bare list)
+        #   {"Named Insured": {"control_type": ...}, ...}     (dict keyed by name)
+        if isinstance(result, dict) and isinstance(result.get('fields'), list):
+            raw_fields = result['fields']
+        elif isinstance(result, list):
+            raw_fields = result
+        elif isinstance(result, dict):
+            # Dict keyed by field name → convert to a list, folding the key in.
+            raw_fields = []
+            for name, spec in result.items():
+                if isinstance(spec, dict):
+                    entry = dict(spec)
+                    entry.setdefault('field_name', name)
+                    raw_fields.append(entry)
+        else:
+            raw_fields = []
+
+        fields = []
+        for f in (raw_fields or []):
+            if not isinstance(f, dict) or not f.get('field_name'):
+                continue
+            fields.append({
+                'field_name': f.get('field_name'),
+                'control_type': f.get('control_type', 'other'),
+                'x': f.get('x'),
+                'y': f.get('y'),
+                'value': None,
+            })
+
+        empty_map = {'screen_index': 0, 'fields': fields}
+        logger.info(f"[AMS Enumerate] Empty field map ({len(fields)} fields): {json.dumps(empty_map)}")
+
+        # Persist the enumerated (empty) map to the job so we can inspect what the
+        # form looked like even before values are filled — key for debugging when
+        # enumeration comes back empty. Overwritten by fill-field-map on success.
+        if job_id:
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job:
+                    job.field_map_json = json.dumps(
+                        {**empty_map, 'raw_model_output': result if isinstance(result, (dict, list)) else str(result)}
+                    )
+                    db_session.commit()
+            finally:
+                db_session.close()
+
+        return jsonify({'success': True, **empty_map})
+
+    except Exception as e:
+        logger.error(f"[AMS Enumerate] Error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams/fill-field-map', methods=['POST'])
+def ams_fill_field_map():
+    """
+    Step 2 of the desktop field-map flow.
+
+    Input:  { job_id, field_map: {screen_index, fields:[...]} }  (values null)
+    Output: { success, field_map: {screen_index, fields:[...]} } (values filled)
+
+    Reads the quote page images for the job and fills each field's value using
+    the quote data. Coordinates and control types are passed through untouched —
+    only 'value' is populated. Persists the filled map to field_map_json.
+    """
+    try:
+        import settings as settings_module
+        from app.parsers.llm_parsers import BedrockClient
+
+        data = request.get_json() or {}
+        job_id = data.get('job_id')
+        field_map = data.get('field_map') or {}
+        fields = field_map.get('fields', [])
+
+        if not fields:
+            return jsonify({'success': False, 'error': 'field_map.fields is required'}), 400
+
+        quote_images = _load_quote_images_by_job_id(job_id)
+        if not quote_images:
+            return jsonify({'success': False, 'error': 'No quote images available for this job'}), 400
+
+        # Give the model only the field names + types so it maps values into them.
+        field_stub = [
+            {'field_name': f.get('field_name'), 'control_type': f.get('control_type')}
+            for f in fields
+        ]
+        num_pages = len(quote_images)
+        prompt = (
+            f"Images 1-{num_pages} are pages from an insurance quote document (SOURCE data).\n\n"
+            "Below is a list of form fields that need values. Fill each field's "
+            "value from the quote document.\n\n"
+            f"FIELDS:\n{json.dumps(field_stub, indent=2)}\n\n"
+            "RULES:\n"
+            "- Only use data explicitly present in the quote. Do NOT guess.\n"
+            "- If you have no confident value for a field, use null.\n"
+            "- Broker → wholesale broker. Producer → retail agent.\n"
+            "- Dates → MM/DD/YYYY. Currency → digits only. State → 2-letter. "
+            "Phone → (555) 000-0000 if possible.\n\n"
+            "Return ONLY valid JSON. No explanation. Format:\n"
+            '{ "values": { "Named Insured": "Acme Corp LLC", "State": "LA" } }'
+        )
+
+        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+        # max_width=1000: we only READ TEXT from the quote here (no coordinates),
+        # so shrink the images — matches the extension-fill path and keeps the
+        # payload small enough for many-page quotes not to blow the input limit.
+        result = client.generate_json_with_images(prompt, quote_images, max_width=1000)
+
+        # Normalize: accept {"values": {name: val}} or a bare {name: val} dict.
+        if isinstance(result, dict) and isinstance(result.get('values'), dict):
+            values = result['values']
+        elif isinstance(result, dict):
+            values = result
+        else:
+            values = {}
+
+        matched = 0
+        for f in fields:
+            v = values.get(f.get('field_name'))
+            f['value'] = v if v not in ('', None) else None
+            if f['value'] is not None:
+                matched += 1
+
+        filled_map = {'screen_index': field_map.get('screen_index', 0), 'fields': fields}
+        logger.info(f"[AMS Fill Map] Filled {matched}/{len(fields)} values: {json.dumps(filled_map)}")
+
+        # Persist for debugging / review in /admin. Include raw output so an
+        # all-null fill is diagnosable from the DB.
+        if job_id:
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job:
+                    job.field_map_json = json.dumps({
+                        **filled_map,
+                        'raw_model_output': result if isinstance(result, (dict, list)) else str(result),
+                    })
+                    db_session.commit()
+            finally:
+                db_session.close()
+
+        return jsonify({'success': True, 'field_map': filled_map})
+
+    except Exception as e:
+        logger.error(f"[AMS Fill Map] Error: {e}", exc_info=True)
+        # Record the failure on the job so it's visible without server logs.
+        try:
+            if data.get('job_id'):
+                db_session = get_session()
+                try:
+                    job = db_session.query(AmsExportJob).filter_by(id=data['job_id']).first()
+                    if job:
+                        job.field_map_json = json.dumps({'fill_error': str(e)})
+                        db_session.commit()
+                finally:
+                    db_session.close()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================================
 # AMS EXTENSION FILL — Chrome extension enumerates DOM fields, server matches
 #
@@ -7913,6 +8175,7 @@ def ams_computer_use_step():
         messages = data.get('messages', [])
         display_width = data.get('display_width', 1920)
         display_height = data.get('display_height', 1080)
+        dropdown_fields = data.get('dropdown_fields', [])
 
         if not screenshot_b64:
             return jsonify({'success': False, 'error': 'screenshot is required'}), 400
@@ -7976,16 +8239,14 @@ def ams_computer_use_step():
                 "text": (
                     f"Above are {len(quote_images_b64)} pages from an insurance quote document. "
                     "Below is a screenshot of an AMS form.\n\n"
-                    "YOUR TASK: Only handle DROPDOWNS and SCROLLING. Text fields have already been filled.\n\n"
+                    "YOUR TASK: Set ONLY the DROPDOWN fields listed below. Text fields are already filled.\n\n"
+                    f"DROPDOWNS TO SET (field -> value):\n{_format_dropdown_list(dropdown_fields)}\n\n"
                     "- There is a small 'exporting...' spinner overlay on screen — IGNORE IT. The form is ready.\n"
                     "- Text fields are already filled — do NOT click on or type into any text input fields\n"
-                    "- Look at each dropdown/select field on the form\n"
-                    "- Match it to the correct value from the quote document\n"
-                    "- Click the dropdown, then click the correct option\n"
-                    "- After handling all visible dropdowns, scroll the page down using the scroll action with a large amount (10+) to reveal more fields\n"
-                    "- Repeat until you've scrolled through the entire form\n"
-                    "- Do NOT type into any text fields\n"
-                    "- When there are no more dropdowns and no more scrolling to do, stop."
+                    "- For each dropdown above: click it, then click the option matching its value\n"
+                    "- You CANNOT type. Only clicking and scrolling are allowed.\n"
+                    "- Do NOT touch any field that is not in the dropdown list above\n"
+                    "- When every dropdown above is set, stop."
                 )
             })
             content_parts.append({

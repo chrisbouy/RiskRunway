@@ -431,6 +431,7 @@ def _add_missing_columns(engine, inspector):
     # ams_export_jobs
     if 'ams_export_jobs' in table_names:
         _safe_add_column('ams_export_jobs', 'quote_facts_json', 'TEXT')
+        _safe_add_column('ams_export_jobs', 'field_map_json', 'TEXT')
 
 
 def _ensure_audit_log_delete_constraints(conn, inspector):

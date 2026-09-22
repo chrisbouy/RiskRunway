@@ -441,6 +441,142 @@ def screenshots_almost_equal(first: bytes, second: bytes, threshold: float = 2.0
     logger.info(f"Screenshot diff score: {mean_diff:.2f}")
     return mean_diff <= threshold
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Field-map flow (v1, single screen):
+#   1. enumerate the form fields (name, control_type, coords) — empty plan
+#   2. fill the plan's values from the quote
+#   3. pyautogui fills ONLY text_field/date entries; dropdowns go to computer use
+# The one JSON is the source of truth, so every field is entered exactly once.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def enumerate_fields(server_url: str, screenshot_bytes: bytes, job_id: int = None) -> list:
+    """Ask the server to enumerate the form's fields from a screenshot.
+    Returns a list of {field_name, control_type, x, y, value:null}."""
+    try:
+        r = requests.post(
+            f"{server_url}/api/ams/enumerate-fields",
+            json={
+                'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'),
+                'job_id': job_id,
+            },
+            timeout=120,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get('success'):
+            logger.error(f"[Field Map] enumerate failed: {data.get('error')}")
+            return []
+        return data.get('fields', [])
+    except Exception as e:
+        logger.error(f"[Field Map] enumerate request failed: {e}")
+        return []
+
+
+def fill_field_map(server_url: str, fields: list, job_id: int = None) -> list:
+    """Ask the server to fill values into the enumerated fields from the quote.
+    Returns the same list of fields with 'value' populated."""
+    try:
+        r = requests.post(
+            f"{server_url}/api/ams/fill-field-map",
+            json={'job_id': job_id, 'field_map': {'screen_index': 0, 'fields': fields}},
+            timeout=120,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get('success'):
+            logger.error(f"[Field Map] fill failed: {data.get('error')}")
+            return fields
+        return data.get('field_map', {}).get('fields', fields)
+    except Exception as e:
+        logger.error(f"[Field Map] fill request failed: {e}")
+        return fields
+
+
+def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tuple:
+    """
+    v1 single-screen field-map export.
+    Returns (text_filled_count, dropdown_fields) where dropdown_fields is the
+    list of dropdown entries (with values) handed off to the computer-use pass.
+    """
+    # 1. Screenshot the current viewport and enumerate the fields (empty plan).
+    screenshot_bytes, scale = take_screenshot(region)
+
+    # Derive the true image→region scale from the ACTUAL sent-image dimensions,
+    # not the SCREENSHOT_SCALE constant. On Retina the grab is 2x logical points,
+    # so a single constant drifts (error grows down the page). Region is in the
+    # same logical-point space pyautogui clicks in, so region/sent is exact.
+    from PIL import Image as _PILImg
+    _sent = _PILImg.open(io.BytesIO(screenshot_bytes))
+    sent_w, sent_h = _sent.size
+    scale_x = region['width'] / sent_w if sent_w else 1.0
+    scale_y = region['height'] / sent_h if sent_h else 1.0
+    logger.info(f"[Field Map] sent image {sent_w}x{sent_h}, region {region['width']}x{region['height']}, scale=({scale_x:.3f},{scale_y:.3f})")
+
+    fields = enumerate_fields(server_url, screenshot_bytes, job_id=job_id)
+    if not fields:
+        logger.info(f"[Field Map] No fields enumerated for job {job_id}")
+        return 0, []
+
+    # 2. Fill values from the quote.
+    fields = fill_field_map(server_url, fields, job_id=job_id)
+
+    # 3a. pyautogui fills ONLY text_field / date entries (never dropdowns).
+    text_types = ('text_field', 'date')
+    text_filled = 0
+    click_log = []  # for the annotated debug screenshot
+
+    # Click somewhere safe first so the address bar isn't focused.
+    safe_x = region["x"] + region["width"] // 2
+    safe_y = region["y"] + region["height"] // 2
+    pyautogui.click(safe_x, safe_y)
+    time.sleep(0.05)
+
+    for f in fields:
+        ctype = f.get('control_type')
+        value = f.get('value')
+        if ctype not in text_types:
+            continue
+        if value in (None, ''):
+            logger.info(f"[Field Map] skip text field '{f.get('field_name')}' — no value")
+            continue
+        if f.get('x') is None or f.get('y') is None:
+            logger.info(f"[Field Map] skip text field '{f.get('field_name')}' — no coords")
+            continue
+
+        # Map the model's coordinate (in sent-image space) to screen points using
+        # the true per-axis scale. The model reports the INPUT control's position,
+        # so we target it directly — no +18 label hack (that only worked near the
+        # top and caused the downward drift lower on the page).
+        abs_x = region['x'] + int(f['x'] * scale_x)
+        abs_y = region['y'] + int(f['y'] * scale_y)
+        try:
+            pyautogui.click(abs_x, abs_y)
+            time.sleep(CLICK_DELAY)
+            pyperclip.copy(str(value))
+            pyautogui.hotkey(*PASTE_HOTKEY)
+            time.sleep(FILL_DELAY)
+            text_filled += 1
+            logger.info(f"[Field Map] ✓ text '{f.get('field_name')}'='{value}' at ({abs_x},{abs_y})")
+            click_log.append({"label": f.get('field_name'), "abs_x": abs_x, "abs_y": abs_y, "status": "hit", "value": value})
+        except Exception as e:
+            logger.error(f"[Field Map] ✗ text '{f.get('field_name')}' failed: {e}")
+            click_log.append({"label": f.get('field_name'), "abs_x": abs_x, "abs_y": abs_y, "status": "miss", "value": value})
+
+    # TEMP debug — remove before production: draw where every text click landed
+    # so coordinate errors are visible. Saves to logs/fill_screenshots/.
+    save_annotated_screenshot(region, click_log, job_id=job_id)
+
+    # 3b. Collect dropdowns (with values) for the computer-use pass.
+    dropdown_fields = [
+        f for f in fields
+        if f.get('control_type') == 'dropdown' and f.get('value') not in (None, '')
+    ]
+    logger.info(
+        f"[Field Map] text filled={text_filled}, dropdowns to handle={len(dropdown_fields)}"
+    )
+    return text_filled, dropdown_fields
+
+
 def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int = None) -> bool:
     all_filled: set = set()
     remaining_data  = flatten_job_data(json_data)   # starts full, shrinks each pass
@@ -513,7 +649,8 @@ def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int 
 COMPUTER_USE_TIMEOUT = 45  # seconds max for the agentic loop
 COMPUTER_USE_MAX_STEPS = 30  # max actions before stopping
 
-def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> bool:
+def run_computer_use_job(server_url: str, region: dict, job_id: int = None,
+                         dropdown_fields: list = None) -> bool:
     """
     Agentic computer-use loop:
     1. Take screenshot of the AMS form
@@ -557,13 +694,15 @@ def run_computer_use_job(server_url: str, region: dict, job_id: int = None) -> b
         scale_y = region['height'] / CU_DISPLAY_H
         logger.info(f"[Computer Use] Step {actions_taken + 1}: screenshot taken ({CU_DISPLAY_W}x{CU_DISPLAY_H})")
 
-        # 2. Send to server
+        # 2. Send to server. dropdown_fields tells the server exactly which
+        # dropdowns to set and to what value (used on the first turn only).
         payload = {
             'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'),
             'job_id': job_id,
             'messages': messages,
             'display_width': CU_DISPLAY_W,
             'display_height': CU_DISPLAY_H,
+            'dropdown_fields': dropdown_fields or [],
         }
 
         try:
@@ -662,12 +801,11 @@ def _execute_computer_action(action: dict, region: dict, scale_x: float, scale_y
             time.sleep(CLICK_DELAY)
 
     elif action_type == 'type':
+        # Hard block: the computer-use pass handles dropdowns only. Text fields
+        # are owned by the pyautogui field-map pass and are already filled, so we
+        # never type here — this guarantees a text box is never entered twice.
         text = action.get('text', '')
-        if text:
-            pyperclip.copy(text)
-            pyautogui.hotkey(*PASTE_HOTKEY)
-            logger.info(f"  → type (paste): '{text[:50]}'")
-            time.sleep(0.05)
+        logger.info(f"  → type BLOCKED (computer-use must not type): '{str(text)[:50]}'")
 
     elif action_type == 'key':
         key = action.get('text', '')
@@ -1490,25 +1628,32 @@ def run_job(job: dict, server_url: str):
     # Define the work function to run in a thread
     def do_work():
         try:
-            # ── Pass 1: Vision/coordinates for textboxes (fast) ──
+            # ── Pass 1: field-map enumerate + fill, pyautogui fills text boxes ──
             # TEMP — remove before production: record which pass is running. The
             # main thread reads result["pass"] and updates the spinner label —
             # tkinter widgets must NOT be touched from this worker thread.
             result["pass"] = "Pass 1: pyautogui (textboxes)..."
-            print(f"\n  Pass 1: Filling textboxes via vision...")
-            vision_success = run_vision_job(server_url, json_data, region, job_id=job_id)
-            if vision_success:
-                logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) succeeded")
+            print(f"\n  Pass 1: Enumerating fields, filling text boxes...")
+            text_filled, dropdown_fields = run_field_map_job(server_url, region, job_id=job_id)
+            if text_filled:
+                logger.info(f"[Job {job_id}] Pass 1 filled {text_filled} text field(s)")
             else:
-                logger.info(f"[Job {job_id}] Pass 1 (vision/textboxes) filled nothing — continuing to pass 2")
+                logger.info(f"[Job {job_id}] Pass 1 filled no text fields — continuing to pass 2")
 
-            # ── Pass 2: Computer-use for dropdowns, scrolling, anything missed ──
+            # ── Pass 2: computer use handles ONLY the enumerated dropdowns ──
             # TEMP — remove before production: record which pass is running (see note above).
             result["pass"] = "Pass 2: computer use (dropdowns)..."
-            print(f"  Pass 2: Handling dropdowns and scrolling via computer-use...")
-            cu_success = run_computer_use_job(server_url, region, job_id=job_id)
-            if cu_success:
-                logger.info(f"[Job {job_id}] Pass 2 (computer-use) succeeded")
+            if dropdown_fields:
+                print(f"  Pass 2: Handling {len(dropdown_fields)} dropdown(s) via computer-use...")
+                cu_success = run_computer_use_job(
+                    server_url, region, job_id=job_id, dropdown_fields=dropdown_fields
+                )
+                if cu_success:
+                    logger.info(f"[Job {job_id}] Pass 2 (computer-use) succeeded")
+            else:
+                cu_success = False
+                print(f"  Pass 2: No dropdowns to set — skipping computer-use.")
+                logger.info(f"[Job {job_id}] Pass 2 skipped — no dropdowns")
 
             # If the user cancelled while we were working, don't overwrite the
             # 'cancelled' status the main thread already set on the server.
@@ -1517,7 +1662,7 @@ def run_job(job: dict, server_url: str):
                 return
 
             # Overall success if either pass did something
-            success = vision_success or cu_success
+            success = (text_filled > 0) or cu_success
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")
