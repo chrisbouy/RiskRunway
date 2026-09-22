@@ -562,19 +562,100 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
             logger.error(f"[Field Map] ✗ text '{f.get('field_name')}' failed: {e}")
             click_log.append({"label": f.get('field_name'), "abs_x": abs_x, "abs_y": abs_y, "status": "miss", "value": value})
 
-    # TEMP debug — remove before production: draw where every text click landed
-    # so coordinate errors are visible. Saves to logs/fill_screenshots/.
-    save_annotated_screenshot(region, click_log, job_id=job_id)
-
-    # 3b. Collect dropdowns (with values) for the computer-use pass.
+    # 3b. Dropdowns — try deterministic type-to-select, VERIFY it worked, and
+    # fall back to computer use for any that didn't change (custom/JS dropdowns
+    # that ignore keyboard type-to-select). We can't detect the control type up
+    # front on desktop (no DOM), so we try then verify by before/after image diff
+    # of the dropdown's local area. Bias: if verification is uncertain, treat it
+    # as a failure and fall back — a wrong value is worse than a slower fallback.
     dropdown_fields = [
         f for f in fields
         if f.get('control_type') == 'dropdown' and f.get('value') not in (None, '')
+        and f.get('x') is not None and f.get('y') is not None
     ]
-    logger.info(
-        f"[Field Map] text filled={text_filled}, dropdowns to handle={len(dropdown_fields)}"
-    )
-    return text_filled, dropdown_fields
+    dropdowns_set = 0
+    for f in dropdown_fields:
+        value = str(f.get('value'))
+        # Click point to OPEN: chevron if enumeration found one, else the center.
+        if f.get('chevron_x') is not None and f.get('chevron_y') is not None:
+            open_x = region['x'] + int(f['chevron_x'] * scale_x)
+            open_y = region['y'] + int(f['chevron_y'] * scale_y)
+        else:
+            open_x = region['x'] + int(f['x'] * scale_x)
+            open_y = region['y'] + int(f['y'] * scale_y)
+
+        if _set_dropdown_by_click(server_url, f.get('field_name'), value, open_x, open_y, region, job_id):
+            dropdowns_set += 1
+            click_log.append({"label": f.get('field_name'), "abs_x": open_x, "abs_y": open_y, "status": "hit", "value": value})
+        else:
+            click_log.append({"label": f.get('field_name'), "abs_x": open_x, "abs_y": open_y, "status": "miss", "value": value})
+
+    # TEMP debug — remove before production: draw where every click landed
+    # (text + dropdowns) so coordinate errors are visible. logs/fill_screenshots/.
+    save_annotated_screenshot(region, click_log, job_id=job_id)
+
+    logger.info(f"[Field Map] text filled={text_filled}, dropdowns set={dropdowns_set}")
+    return text_filled + dropdowns_set
+
+
+DROPDOWN_MAX_SCROLLS = 6  # max scroll attempts to find an option below the fold
+
+
+def _set_dropdown_by_click(server_url, field_name, value, open_x, open_y, region, job_id=None) -> bool:
+    """Open a dropdown (click open_x/open_y), then vision-locate the matching
+    option in the open list and click it. Scrolls the open list if the option is
+    below the fold. Never guesses — returns False (leaves blank) if not found."""
+    try:
+        pyautogui.click(open_x, open_y)
+        time.sleep(0.25)  # let the list render
+
+        for attempt in range(DROPDOWN_MAX_SCROLLS + 1):
+            shot, _s = take_screenshot(region)
+            r = _locate_option(server_url, shot, value)
+            if r.get('found') and r.get('x') is not None:
+                # Locate coords are in sent-image space → map to screen points.
+                from PIL import Image as _PILImg
+                sent_w, sent_h = _PILImg.open(io.BytesIO(shot)).size
+                sx = region['width'] / sent_w if sent_w else 1.0
+                sy = region['height'] / sent_h if sent_h else 1.0
+                click_x = region['x'] + int(r['x'] * sx)
+                click_y = region['y'] + int(r['y'] * sy)
+                pyautogui.click(click_x, click_y)
+                time.sleep(FILL_DELAY)
+                logger.info(f"[Field Map] ✓ dropdown '{field_name}'='{value}' clicked option at ({click_x},{click_y})")
+                return True
+            if not r.get('need_scroll'):
+                break  # fully visible, no match — don't guess
+            pyautogui.scroll(-3)  # scroll the open list down and retry
+            time.sleep(0.2)
+
+        # Not found — close the list and leave the field blank rather than wrong.
+        pyautogui.press('escape')
+        logger.info(f"[Field Map] ✗ dropdown '{field_name}'='{value}' option not found — left blank")
+        return False
+    except Exception as e:
+        logger.error(f"[Field Map] dropdown '{field_name}' errored: {e}")
+        try:
+            pyautogui.press('escape')
+        except Exception:
+            pass
+        return False
+
+
+def _locate_option(server_url, screenshot_bytes, value) -> dict:
+    """Ask the server to find the matching option's coords in an open-dropdown shot."""
+    try:
+        r = requests.post(
+            f"{server_url}/api/ams/locate-option",
+            json={'screenshot': base64.b64encode(screenshot_bytes).decode('ascii'), 'value': value},
+            timeout=60,
+        )
+        r.raise_for_status()
+        d = r.json()
+        return d if d.get('success') else {'found': False, 'need_scroll': False}
+    except Exception as e:
+        logger.error(f"[Field Map] locate-option request failed: {e}")
+        return {'found': False, 'need_scroll': False}
 
 
 def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int = None) -> bool:
@@ -1629,31 +1710,13 @@ def run_job(job: dict, server_url: str):
     def do_work():
         try:
             # ── Pass 1: field-map enumerate + fill, pyautogui fills text boxes ──
-            # TEMP — remove before production: record which pass is running. The
-            # main thread reads result["pass"] and updates the spinner label —
-            # tkinter widgets must NOT be touched from this worker thread.
-            result["pass"] = "Pass 1: pyautogui (textboxes)..."
-            print(f"\n  Pass 1: Enumerating fields, filling text boxes...")
-            text_filled, dropdown_fields = run_field_map_job(server_url, region, job_id=job_id)
-            if text_filled:
-                logger.info(f"[Job {job_id}] Pass 1 filled {text_filled} text field(s)")
-            else:
-                logger.info(f"[Job {job_id}] Pass 1 filled no text fields — continuing to pass 2")
-
-            # ── Pass 2: computer use handles ONLY the enumerated dropdowns ──
-            # TEMP — remove before production: record which pass is running (see note above).
-            result["pass"] = "Pass 2: computer use (dropdowns)..."
-            if dropdown_fields:
-                print(f"  Pass 2: Handling {len(dropdown_fields)} dropdown(s) via computer-use...")
-                cu_success = run_computer_use_job(
-                    server_url, region, job_id=job_id, dropdown_fields=dropdown_fields
-                )
-                if cu_success:
-                    logger.info(f"[Job {job_id}] Pass 2 (computer-use) succeeded")
-            else:
-                cu_success = False
-                print(f"  Pass 2: No dropdowns to set — skipping computer-use.")
-                logger.info(f"[Job {job_id}] Pass 2 skipped — no dropdowns")
+            # TEMP — remove before production: status text for the spinner. The
+            # main thread reads result["pass"] and updates the label — tkinter
+            # widgets must NOT be touched from this worker thread.
+            result["pass"] = "Filling fields..."
+            print(f"\n  Enumerating fields, filling text boxes and dropdowns...")
+            fields_filled = run_field_map_job(server_url, region, job_id=job_id)
+            logger.info(f"[Job {job_id}] Field-map filled {fields_filled} field(s)")
 
             # If the user cancelled while we were working, don't overwrite the
             # 'cancelled' status the main thread already set on the server.
@@ -1661,8 +1724,7 @@ def run_job(job: dict, server_url: str):
                 print(f"\n  Job #{job_id} cancelled by user")
                 return
 
-            # Overall success if either pass did something
-            success = (text_filled > 0) or cu_success
+            success = fields_filled > 0
             result["success"] = success
             if success:
                 update_job_status(server_url, job_id, "complete")

@@ -7704,7 +7704,9 @@ def ams_enumerate_fields():
             "For each field return:\n"
             "- field_name: the visible label of the field\n"
             "- control_type: one of 'text_field', 'dropdown', 'date', 'checkbox', 'other'\n"
-            "- x, y: pixel coordinates of the INPUT control itself (not the label)\n\n"
+            "- x, y: pixel coordinates of the INPUT control itself (not the label)\n"
+            "- chevron_x, chevron_y: for dropdowns ONLY, the pixel coordinates of the\n"
+            "  dropdown arrow/chevron if one is visible; otherwise null. For non-dropdowns, null.\n\n"
             "RULES:\n"
             "- Include every editable control you can see, filled or empty.\n"
             "- A native <select> or a control with a chevron/arrow is a 'dropdown'.\n"
@@ -7714,8 +7716,8 @@ def ams_enumerate_fields():
             "Return ONLY valid JSON in exactly this shape. No explanation:\n"
             '{\n'
             '  "fields": [\n'
-            '    {"field_name": "Named Insured", "control_type": "text_field", "x": 630, "y": 354},\n'
-            '    {"field_name": "State", "control_type": "dropdown", "x": 322, "y": 727}\n'
+            '    {"field_name": "Named Insured", "control_type": "text_field", "x": 630, "y": 354, "chevron_x": null, "chevron_y": null},\n'
+            '    {"field_name": "State", "control_type": "dropdown", "x": 322, "y": 727, "chevron_x": 470, "chevron_y": 727}\n'
             '  ]\n'
             '}'
         )
@@ -7751,6 +7753,8 @@ def ams_enumerate_fields():
                 'control_type': f.get('control_type', 'other'),
                 'x': f.get('x'),
                 'y': f.get('y'),
+                'chevron_x': f.get('chevron_x'),
+                'chevron_y': f.get('chevron_y'),
                 'value': None,
             })
 
@@ -7776,6 +7780,58 @@ def ams_enumerate_fields():
 
     except Exception as e:
         logger.error(f"[AMS Enumerate] Error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/ams/locate-option', methods=['POST'])
+def ams_locate_option():
+    """
+    Given a screenshot of an OPEN dropdown and a target value, return the pixel
+    coordinates of the matching option (to click), or whether we must scroll.
+
+    Input:  { screenshot (base64), value }
+    Output: { success, found: bool, x, y, need_scroll: bool }
+    """
+    try:
+        from PIL import Image
+        from io import BytesIO
+        import settings as settings_module
+        from app.parsers.llm_parsers import BedrockClient
+
+        data = request.get_json() or {}
+        screenshot_b64 = data.get('screenshot')
+        value = data.get('value')
+        if not screenshot_b64 or value is None:
+            return jsonify({'success': False, 'error': 'screenshot and value are required'}), 400
+
+        img = Image.open(BytesIO(base64.b64decode(screenshot_b64))).convert("RGB")
+
+        prompt = (
+            "This is a screenshot of an OPEN dropdown list of options.\n"
+            f"Find the option that best matches this value: \"{value}\".\n\n"
+            "Matching: the option text may differ slightly (e.g. value 'LA' matches "
+            "an option 'LA' or 'Louisiana'; 'Commercial Auto' matches 'Commercial Auto').\n\n"
+            "Return ONLY JSON:\n"
+            "- If the matching option is VISIBLE: "
+            '{"found": true, "x": <pixel x of that option>, "y": <pixel y>, "need_scroll": false}\n'
+            "- If NO option matches but the list clearly has more items below (cut off): "
+            '{"found": false, "need_scroll": true}\n'
+            "- If the list is fully visible and nothing matches: "
+            '{"found": false, "need_scroll": false}'
+        )
+
+        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+        result = client.generate_json_with_images(prompt, [img]) or {}
+
+        return jsonify({
+            'success': True,
+            'found': bool(result.get('found')),
+            'x': result.get('x'),
+            'y': result.get('y'),
+            'need_scroll': bool(result.get('need_scroll')),
+        })
+    except Exception as e:
+        logger.error(f"[AMS Locate Option] Error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
