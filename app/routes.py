@@ -7821,7 +7821,16 @@ def ams_locate_option():
         )
 
         client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
-        result = client.generate_json_with_images(prompt, [img]) or {}
+        try:
+            result = client.generate_json_with_images(prompt, [img]) or {}
+        except Exception as parse_err:
+            # Model sometimes replies with prose instead of JSON. Don't 500 —
+            # treat as "not found, may need scroll" so the agent retries/skips.
+            logger.warning(f"[AMS Locate Option] non-JSON reply, treating as not-found: {parse_err}")
+            result = {'found': False, 'need_scroll': True}
+
+        if not isinstance(result, dict):
+            result = {'found': False, 'need_scroll': False}
 
         return jsonify({
             'success': True,

@@ -297,7 +297,7 @@ def extract_json(text: str) -> dict:
 SCREENSHOT_SCALE = 0.5  # Reduce image size for faster upload/processing
 JPEG_QUALITY = 65  # Lower = faster + smaller file, higher = better quality (1-100)
 
-def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
+def take_screenshot(region: dict, marker: tuple = None, scale: float = None) -> tuple[bytes, float]:
     """
     Capture the given screen region and return JPEG bytes.
     mss handles negative y coordinates correctly on macOS dual-monitor setups.
@@ -340,9 +340,11 @@ def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
     img.save(str(debug_path))
     logger.info(f"Screenshot: {debug_path} ({img.width}x{img.height})")
 
-    # Shrink before encoding (major speed boost)
-    new_w = int(img.width  * SCREENSHOT_SCALE)
-    new_h = int(img.height * SCREENSHOT_SCALE)
+    # Shrink before encoding (major speed boost). Callers needing precise
+    # coordinates pass scale=1.0 for full resolution (no downscale error).
+    eff_scale = SCREENSHOT_SCALE if scale is None else scale
+    new_w = int(img.width  * eff_scale)
+    new_h = int(img.height * eff_scale)
     img_small = img.resize((new_w, new_h), Image.LANCZOS)
 
     # Use JPEG instead of PNG - much faster and 3-10x smaller
@@ -351,7 +353,7 @@ def take_screenshot(region: dict,marker: tuple = None) -> tuple[bytes, float]:
     bytes_data = buf.getvalue()
 
     logger.info(f"Compressed to {len(bytes_data) / 1024:.1f}KB JPEG (quality={JPEG_QUALITY})")
-    return bytes_data, SCREENSHOT_SCALE
+    return bytes_data, eff_scale
 
 
 def inset_region(region: dict,
@@ -498,8 +500,12 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
     Returns (text_filled_count, dropdown_fields) where dropdown_fields is the
     list of dropdown entries (with values) handed off to the computer-use pass.
     """
+    _job_start = time.time()  # TEMP timer — remove before production
+
     # 1. Screenshot the current viewport and enumerate the fields (empty plan).
-    screenshot_bytes, scale = take_screenshot(region)
+    # FIELD_MAP_SCALE controls resolution: 1.0 = full (most accurate), lower =
+    # smaller/faster. Tune this to compare accuracy vs speed.
+    screenshot_bytes, scale = take_screenshot(region, scale=FIELD_MAP_SCALE)
 
     # Derive the true image→region scale from the ACTUAL sent-image dimensions,
     # not the SCREENSHOT_SCALE constant. On Retina the grab is 2x logical points,
@@ -594,11 +600,16 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
     # (text + dropdowns) so coordinate errors are visible. logs/fill_screenshots/.
     save_annotated_screenshot(region, click_log, job_id=job_id)
 
-    logger.info(f"[Field Map] text filled={text_filled}, dropdowns set={dropdowns_set}")
+    elapsed = time.time() - _job_start  # TEMP timer — remove before production
+    msg = (f"[Field Map] DONE in {elapsed:.1f}s | scale={FIELD_MAP_SCALE} "
+           f"({sent_w}x{sent_h}) | text={text_filled} dropdowns={dropdowns_set}")
+    logger.info(msg)
+    print(f"\n  ⏱  {msg}")
     return text_filled + dropdowns_set
 
 
 DROPDOWN_MAX_SCROLLS = 6  # max scroll attempts to find an option below the fold
+FIELD_MAP_SCALE = 1.0  # screenshot scale for enumerate/dropdown vision (1.0=full res)
 
 
 def _set_dropdown_by_click(server_url, field_name, value, open_x, open_y, region, job_id=None) -> bool:
@@ -610,7 +621,7 @@ def _set_dropdown_by_click(server_url, field_name, value, open_x, open_y, region
         time.sleep(0.25)  # let the list render
 
         for attempt in range(DROPDOWN_MAX_SCROLLS + 1):
-            shot, _s = take_screenshot(region)
+            shot, _s = take_screenshot(region, scale=FIELD_MAP_SCALE)
             r = _locate_option(server_url, shot, value)
             if r.get('found') and r.get('x') is not None:
                 # Locate coords are in sent-image space → map to screen points.
@@ -621,7 +632,7 @@ def _set_dropdown_by_click(server_url, field_name, value, open_x, open_y, region
                 click_x = region['x'] + int(r['x'] * sx)
                 click_y = region['y'] + int(r['y'] * sy)
                 pyautogui.click(click_x, click_y)
-                time.sleep(FILL_DELAY)
+                time.sleep(0.5)  # let the list fully close/settle before the next dropdown
                 logger.info(f"[Field Map] ✓ dropdown '{field_name}'='{value}' clicked option at ({click_x},{click_y})")
                 return True
             if not r.get('need_scroll'):
