@@ -36,6 +36,35 @@ def _get_bedrock_runtime(region: str):
     return client
 
 
+def _loads_lenient(text: str) -> dict:
+    """Parse JSON from a model reply, tolerating prose around it (some models
+    ignore 'JSON only' and add explanation). Strips code fences, then falls back
+    to extracting the first {...} or [...] block. Returns {} if nothing parses."""
+    if not text:
+        return {}
+    s = text.strip()
+    if s.startswith("```json"):
+        s = s[7:].strip()
+    elif s.startswith("```"):
+        s = s[3:].strip()
+    if s.endswith("```"):
+        s = s[:-3].strip()
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    # Fallback: grab the outermost JSON object or array from the prose.
+    for open_ch, close_ch in (("{", "}"), ("[", "]")):
+        start = s.find(open_ch)
+        end = s.rfind(close_ch)
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(s[start:end + 1])
+            except Exception:
+                continue
+    return {}
+
+
 class LLMClient:
     def generate_json(self, prompt: str) -> dict:
         raise NotImplementedError
@@ -277,7 +306,7 @@ class BedrockClient(LLMClient):
             print(f"[Bedrock Vision] WARNING: Empty response from model. Full response: {response}")
             return {}
 
-        return json.loads(full_text)
+        return _loads_lenient(full_text)
 
 
 class GeminiClient(LLMClient):

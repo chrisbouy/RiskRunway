@@ -467,11 +467,11 @@ def enumerate_fields(server_url: str, screenshot_bytes: bytes, job_id: int = Non
         data = r.json()
         if not data.get('success'):
             logger.error(f"[Field Map] enumerate failed: {data.get('error')}")
-            return []
-        return data.get('fields', [])
+            return [], 'pixel'
+        return data.get('fields', []), data.get('coord_space', 'pixel')
     except Exception as e:
         logger.error(f"[Field Map] enumerate request failed: {e}")
-        return []
+        return [], 'pixel'
 
 
 def fill_field_map(server_url: str, fields: list, job_id: int = None) -> list:
@@ -500,12 +500,15 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
     Returns (text_filled_count, dropdown_fields) where dropdown_fields is the
     list of dropdown entries (with values) handed off to the computer-use pass.
     """
-    _job_start = time.time()  # TEMP timer — remove before production
+    _t = {}  # TEMP timers — remove before production
+    _job_start = time.time()
 
     # 1. Screenshot the current viewport and enumerate the fields (empty plan).
     # FIELD_MAP_SCALE controls resolution: 1.0 = full (most accurate), lower =
     # smaller/faster. Tune this to compare accuracy vs speed.
+    _s0 = time.time()
     screenshot_bytes, scale = take_screenshot(region, scale=FIELD_MAP_SCALE)
+    _t['screenshot'] = time.time() - _s0
 
     # Derive the true image→region scale from the ACTUAL sent-image dimensions,
     # not the SCREENSHOT_SCALE constant. On Retina the grab is 2x logical points,
@@ -518,13 +521,31 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
     scale_y = region['height'] / sent_h if sent_h else 1.0
     logger.info(f"[Field Map] sent image {sent_w}x{sent_h}, region {region['width']}x{region['height']}, scale=({scale_x:.3f},{scale_y:.3f})")
 
-    fields = enumerate_fields(server_url, screenshot_bytes, job_id=job_id)
+    _s0 = time.time()
+    fields, coord_space = enumerate_fields(server_url, screenshot_bytes, job_id=job_id)
+    _t['enumerate'] = time.time() - _s0
     if not fields:
         logger.info(f"[Field Map] No fields enumerated for job {job_id}")
-        return 0, []
+        return 0
+
+    # Map a model coordinate to an absolute screen point. Two spaces:
+    #  - 'pixel'    : coords are pixels in the sent image → divide by image size
+    #  - 'norm1000' : coords are on a 0-1000 grid (Nova/Gemini) → fraction of region
+    def to_screen(mx, my, space=coord_space):
+        if mx is None or my is None:
+            return None, None
+        if space == 'norm1000':
+            ax = region['x'] + int((mx / 1000.0) * region['width'])
+            ay = region['y'] + int((my / 1000.0) * region['height'])
+        else:
+            ax = region['x'] + int(mx * scale_x)
+            ay = region['y'] + int(my * scale_y)
+        return ax, ay
 
     # 2. Fill values from the quote.
+    _s0 = time.time()
     fields = fill_field_map(server_url, fields, job_id=job_id)
+    _t['fill_match'] = time.time() - _s0
 
     # 3a. pyautogui fills ONLY text_field / date entries (never dropdowns).
     text_types = ('text_field', 'date')
@@ -552,12 +573,8 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
             logger.info(f"[Field Map] skip text field '{f.get('field_name')}' — no coords")
             continue
 
-        # Map the model's coordinate (in sent-image space) to screen points using
-        # the true per-axis scale. The model reports the INPUT control's position,
-        # so we target it directly — no +18 label hack (that only worked near the
-        # top and caused the downward drift lower on the page).
-        abs_x = region['x'] + int(f['x'] * scale_x)
-        abs_y = region['y'] + int(f['y'] * scale_y)
+        # Map the model's coordinate to a screen point (handles pixel or 0-1000).
+        abs_x, abs_y = to_screen(f.get('x'), f.get('y'))
         try:
             pyautogui.click(abs_x, abs_y)
             time.sleep(CLICK_DELAY)
@@ -584,15 +601,14 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
         and f.get('is_empty', False)  # don't touch dropdowns that already have a selection
     ]
     dropdowns_set = 0
+    _dd_start = time.time()  # TEMP timer
     for f in dropdown_fields:
         value = str(f.get('value'))
         # Click point to OPEN: chevron if enumeration found one, else the center.
         if f.get('chevron_x') is not None and f.get('chevron_y') is not None:
-            open_x = region['x'] + int(f['chevron_x'] * scale_x)
-            open_y = region['y'] + int(f['chevron_y'] * scale_y)
+            open_x, open_y = to_screen(f.get('chevron_x'), f.get('chevron_y'))
         else:
-            open_x = region['x'] + int(f['x'] * scale_x)
-            open_y = region['y'] + int(f['y'] * scale_y)
+            open_x, open_y = to_screen(f.get('x'), f.get('y'))
 
         if _set_dropdown_by_click(server_url, f.get('field_name'), value, open_x, open_y, region, job_id):
             dropdowns_set += 1
@@ -600,15 +616,31 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
         else:
             click_log.append({"label": f.get('field_name'), "abs_x": open_x, "abs_y": open_y, "status": "miss", "value": value})
 
+    _t['dropdowns'] = time.time() - _dd_start  # TEMP timer
+
     # TEMP debug — remove before production: draw where every click landed
     # (text + dropdowns) so coordinate errors are visible. logs/fill_screenshots/.
     save_annotated_screenshot(region, click_log, job_id=job_id)
 
     elapsed = time.time() - _job_start  # TEMP timer — remove before production
-    msg = (f"[Field Map] DONE in {elapsed:.1f}s | scale={FIELD_MAP_SCALE} "
-           f"({sent_w}x{sent_h}) | text={text_filled} dropdowns={dropdowns_set}")
-    logger.info(msg)
-    print(f"\n  ⏱  {msg}")
+    timing = {
+        "total_s": round(elapsed, 1),
+        "screenshot_s": round(_t.get('screenshot', 0), 1),
+        "enumerate_s": round(_t.get('enumerate', 0), 1),
+        "fill_match_s": round(_t.get('fill_match', 0), 1),
+        "dropdowns_s": round(_t.get('dropdowns', 0), 1),
+        "scale": FIELD_MAP_SCALE,
+        "sent_px": f"{sent_w}x{sent_h}",
+        "text_filled": text_filled,
+        "dropdowns_set": dropdowns_set,
+    }
+    logger.info(f"[Field Map] DONE {timing}")
+    print(f"\n  ⏱  {timing}")
+    # TEMP — report timing to the server so it shows in the Flask terminal log.
+    try:
+        requests.post(f"{server_url}/api/ams/timing", json=timing, timeout=5)
+    except Exception:
+        pass
     return text_filled + dropdowns_set
 
 
@@ -628,13 +660,17 @@ def _set_dropdown_by_click(server_url, field_name, value, open_x, open_y, region
             shot, _s = take_screenshot(region, scale=FIELD_MAP_SCALE)
             r = _locate_option(server_url, shot, value)
             if r.get('found') and r.get('x') is not None:
-                # Locate coords are in sent-image space → map to screen points.
-                from PIL import Image as _PILImg
-                sent_w, sent_h = _PILImg.open(io.BytesIO(shot)).size
-                sx = region['width'] / sent_w if sent_w else 1.0
-                sy = region['height'] / sent_h if sent_h else 1.0
-                click_x = region['x'] + int(r['x'] * sx)
-                click_y = region['y'] + int(r['y'] * sy)
+                # Map located option coords: pixel (sent-image) or 0-1000 grid.
+                if r.get('coord_space') == 'norm1000':
+                    click_x = region['x'] + int((r['x'] / 1000.0) * region['width'])
+                    click_y = region['y'] + int((r['y'] / 1000.0) * region['height'])
+                else:
+                    from PIL import Image as _PILImg
+                    sent_w, sent_h = _PILImg.open(io.BytesIO(shot)).size
+                    sx = region['width'] / sent_w if sent_w else 1.0
+                    sy = region['height'] / sent_h if sent_h else 1.0
+                    click_x = region['x'] + int(r['x'] * sx)
+                    click_y = region['y'] + int(r['y'] * sy)
                 pyautogui.click(click_x, click_y)
                 time.sleep(0.5)  # let the list fully close/settle before the next dropdown
                 logger.info(f"[Field Map] ✓ dropdown '{field_name}'='{value}' clicked option at ({click_x},{click_y})")
@@ -671,6 +707,7 @@ def _locate_option(server_url, screenshot_bytes, value) -> dict:
     except Exception as e:
         logger.error(f"[Field Map] locate-option request failed: {e}")
         return {'found': False, 'need_scroll': False}
+
 
 
 def  run_vision_job(server_url: str, json_data: dict, region: dict, job_id: int = None) -> bool:

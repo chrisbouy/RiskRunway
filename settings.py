@@ -22,6 +22,11 @@ BEDROCK_VISION_MODEL = os.getenv("BEDROCK_VISION_MODEL", "us.anthropic.claude-so
 # insurance terminology (e.g. "Products / Comp Ops" = products/completed operations limit).
 BEDROCK_MATCH_MODEL = os.getenv("BEDROCK_MATCH_MODEL", "us.anthropic.claude-sonnet-4-6")
 
+# Vision model for the desktop AMS field enumeration + open-dropdown option
+# location. Amazon Nova has native image-grounding (bounding boxes on
+# screenshots) and is cheaper/faster than Sonnet. Override via .env.
+BEDROCK_ENUMERATE_MODEL = os.getenv("BEDROCK_ENUMERATE_MODEL", "us.amazon.nova-lite-v1:0")
+
 BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-east-1")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')

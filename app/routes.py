@@ -7673,6 +7673,83 @@ def _load_quote_images_by_job_id(job_id):
     return images
 
 
+def _warm_quote_facts(app, tenant_host, job_id):
+    """Background warm-up: extract + cache quote facts for a job so the first
+    fill after the user clicks Transfer skips the ~7s Haiku extract. Runs inside
+    an app context with the correct tenant DB. No-op if already cached."""
+    import settings as settings_module
+    from app.parsers.llm_parsers import BedrockClient
+    try:
+        with app.app_context():
+            # Bind to the same tenant DB the request used.
+            try:
+                from app.database import set_tenant_for_request
+                set_tenant_for_request(tenant_host)
+            except Exception:
+                pass
+
+            cache_key = None
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if not job:
+                    return
+                cache_key = f"quote:{job.quote_id}" if job.quote_id else f"sub:{job.submission_id}"
+                if job.quote_facts_json:
+                    return  # already warmed for this job
+            finally:
+                db_session.close()
+
+            if cache_key and _AMS_FACTS_CACHE.get(cache_key):
+                return  # already in memory for this quote
+
+            quote_images = _load_quote_images_by_job_id(job_id)
+            if not quote_images:
+                return
+            num_pages = len(quote_images)
+            extract_prompt = (
+                f"Images 1-{num_pages} are pages from an insurance quote document.\n"
+                "Extract ALL relevant insurance data as a flat JSON object of "
+                "descriptive_key -> value. Include insured name, DBA, address, city, "
+                "state, ZIP, phone, email, carrier, wholesale broker, retail agent/producer, "
+                "line of business, effective/expiration dates, premium, fees, policy number "
+                "if explicitly stated, payment plan, etc.\n"
+                "RULES: only data explicitly present; dates MM/DD/YYYY; currency digits only; "
+                "state 2-letter. Return ONLY valid JSON."
+            )
+            client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
+            facts = client.generate_json_with_images(extract_prompt, quote_images, max_width=1000) or {}
+            if isinstance(facts, dict) and isinstance(facts.get('values'), dict):
+                facts = facts['values']
+            if cache_key:
+                _AMS_FACTS_CACHE[cache_key] = facts
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job:
+                    job.quote_facts_json = json.dumps(facts)
+                    db_session.commit()
+            finally:
+                db_session.close()
+            logger.info(f"[AMS Warm] Facts cached for job {job_id} ({len(facts)} keys)")
+    except Exception as e:
+        logger.warning(f"[AMS Warm] warm-up failed for job {job_id}: {e}")
+
+
+@bp.route('/api/ams/timing', methods=['POST'])
+def ams_timing():
+    """TEMP — remove before production. Lets the local agent report per-phase
+    timings so they appear in the SERVER terminal log (the agent's own console
+    isn't easily visible)."""
+    try:
+        data = request.get_json() or {}
+        logger.info(f"[AMS TIMING] {json.dumps(data)}")
+        print(f"[AMS TIMING] {json.dumps(data)}")
+    except Exception:
+        pass
+    return jsonify({'success': True})
+
+
 @bp.route('/api/ams/enumerate-fields', methods=['POST'])
 def ams_enumerate_fields():
     """
@@ -7726,7 +7803,10 @@ def ams_enumerate_fields():
             '}'
         )
 
-        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+        # Amazon Nova for enumeration — native image grounding, cheaper/faster
+        # than Sonnet. Override via BEDROCK_ENUMERATE_MODEL.
+        enum_model = getattr(settings_module, 'BEDROCK_ENUMERATE_MODEL', None) or settings_module.BEDROCK_VISION_MODEL
+        client = BedrockClient(model=enum_model, region=settings_module.BEDROCK_REGION)
         result = client.generate_json_with_images(prompt, [screenshot_image])
 
         # Normalize into a list of field dicts. The model may return any of:
@@ -7765,8 +7845,11 @@ def ams_enumerate_fields():
                 'value': None,
             })
 
-        empty_map = {'screen_index': 0, 'fields': fields}
-        logger.info(f"[AMS Enumerate] Empty field map ({len(fields)} fields): {json.dumps(empty_map)}")
+        # Nova/Gemini-style models return coords normalized to a 0-1000 grid, not
+        # pixels. Tell the agent so it maps correctly.
+        coord_space = 'norm1000' if 'nova' in enum_model.lower() else 'pixel'
+        empty_map = {'screen_index': 0, 'fields': fields, 'coord_space': coord_space}
+        logger.info(f"[AMS Enumerate] Empty field map ({len(fields)} fields, coords={coord_space}): {json.dumps(empty_map)}")
 
         # Persist the enumerated (empty) map to the job so we can inspect what the
         # form looked like even before values are filled — key for debugging when
@@ -7827,7 +7910,8 @@ def ams_locate_option():
             '{"found": false, "need_scroll": false}'
         )
 
-        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
+        locate_model = getattr(settings_module, 'BEDROCK_ENUMERATE_MODEL', None) or settings_module.BEDROCK_VISION_MODEL
+        client = BedrockClient(model=locate_model, region=settings_module.BEDROCK_REGION)
         try:
             result = client.generate_json_with_images(prompt, [img]) or {}
         except Exception as parse_err:
@@ -7839,12 +7923,14 @@ def ams_locate_option():
         if not isinstance(result, dict):
             result = {'found': False, 'need_scroll': False}
 
+        coord_space = 'norm1000' if 'nova' in locate_model.lower() else 'pixel'
         return jsonify({
             'success': True,
             'found': bool(result.get('found')),
             'x': result.get('x'),
             'y': result.get('y'),
             'need_scroll': bool(result.get('need_scroll')),
+            'coord_space': coord_space,
         })
     except Exception as e:
         logger.error(f"[AMS Locate Option] Error: {e}", exc_info=True)
@@ -8555,6 +8641,19 @@ def create_ams_export_job():
             db_session.refresh(job)
             job_id   = job.id
             job_dict = job.to_dict()
+
+            # Warm the quote facts in the background NOW (user just clicked
+            # Transfer). By the time they place the widget / pick the tab and the
+            # agent calls fill, facts are cached — no wasted spend on page loads
+            # since this only fires on an actual Transfer click.
+            try:
+                threading.Thread(
+                    target=_warm_quote_facts,
+                    args=(current_app._get_current_object(), request.host, job_id),
+                    daemon=True,
+                ).start()
+            except Exception as warm_err:
+                logger.warning(f"[AMS Warm] could not start warm-up: {warm_err}")
 
             # Log the action
             log_action(
