@@ -7661,7 +7661,8 @@ def _load_quote_images_by_job_id(job_id):
         for quote in quotes:
             if quote.pass1_layout_json:
                 layout = json.loads(quote.pass1_layout_json)
-                for page in layout.get('pages', []):
+                # Only the first 5 pages matter for AMS export in all cases.
+                for page in layout.get('pages', [])[:5]:
                     img_path = page.get('image_path')
                     if img_path and os.path.exists(img_path):
                         images.append(Image.open(img_path).convert("RGB"))
@@ -7706,7 +7707,10 @@ def ams_enumerate_fields():
             "- control_type: one of 'text_field', 'dropdown', 'date', 'checkbox', 'other'\n"
             "- x, y: pixel coordinates of the INPUT control itself (not the label)\n"
             "- chevron_x, chevron_y: for dropdowns ONLY, the pixel coordinates of the\n"
-            "  dropdown arrow/chevron if one is visible; otherwise null. For non-dropdowns, null.\n\n"
+            "  dropdown arrow/chevron if one is visible; otherwise null. For non-dropdowns, null.\n"
+            "- is_empty: true if the field currently has NO value entered, false if it\n"
+            "  already contains text or a non-placeholder selection. A dropdown showing\n"
+            "  a placeholder like '— Select —' is empty (true).\n\n"
             "RULES:\n"
             "- Include every editable control you can see, filled or empty.\n"
             "- A native <select> or a control with a chevron/arrow is a 'dropdown'.\n"
@@ -7716,8 +7720,8 @@ def ams_enumerate_fields():
             "Return ONLY valid JSON in exactly this shape. No explanation:\n"
             '{\n'
             '  "fields": [\n'
-            '    {"field_name": "Named Insured", "control_type": "text_field", "x": 630, "y": 354, "chevron_x": null, "chevron_y": null},\n'
-            '    {"field_name": "State", "control_type": "dropdown", "x": 322, "y": 727, "chevron_x": 470, "chevron_y": 727}\n'
+            '    {"field_name": "Named Insured", "control_type": "text_field", "x": 630, "y": 354, "chevron_x": null, "chevron_y": null, "is_empty": true},\n'
+            '    {"field_name": "State", "control_type": "dropdown", "x": 322, "y": 727, "chevron_x": 470, "chevron_y": 727, "is_empty": false}\n'
             '  ]\n'
             '}'
         )
@@ -7755,6 +7759,9 @@ def ams_enumerate_fields():
                 'y': f.get('y'),
                 'chevron_x': f.get('chevron_x'),
                 'chevron_y': f.get('chevron_y'),
+                # Default to empty only if the model explicitly said so; unknown → treat
+                # as filled so we never overwrite existing data.
+                'is_empty': f.get('is_empty', False) is True,
                 'value': None,
             })
 
@@ -7868,36 +7875,79 @@ def ams_fill_field_map():
         if not fields:
             return jsonify({'success': False, 'error': 'field_map.fields is required'}), 400
 
-        quote_images = _load_quote_images_by_job_id(job_id)
-        if not quote_images:
-            return jsonify({'success': False, 'error': 'No quote images available for this job'}), 400
-
-        # Give the model only the field names + types so it maps values into them.
         field_stub = [
             {'field_name': f.get('field_name'), 'control_type': f.get('control_type')}
             for f in fields
         ]
-        num_pages = len(quote_images)
-        prompt = (
-            f"Images 1-{num_pages} are pages from an insurance quote document (SOURCE data).\n\n"
-            "Below is a list of form fields that need values. Fill each field's "
-            "value from the quote document.\n\n"
-            f"FIELDS:\n{json.dumps(field_stub, indent=2)}\n\n"
+
+        # ── Stage A: get the quote facts ONCE. Cache is keyed by QUOTE, not job,
+        # so re-exporting the same quote (each click makes a new job) reuses facts
+        # and skips the expensive vision call. ──────────────────────────────────
+        cache_key = None
+        facts = None
+        if job_id:
+            db_session = get_session()
+            try:
+                job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                if job:
+                    cache_key = f"quote:{job.quote_id}" if job.quote_id else f"sub:{job.submission_id}"
+                    if job.quote_facts_json:
+                        try:
+                            facts = json.loads(job.quote_facts_json)
+                        except Exception:
+                            facts = None
+            finally:
+                db_session.close()
+        if not facts and cache_key:
+            facts = _AMS_FACTS_CACHE.get(cache_key)
+
+        if not facts:
+            quote_images = _load_quote_images_by_job_id(job_id)
+            if not quote_images:
+                return jsonify({'success': False, 'error': 'No quote images available for this job'}), 400
+            num_pages = len(quote_images)
+            extract_prompt = (
+                f"Images 1-{num_pages} are pages from an insurance quote document.\n"
+                "Extract ALL relevant insurance data as a flat JSON object of "
+                "descriptive_key -> value. Include insured name, DBA, address, city, "
+                "state, ZIP, phone, email, carrier, wholesale broker, retail agent/producer, "
+                "line of business, effective/expiration dates, premium, fees, policy number "
+                "if explicitly stated, payment plan, etc.\n"
+                "RULES: only data explicitly present; dates MM/DD/YYYY; currency digits only; "
+                "state 2-letter. Return ONLY valid JSON."
+            )
+            # Use the cheaper/faster Haiku model for the one-time fact extraction.
+            client = BedrockClient(model=settings_module.BEDROCK_MODEL, region=settings_module.BEDROCK_REGION)
+            facts = client.generate_json_with_images(extract_prompt, quote_images, max_width=1000) or {}
+            if isinstance(facts, dict) and isinstance(facts.get('values'), dict):
+                facts = facts['values']
+            if cache_key:
+                _AMS_FACTS_CACHE[cache_key] = facts
+            if job_id:
+                db_session = get_session()
+                try:
+                    job = db_session.query(AmsExportJob).filter_by(id=job_id).first()
+                    if job:
+                        job.quote_facts_json = json.dumps(facts)
+                        db_session.commit()
+                finally:
+                    db_session.close()
+
+        # ── Stage B: cheap TEXT-ONLY match of field names → cached facts. ───────
+        match_prompt = (
+            "Map insurance quote facts onto form fields.\n\n"
+            f"QUOTE FACTS (only source of truth, do not invent):\n{json.dumps(facts, separators=(',', ':'))}\n\n"
+            f"FORM FIELDS:\n{json.dumps(field_stub, separators=(',', ':'))}\n\n"
             "RULES:\n"
-            "- Only use data explicitly present in the quote. Do NOT guess.\n"
-            "- If you have no confident value for a field, use null.\n"
+            "- Only use data present in the facts. Use null if no confident match.\n"
             "- Broker → wholesale broker. Producer → retail agent.\n"
-            "- Dates → MM/DD/YYYY. Currency → digits only. State → 2-letter. "
-            "Phone → (555) 000-0000 if possible.\n\n"
-            "Return ONLY valid JSON. No explanation. Format:\n"
+            "- Dates MM/DD/YYYY. Currency digits only. State 2-letter.\n\n"
+            "Return ONLY valid JSON. Format:\n"
             '{ "values": { "Named Insured": "Acme Corp LLC", "State": "LA" } }'
         )
-
-        client = BedrockClient(model=settings_module.BEDROCK_VISION_MODEL, region=settings_module.BEDROCK_REGION)
-        # max_width=1000: we only READ TEXT from the quote here (no coordinates),
-        # so shrink the images — matches the extension-fill path and keeps the
-        # payload small enough for many-page quotes not to blow the input limit.
-        result = client.generate_json_with_images(prompt, quote_images, max_width=1000)
+        match_model = getattr(settings_module, 'BEDROCK_MATCH_MODEL', None) or settings_module.BEDROCK_VISION_MODEL
+        client = BedrockClient(model=match_model, region=settings_module.BEDROCK_REGION)
+        result = client.generate_json(match_prompt, max_tokens=8192)
 
         # Normalize: accept {"values": {name: val}} or a bare {name: val} dict.
         if isinstance(result, dict) and isinstance(result.get('values'), dict):
@@ -7990,7 +8040,8 @@ def _load_quote_images_for_job(job):
                 continue
             layout = json.loads(quote.pass1_layout_json)
             images = []
-            for page in layout.get('pages', []):
+            # Only the first 5 pages matter for AMS export in all cases.
+            for page in layout.get('pages', [])[:5]:
                 img_path = page.get('image_path')
                 if not img_path:
                     continue

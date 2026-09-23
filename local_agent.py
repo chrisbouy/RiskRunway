@@ -545,6 +545,9 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
         if value in (None, ''):
             logger.info(f"[Field Map] skip text field '{f.get('field_name')}' — no value")
             continue
+        if not f.get('is_empty', False):
+            logger.info(f"[Field Map] skip text field '{f.get('field_name')}' — already has data")
+            continue
         if f.get('x') is None or f.get('y') is None:
             logger.info(f"[Field Map] skip text field '{f.get('field_name')}' — no coords")
             continue
@@ -578,6 +581,7 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
         f for f in fields
         if f.get('control_type') == 'dropdown' and f.get('value') not in (None, '')
         and f.get('x') is not None and f.get('y') is not None
+        and f.get('is_empty', False)  # don't touch dropdowns that already have a selection
     ]
     dropdowns_set = 0
     for f in dropdown_fields:
@@ -609,7 +613,7 @@ def run_field_map_job(server_url: str, region: dict, job_id: int = None) -> tupl
 
 
 DROPDOWN_MAX_SCROLLS = 6  # max scroll attempts to find an option below the fold
-FIELD_MAP_SCALE = 1.0  # screenshot scale for enumerate/dropdown vision (1.0=full res)
+FIELD_MAP_SCALE = 0.5  # screenshot scale for enumerate/dropdown vision (1.0=full res)
 
 
 def _set_dropdown_by_click(server_url, field_name, value, open_x, open_y, region, job_id=None) -> bool:
@@ -1488,6 +1492,65 @@ class PersistentOverlay:
     def flash_result(self, success: bool):
         pass  # Spinner stays visible until destroy() is called
 
+    def show_done_message(self, text: str) -> str:
+        """Replace the spinner with a popup after a transfer. Offers 'Transfer
+        Again' (re-run on the current scroll position) and 'Finish'. Returns
+        'again' or 'finish'. Then re-shows the spinner if 'again'."""
+        if self.spinner:
+            try:
+                px = self.spinner.root.winfo_x()
+                py = self.spinner.root.winfo_y()
+            except Exception:
+                px, py = 40, 40
+            self.spinner.destroy()
+            self.spinner = None
+        else:
+            px, py = 40, 40
+
+        import tkinter as tk
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        root.configure(bg="#1a1f2e")
+        root.geometry(f"320x150+{px}+{py}")
+        root.configure(highlightbackground="#2ecc8a", highlightthickness=2)
+
+        tk.Label(root, text="✓ Fields transferred", font=("Helvetica", 12, "bold"),
+                 fg="#2ecc8a", bg="#1a1f2e").pack(pady=(14, 4))
+        tk.Label(root, text=text, font=("Helvetica", 10), fg="#c8cfe0",
+                 bg="#1a1f2e", wraplength=290, justify="center").pack(padx=10)
+
+        choice = {"val": None}
+        btns = tk.Frame(root, bg="#1a1f2e")
+        btns.pack(pady=12)
+        again = tk.Label(btns, text="Transfer Again", font=("Helvetica", 10, "bold"),
+                         fg="#0f1219", bg="#2ecc8a", cursor="hand2", padx=14, pady=5)
+        again.pack(side="left", padx=6)
+        again.bind("<Button-1>", lambda e: choice.__setitem__("val", "again"))
+        finish = tk.Label(btns, text="Finish", font=("Helvetica", 10),
+                          fg="#c8cfe0", bg="#2a3350", cursor="hand2", padx=14, pady=5)
+        finish.pack(side="left", padx=6)
+        finish.bind("<Button-1>", lambda e: choice.__setitem__("val", "finish"))
+        root.protocol("WM_DELETE_WINDOW", lambda: choice.__setitem__("val", "finish"))
+
+        while choice["val"] is None:
+            try:
+                root.update_idletasks()
+                root.update()
+            except tk.TclError:
+                choice["val"] = "finish"
+                break
+            time.sleep(0.03)
+        try:
+            root.destroy()
+        except Exception:
+            pass
+
+        # If continuing, bring the spinner back where the popup was.
+        if choice["val"] == "again":
+            self.spinner = SpinnerOverlay(x=px, y=py)
+        return choice["val"]
+
     def destroy(self):
         if self.spinner:
             self.spinner.destroy()
@@ -1717,65 +1780,58 @@ def run_job(job: dict, server_url: str):
     # "pass" is a plain string the worker sets and the main thread renders.
     result = {"success": None, "error": None, "pass": "exporting..."}
 
-    # Define the work function to run in a thread
-    def do_work():
-        try:
-            # ── Pass 1: field-map enumerate + fill, pyautogui fills text boxes ──
-            # TEMP — remove before production: status text for the spinner. The
-            # main thread reads result["pass"] and updates the label — tkinter
-            # widgets must NOT be touched from this worker thread.
-            result["pass"] = "Filling fields..."
-            print(f"\n  Enumerating fields, filling text boxes and dropdowns...")
-            fields_filled = run_field_map_job(server_url, region, job_id=job_id)
-            logger.info(f"[Job {job_id}] Field-map filled {fields_filled} field(s)")
+    # One fill pass over the current viewport, run in a background thread so the
+    # spinner stays responsive. Returns True if the user cancelled via the ✕.
+    def do_one_pass() -> bool:
+        result["pass"] = "Filling fields..."
+        result["fields_filled"] = 0
 
-            # If the user cancelled while we were working, don't overwrite the
-            # 'cancelled' status the main thread already set on the server.
-            if result.get("cancelled"):
+        def do_work():
+            try:
+                print(f"\n  Enumerating fields, filling text boxes and dropdowns...")
+                result["fields_filled"] = run_field_map_job(server_url, region, job_id=job_id)
+                logger.info(f"[Job {job_id}] Field-map filled {result['fields_filled']} field(s)")
+            except Exception as e:
+                logger.error(f"Job {job_id} error: {e}", exc_info=True)
+                result["error"] = str(e)
+
+        work_thread = threading.Thread(target=do_work, daemon=True)
+        work_thread.start()
+
+        # All widget writes happen HERE, on the main thread (tkinter isn't thread-safe).
+        while work_thread.is_alive():
+            persistent_overlay.set_status(result["pass"])  # TEMP status text
+            persistent_overlay.update()
+            if persistent_overlay.is_cancel_requested():
+                result["cancelled"] = True
+                update_job_status(server_url, job_id, "cancelled", "Cancelled by user")
                 print(f"\n  Job #{job_id} cancelled by user")
-                return
+                return True
+            time.sleep(0.05)
+        return False
 
-            success = fields_filled > 0
-            result["success"] = success
-            if success:
-                update_job_status(server_url, job_id, "complete")
-                print(f"\n  Job #{job_id} complete!")
-            else:
-                update_job_status(server_url, job_id, "failed", "No fields were filled")
-                print(f"\n  Job #{job_id} — no fields could be filled")
-        except Exception as e:
-            logger.error(f"Job {job_id} error: {e}", exc_info=True)
-            update_job_status(server_url, job_id, "failed", str(e))
-            print(f"\n  Job #{job_id} error: {e}")
-            result["error"] = str(e)
-
-    # Run the heavy work in a background thread to keep UI responsive
-    work_thread = threading.Thread(target=do_work, daemon=True)
-    work_thread.start()
-
-    # Keep updating the widget while work is happening. All widget writes happen
-    # HERE, on the main thread — never inside do_work (tkinter is not thread-safe).
-    while work_thread.is_alive():
-        # TEMP — remove before production: reflect the current pass on the spinner.
-        persistent_overlay.set_status(result["pass"])
-        persistent_overlay.update()
-        # User clicked the ✕ on the spinner — cancel the job so it can never be
-        # re-run and tear down. The worker thread is a daemon; it won't block exit.
-        if persistent_overlay.is_cancel_requested():
-            result["cancelled"] = True
-            logger.info(f"[Job {job_id}] Cancel requested by user — marking cancelled")
-            update_job_status(server_url, job_id, "cancelled", "Cancelled by user")
-            print(f"\n  Job #{job_id} cancelled by user")
+    # Fill → offer "Transfer Again" (re-run on the new scroll position without
+    # going back to the app) → repeat until the user clicks Finish or cancels.
+    total_filled = 0
+    while True:
+        cancelled = do_one_pass()
+        if cancelled or result.get("error"):
             break
-        time.sleep(0.05)
+        total_filled += result.get("fields_filled", 0)
+        choice = persistent_overlay.show_done_message(
+            "Scroll the AMS to reveal more fields, then click Transfer Again. "
+            "Click Finish when the form is complete."
+        )
+        if choice != "again":
+            break
 
-    # Flash result and auto-destroy
     if result.get("error"):
-        persistent_overlay.flash_result(False)
-    elif result.get("success"):
-        persistent_overlay.flash_result(True)
-    else:
-        persistent_overlay.flash_result(False)
+        update_job_status(server_url, job_id, "failed", result["error"])
+    elif not result.get("cancelled"):
+        if total_filled > 0:
+            update_job_status(server_url, job_id, "complete")
+        else:
+            update_job_status(server_url, job_id, "failed", "No fields were filled")
 
     persistent_overlay.destroy()
 
