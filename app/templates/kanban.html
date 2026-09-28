@@ -5844,6 +5844,8 @@
         <h2>User Guide</h2>
         <button id="kanbanGuideCloseBtn" class="guide-close-btn" title="Close Guide">&times;</button>
     </div>
+    <!-- IMPORTANT: The User Guide content is duplicated in kanban.html and submission.html.
+         Any change here MUST be made in the other file too, or the two guides will drift out of sync. -->
     <div class="guide-body">
         <nav class="guide-toc">
             <h3>Table of Contents</h3>
@@ -5908,15 +5910,14 @@
         <h2 id="kg-submission-board">3. Understanding the Submission Board</h2>
         <p>Submissions move through a Kanban-style board with these stages:</p>
         <table>
-            <thead><tr><th>Stage</th><th>What it means</th></tr></thead>
+            <thead><tr><th>Stage</th><th>What it means</th><th>Typical upload</th></tr></thead>
             <tbody>
-                <tr><td>New Risk</td><td>A submission has been created but not yet sent to any broker/MGA</td></tr>
-                <tr><td>Quoting</td><td>Submission has been sent out and you're waiting on / comparing quotes</td></tr>
-                <tr><td>Binding</td><td>A quote has been selected and you're finalizing the bind</td></tr>
-                <tr><td>Bound</td><td>Policy is bound; ready for export to your AMS</td></tr>
+                <tr><td>Submission</td><td>A submission has been created but not yet sent to any broker/MGA</td><td>ACORD 125 application</td></tr>
+                <tr><td>Quoting</td><td>Submission has been sent out and you're waiting on / comparing quotes</td><td>Carrier quote(s)</td></tr>
+                <tr><td>Binding</td><td>A quote has been selected and you're finalizing the bind; once bound, the policy is ready for export to your AMS</td><td>Binder</td></tr>
             </tbody>
         </table>
-        <p>Each card represents one submission for one insured, for one coverage type. If a client has multiple lines of business with different effective dates, they get separate cards — use the coverage type field/dropdown on the card to tell them apart.</p>
+        <p>Each card represents one submission for one insured, for one coverage type. If a client has multiple lines of business with different effective dates, they get separate cards.</p>
 
         <h2 id="kg-menu-actions">5. Menu Actions &amp; Settings</h2>
         <p>The <strong>Settings</strong> button (gear icon) on the left sidebar opens a dropdown with the following actions:</p>

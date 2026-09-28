@@ -21,20 +21,22 @@ _Last updated: 2026-09-18_
 ## Lists
 | List | File | Sheet | Total unique | Status |
 |---|---|---|---|---|
-| SIAA / Tennessee | `SIAA List TN. - Brooke.xlsx` | `Brooke Tennessee` | 137 | IN PROGRESS |
+| SIAA / Tennessee | `SIAA List TN. - Brooke.xlsx` | `Brooke Tennessee` | 137 | COMPLETE (all 137 sent) |
 | SIAA / National master | `SIAA List TN. - Brooke.xlsx` | `ISM List` (~4,800) | not started | not started |
 | Mississippi / Iroquois | `Mississippi Iroquois member list.xlsx` | (single) | not started | `include_iroquois = no` |
 
 ## Progress
 ### SIAA / Brooke Tennessee (137 unique)
-- **Sent so far: 75**
-- **Remaining: 62**
+- **Sent: 137 of 137 — LIST COMPLETE**
+- **Remaining: 0**
 - Batches:
   - Batch 1: 25 sent (contacts 1–25), 2026-09-18. 0 failures. Did NOT include
     the website link in the signature (link was added afterward).
   - Batch 2: 25 sent (contacts 26–50), 2026-09-21. 0 failures. First batch to
     include `https://risk-runway.com` in the signature.
   - Batch 3: 25 sent (contacts 51–75), 2026-09-22. 0 failures.
+  - Batch 4: 62 sent (contacts 76–137), 2026-09-23. 0 failures. Resend showed
+    ~5 bounces / 0 spam complaints across the first 75 before this batch.
 - All sends logged with Resend message ids in `sent-log.csv`.
 
 ### How to monitor delivery / spam (no code changes)
