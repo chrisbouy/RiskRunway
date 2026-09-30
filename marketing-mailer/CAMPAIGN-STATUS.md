@@ -22,7 +22,7 @@ _Last updated: 2026-09-18_
 | List | File | Sheet | Total unique | Status |
 |---|---|---|---|---|
 | SIAA / Tennessee | `SIAA List TN. - Brooke.xlsx` | `Brooke Tennessee` | 137 | COMPLETE (all 137 sent) |
-| SIAA / National master | `SIAA List TN. - Brooke.xlsx` | `ISM List` (~4,800) | not started | not started |
+| SIAA / National master | `SIAA List TN. - Brooke.xlsx` | `ISM List` (4,810 unique) | IN PROGRESS | 168 sent, ~4,505 remaining |
 | Mississippi / Iroquois | `Mississippi Iroquois member list.xlsx` | (single) | not started | `include_iroquois = no` |
 
 ## Progress
@@ -38,6 +38,19 @@ _Last updated: 2026-09-18_
   - Batch 4: 62 sent (contacts 76–137), 2026-09-23. 0 failures. Resend showed
     ~5 bounces / 0 spam complaints across the first 75 before this batch.
 - All sends logged with Resend message ids in `sent-log.csv`.
+
+### SIAA / ISM List (national, 4,810 unique — superset that CONTAINS the 137 TN)
+- **Sent so far: 168** (batch 1: 53 on 2026-09-28; batch 2: 62 on 2026-09-29;
+  batch 3: 53 on 2026-09-30). 0 failures.
+- **Remaining: ~4,505** (sent-log auto-skips everyone already sent).
+- New template in use as of 2026-09-28: subject "rekeying quotes into your AMS",
+  reply-to-book (no Calendly link), bare `risk-runway.com` link. Prior template
+  archived at `templates/archived_version_a_20260928.txt`.
+- Note: the 6-address test of the new template landed in Gmail Promotions,
+  Proton inbox, iCloud Junk, Outlook Junk. Placement is a domain-reputation/
+  engagement issue (brand-new sending domain), not the copy. Fix is time + low
+  volume + replies, so drip this list (50/day), don't blast.
+- Send total across all lists: **190**.
 
 ### How to monitor delivery / spam (no code changes)
 - Resend dashboard -> Emails/Logs shows per-message status: Delivered, Bounced,
