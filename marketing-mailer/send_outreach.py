@@ -68,6 +68,7 @@ CONFIG_PATH = os.path.join(HERE, "config.ini")
 TEMPLATE_DIR = os.path.join(HERE, "templates")
 PREVIEW_DIR = os.path.join(HERE, "preview")
 SENT_LOG = os.path.join(HERE, "sent-log.csv")
+SUPPRESSION_LIST = os.path.join(HERE, "suppression.csv")
 
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -284,6 +285,18 @@ def load_already_sent():
     return sent
 
 
+def load_suppressed():
+    """Load suppression.csv — addresses that must never be emailed again."""
+    suppressed = set()
+    if os.path.exists(SUPPRESSION_LIST):
+        with open(SUPPRESSION_LIST, "r", encoding="utf-8", newline="") as fh:
+            for row in csv.DictReader(fh):
+                addr = (row.get("email") or "").strip().lower()
+                if addr:
+                    suppressed.add(addr)
+    return suppressed
+
+
 def append_sent_log(email, company, template):
     new_file = not os.path.exists(SENT_LOG)
     with open(SENT_LOG, "a", encoding="utf-8", newline="") as fh:
@@ -430,6 +443,14 @@ def main():
     if already:
         contacts = [c for c in contacts if c["email"].lower() not in already]
         print(f"Skipping {len(already)} already in sent-log -> {len(contacts)} remaining")
+
+    suppressed = load_suppressed()
+    if suppressed:
+        before_suppress = len(contacts)
+        contacts = [c for c in contacts if c["email"].lower() not in suppressed]
+        skipped = before_suppress - len(contacts)
+        if skipped:
+            print(f"Skipping {skipped} suppressed (unsubscribed) -> {len(contacts)} remaining")
 
     if args.limit is not None:
         contacts = contacts[: args.limit]

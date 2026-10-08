@@ -22,7 +22,7 @@ _Last updated: 2026-09-18_
 | List | File | Sheet | Total unique | Status |
 |---|---|---|---|---|
 | SIAA / Tennessee | `SIAA List TN. - Brooke.xlsx` | `Brooke Tennessee` | 137 | COMPLETE (all 137 sent) |
-| SIAA / National master | `SIAA List TN. - Brooke.xlsx` | `ISM List` (4,810 unique) | IN PROGRESS | 168 sent, ~4,505 remaining |
+| SIAA / National master | `SIAA List TN. - Brooke.xlsx` | `ISM List` (4,810 unique) | IN PROGRESS | 303 sent, ~4,370 remaining. Total across all lists: 440. |
 | Mississippi / Iroquois | `Mississippi Iroquois member list.xlsx` | (single) | not started | `include_iroquois = no` |
 
 ## Progress
@@ -40,9 +40,9 @@ _Last updated: 2026-09-18_
 - All sends logged with Resend message ids in `sent-log.csv`.
 
 ### SIAA / ISM List (national, 4,810 unique — superset that CONTAINS the 137 TN)
-- **Sent so far: 168** (batch 1: 53 on 2026-09-28; batch 2: 62 on 2026-09-29;
-  batch 3: 53 on 2026-09-30). 0 failures.
-- **Remaining: ~4,505** (sent-log auto-skips everyone already sent).
+- **Sent so far: 220** (b1: 53 on 09-28; b2: 62 on 09-29; b3: 53 on 09-30;
+  b4: 52 on 10-05). 0 failures.
+- **Remaining: ~4,453** (sent-log auto-skips everyone already sent).
 - New template in use as of 2026-09-28: subject "rekeying quotes into your AMS",
   reply-to-book (no Calendly link), bare `risk-runway.com` link. Prior template
   archived at `templates/archived_version_a_20260928.txt`.
